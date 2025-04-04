@@ -1,0 +1,1 @@
+-- Migration kept for versioning, but table not needed 
