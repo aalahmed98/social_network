@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	// ADDED: Import time if you need further timestamp manipulation
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -57,7 +58,7 @@ func (db *DB) Migrate(migrationPath string) error {
 func (db *DB) CreateUser(email, password, firstName, lastName, dob, avatar, nickname, aboutMe string) (int64, error) {
 	query := `INSERT INTO users (email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	
+
 	result, err := db.Exec(query, email, password, firstName, lastName, dob, avatar, nickname, aboutMe)
 	if err != nil {
 		return 0, err
@@ -75,27 +76,27 @@ func (db *DB) CreateUser(email, password, firstName, lastName, dob, avatar, nick
 func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
 	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public 
 			  FROM users WHERE email = ?`
-	
+
 	row := db.QueryRow(query, email)
-	
+
 	var id int
 	var password, firstName, lastName, dob string
 	var avatar, nickname, aboutMe sql.NullString
 	var isPublic bool
-	
+
 	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &nickname, &aboutMe, &isPublic)
 	if err != nil {
 		return nil, err
 	}
 
 	user := map[string]interface{}{
-		"id":          id,
-		"email":       email,
-		"password":    password,
-		"first_name":  firstName,
-		"last_name":   lastName,
+		"id":            id,
+		"email":         email,
+		"password":      password,
+		"first_name":    firstName,
+		"last_name":     lastName,
 		"date_of_birth": dob,
-		"is_public":   isPublic,
+		"is_public":     isPublic,
 	}
 
 	if avatar.Valid {
@@ -115,26 +116,26 @@ func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
 func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
 	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public 
 			  FROM users WHERE id = ?`
-	
+
 	row := db.QueryRow(query, id)
-	
+
 	var email, password, firstName, lastName, dob string
 	var avatar, nickname, aboutMe sql.NullString
 	var isPublic bool
-	
+
 	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &nickname, &aboutMe, &isPublic)
 	if err != nil {
 		return nil, err
 	}
 
 	user := map[string]interface{}{
-		"id":          id,
-		"email":       email,
-		"password":    password,
-		"first_name":  firstName,
-		"last_name":   lastName,
+		"id":            id,
+		"email":         email,
+		"password":      password,
+		"first_name":    firstName,
+		"last_name":     lastName,
 		"date_of_birth": dob,
-		"is_public":   isPublic,
+		"is_public":     isPublic,
 	}
 
 	if avatar.Valid {
@@ -154,7 +155,7 @@ func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
 func (db *DB) SaveSession(sessionID string, userID int, data string, expiresAt string) error {
 	query := `INSERT INTO sessions (id, user_id, data, expires_at) 
 			  VALUES (?, ?, ?, ?)`
-	
+
 	_, err := db.Exec(query, sessionID, userID, data, expiresAt)
 	return err
 }
@@ -163,13 +164,13 @@ func (db *DB) SaveSession(sessionID string, userID int, data string, expiresAt s
 func (db *DB) GetSession(sessionID string) (map[string]interface{}, error) {
 	query := `SELECT id, user_id, data, created_at, expires_at 
 			  FROM sessions WHERE id = ? AND expires_at > datetime('now')`
-	
+
 	row := db.QueryRow(query, sessionID)
-	
+
 	var id string
 	var userID int
 	var data, createdAt, expiresAt string
-	
+
 	err := row.Scan(&id, &userID, &data, &createdAt, &expiresAt)
 	if err != nil {
 		return nil, err
@@ -189,7 +190,7 @@ func (db *DB) GetSession(sessionID string) (map[string]interface{}, error) {
 // DeleteSession removes a session
 func (db *DB) DeleteSession(sessionID string) error {
 	query := `DELETE FROM sessions WHERE id = ?`
-	
+
 	_, err := db.Exec(query, sessionID)
 	return err
 }
@@ -198,7 +199,7 @@ func (db *DB) DeleteSession(sessionID string) error {
 func (db *DB) CreateAuthToken(tokenID string, userID int, tokenType string, expiresAt string) error {
 	query := `INSERT INTO auth_tokens (id, user_id, token_type, expires_at) 
 			  VALUES (?, ?, ?, ?)`
-	
+
 	_, err := db.Exec(query, tokenID, userID, tokenType, expiresAt)
 	return err
 }
@@ -207,12 +208,12 @@ func (db *DB) CreateAuthToken(tokenID string, userID int, tokenType string, expi
 func (db *DB) GetAuthToken(tokenID string) (map[string]interface{}, error) {
 	query := `SELECT id, user_id, token_type, created_at, expires_at 
 			  FROM auth_tokens WHERE id = ? AND expires_at > datetime('now')`
-	
+
 	row := db.QueryRow(query, tokenID)
-	
+
 	var id, tokenType, createdAt, expiresAt string
 	var userID int
-	
+
 	err := row.Scan(&id, &userID, &tokenType, &createdAt, &expiresAt)
 	if err != nil {
 		return nil, err
@@ -232,7 +233,7 @@ func (db *DB) GetAuthToken(tokenID string) (map[string]interface{}, error) {
 // DeleteAuthToken removes a token
 func (db *DB) DeleteAuthToken(tokenID string) error {
 	query := `DELETE FROM auth_tokens WHERE id = ?`
-	
+
 	_, err := db.Exec(query, tokenID)
 	return err
 }
@@ -241,52 +242,127 @@ func (db *DB) DeleteAuthToken(tokenID string) error {
 func (db *DB) UpdateUser(userID int, data map[string]interface{}) error {
 	// Start building query
 	query := "UPDATE users SET "
-	
+
 	// Prepare query parts and arguments
 	var parts []string
 	var args []interface{}
-	
+
 	// Add each field to be updated
 	if firstName, ok := data["first_name"]; ok {
 		parts = append(parts, "first_name = ?")
 		args = append(args, firstName)
 	}
-	
+
 	if lastName, ok := data["last_name"]; ok {
 		parts = append(parts, "last_name = ?")
 		args = append(args, lastName)
 	}
-	
+
 	if nickname, ok := data["nickname"]; ok {
 		parts = append(parts, "nickname = ?")
 		args = append(args, nickname)
 	}
-	
+
 	if aboutMe, ok := data["about_me"]; ok {
 		parts = append(parts, "about_me = ?")
 		args = append(args, aboutMe)
 	}
-	
+
 	if avatar, ok := data["avatar"]; ok {
 		parts = append(parts, "avatar = ?")
 		args = append(args, avatar)
 	}
-	
+
 	if isPublic, ok := data["is_public"]; ok {
 		parts = append(parts, "is_public = ?")
 		args = append(args, isPublic)
 	}
-	
+
 	// If no fields to update, return
 	if len(parts) == 0 {
 		return nil
 	}
-	
+
 	// Complete the query
 	query += fmt.Sprintf("%s WHERE id = ?", strings.Join(parts, ", "))
 	args = append(args, userID)
-	
+
 	// Execute the query
 	_, err := db.Exec(query, args...)
 	return err
-} 
+}
+
+// =====================================================
+// ADDED CODE: New functions for handling follow relationships
+// =====================================================
+
+// FollowUser adds a new follow relationship to track who is following whom.
+func (db *DB) FollowUser(followerID, followeeID int) error {
+	query := `INSERT INTO follows (follower_id, followee_id, created_at) 
+	          VALUES (?, ?, datetime('now'))`
+	_, err := db.Exec(query, followerID, followeeID)
+	return err
+}
+
+// UnfollowUser removes an existing follow relationship.
+func (db *DB) UnfollowUser(followerID, followeeID int) error {
+	query := `DELETE FROM follows WHERE follower_id = ? AND followee_id = ?`
+	_, err := db.Exec(query, followerID, followeeID)
+	return err
+}
+
+// GetFollowers retrieves a list of user IDs that are following the specified user.
+func (db *DB) GetFollowers(userID int) ([]int, error) {
+	query := `SELECT follower_id FROM follows WHERE followee_id = ?`
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var followers []int
+	for rows.Next() {
+		var followerID int
+		if err := rows.Scan(&followerID); err != nil {
+			return nil, err
+		}
+		followers = append(followers, followerID)
+	}
+	return followers, nil
+}
+
+// GetFollowing retrieves a list of user IDs that the specified user is following.
+func (db *DB) GetFollowing(userID int) ([]int, error) {
+	query := `SELECT followee_id FROM follows WHERE follower_id = ?`
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var following []int
+	for rows.Next() {
+		var followeeID int
+		if err := rows.Scan(&followeeID); err != nil {
+			return nil, err
+		}
+		following = append(following, followeeID)
+	}
+	return following, nil
+}
+
+// GetFollowerCount returns the number of followers for the specified user.
+func (db *DB) GetFollowerCount(userID int) (int, error) {
+	query := `SELECT COUNT(*) FROM follows WHERE followee_id = ?`
+	var count int
+	err := db.QueryRow(query, userID).Scan(&count)
+	return count, err
+}
+
+// GetFollowingCount returns the number of users that the specified user is following.
+func (db *DB) GetFollowingCount(userID int) (int, error) {
+	query := `SELECT COUNT(*) FROM follows WHERE follower_id = ?`
+	var count int
+	err := db.QueryRow(query, userID).Scan(&count)
+	return count, err
+}
