@@ -102,11 +102,11 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to get working directory: %v", err)
 	}
-	
+
 	// Create absolute path and convert to forward slashes for URL
 	migrationPath := filepath.Join(wd, "pkg", "db", "migrations", "sqlite")
 	migrationPath = filepath.ToSlash(migrationPath)
-	
+
 	if err := db.Migrate(migrationPath); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -118,8 +118,8 @@ func init() {
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
 	}
-	
-	// Initialize auth handlers
+
+	// Initialize auth handlers and other dependencies
 	handlers.SetDependencies(db, store)
 }
 
@@ -142,13 +142,18 @@ func main() {
 	r.HandleFunc("/api/register", handlers.RegisterHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/login", handlers.LoginHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/check", handlers.CheckAuth).Methods("GET", "OPTIONS")
-	
+
 	// Private routes (require authentication)
 	authRouter := r.PathPrefix("/api").Subrouter()
 	authRouter.Use(handlers.AuthMiddleware)
 	authRouter.HandleFunc("/profile", handlers.GetProfile).Methods("GET", "OPTIONS")
 	authRouter.HandleFunc("/profile/update", handlers.UpdateProfile).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/logout", handlers.LogoutHandler).Methods("POST", "OPTIONS")
+
+	// NEW: Routes for retrieving follower and following counts.
+	// We pass the db instance so that the handler can use it.
+	authRouter.HandleFunc("/followers/count", sqlite.SendFollowerCount(db)).Methods("GET", "OPTIONS")
+	authRouter.HandleFunc("/following/count", sqlite.SendFollowingCount(db)).Methods("GET", "OPTIONS")
 
 	// 404 Handler for undefined routes
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -2,7 +2,10 @@ package sqlite
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 
 	// ADDED: Import time if you need further timestamp manipulation
@@ -365,4 +368,61 @@ func (db *DB) GetFollowingCount(userID int) (int, error) {
 	var count int
 	err := db.QueryRow(query, userID).Scan(&count)
 	return count, err
+}
+
+func SendFollowerCount(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract userID from query parameters (example: ?user_id=123)
+		userIDStr := r.URL.Query().Get("user_id")
+		if userIDStr == "" {
+			http.Error(w, "user_id is required", http.StatusBadRequest)
+			return
+		}
+
+		// Convert userID to an integer
+		userID, err := strconv.Atoi(userIDStr)
+		if err != nil {
+			http.Error(w, "invalid user_id", http.StatusBadRequest)
+			return
+		}
+
+		// Get the follower count using the DB method
+		followersCount, err := db.GetFollowerCount(userID)
+		if err != nil {
+			http.Error(w, "Error retrieving follower count", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"followers_count": followersCount})
+	}
+}
+
+
+func SendFollowingCount(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract userID from query parameters (example: ?user_id=123)
+		userIDStr := r.URL.Query().Get("user_id")
+		if userIDStr == "" {
+			http.Error(w, "user_id is required", http.StatusBadRequest)
+			return
+		}
+
+		// Convert userID to an integer
+		userID, err := strconv.Atoi(userIDStr)
+		if err != nil {
+			http.Error(w, "invalid user_id", http.StatusBadRequest)
+			return
+		}
+
+		// Get the following count using the DB method
+		followersCount, err := db.GetFollowingCount(userID)
+		if err != nil {
+			http.Error(w, "Error retrieving follower count", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"following_count": followersCount})
+	}
 }
