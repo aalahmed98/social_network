@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
@@ -65,11 +66,11 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	var req RegisterRequest
-	
+
 	contentType := r.Header.Get("Content-Type")
-	
+
 	// Parse request based on Content-Type
 	if contentType == "application/json" {
 		// Handle JSON request
@@ -92,7 +93,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		// Extract fields from form
 		req.Email = r.FormValue("email")
 		req.Password = r.FormValue("password")
@@ -101,13 +102,31 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		req.DOB = r.FormValue("dob")
 		req.Nickname = r.FormValue("nickname")
 		req.AboutMe = r.FormValue("aboutMe")
-		
+
+		const maxFileSize = 20 << 20 // 20 MB
+
 		// Handle avatar file if present
-		file, _, err := r.FormFile("avatar")
-		if err == nil {
+		file, fileHeader, err := r.FormFile("avatar")
+		if err != nil && err != http.ErrMissingFile {
+			fmt.Println("1")
+			ErrorHandler(w, r, http.StatusInternalServerError, "Error getting uploaded file")
+			return
+		}
+
+		var imageData []byte
+		if file != nil {
 			defer file.Close()
-			// Handle file upload (for now just store a placeholder)
-			req.Avatar = "avatar_placeholder.jpg"
+
+			if fileHeader.Size > maxFileSize {
+				ErrorHandler(w, r, http.StatusRequestEntityTooLarge, "Image size exceeds 20 MB limit")
+				return
+			}
+
+			imageData, err = io.ReadAll(file)
+			if err != nil {
+				ErrorHandler(w, r, http.StatusInternalServerError, "Error reading uploaded file")
+				return
+			}
 		}
 	} else {
 		// Handle URL-encoded form data
@@ -120,7 +139,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		req.Email = r.FormValue("email")
 		req.Password = r.FormValue("password")
 		req.FirstName = r.FormValue("firstName")
@@ -202,7 +221,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		req.Email = r.FormValue("email")
 		req.Password = r.FormValue("password")
 	}
@@ -255,7 +274,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		"user_id": user["id"],
 		"email":   user["email"],
 	}
-	
+
 	sessionDataJSON, err := json.Marshal(sessionData)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -268,7 +287,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Set expiry for 7 days
 	expiryTime := time.Now().Add(7 * 24 * time.Hour).Format(time.RFC3339)
-	
+
 	// Save session to database
 	err = db.SaveSession(sessionID, user["id"].(int), string(sessionDataJSON), expiryTime)
 	if err != nil {
@@ -308,16 +327,16 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	session, _ := store.Get(r, "session")
-	
+
 	// Get session ID from cookie
 	sessionID, ok := session.Values["session_id"].(string)
 	if ok {
 		// Delete session from database
 		db.DeleteSession(sessionID)
 	}
-	
+
 	// Clear the cookie
 	session.Options.MaxAge = -1
 	session.Save(r, w)
@@ -336,7 +355,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	session, _ := store.Get(r, "session")
 	sessionID, ok := session.Values["session_id"].(string)
 	if !ok {
@@ -347,7 +366,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Get session from database
 	dbSession, err := db.GetSession(sessionID)
 	if err != nil {
@@ -358,7 +377,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Get user ID from session
 	userID := dbSession["user_id"].(int)
 
@@ -390,14 +409,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		
+
 		// Verify session in database
 		_, err := db.GetSession(sessionID)
 		if err != nil {
 			http.Error(w, "Session expired or invalid", http.StatusUnauthorized)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -409,7 +428,7 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	session, _ := store.Get(r, "session")
 	sessionID, ok := session.Values["session_id"].(string)
 	if !ok {
@@ -420,7 +439,7 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Verify session in database
 	dbSession, err := db.GetSession(sessionID)
 	if err != nil {
@@ -431,7 +450,7 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -594,4 +613,43 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		"message": "Profile updated successfully",
 		"user":    user,
 	})
-} 
+}
+
+// handles the error pages with status return
+func ErrorHandler(w http.ResponseWriter, r *http.Request, statusCode int, errM string) {
+	var errorMessage string
+	switch statusCode {
+	case http.StatusNotFound:
+		//404
+		errorMessage = "Page not found"
+	case http.StatusBadRequest:
+		//400
+		errorMessage = "Bad request"
+		if errM != "" {
+			//400 with extra message
+			errorMessage += ": " + errM
+		}
+	case http.StatusInternalServerError:
+		//500
+		errorMessage = "Internal server error"
+	case http.StatusMethodNotAllowed:
+		//405
+		errorMessage = "Method not allowed"
+	default:
+		errorMessage = "Unexpected error"
+	}
+	data := struct {
+		ErrorCode    int
+		ErrorMessage string
+	}{
+		ErrorCode:    statusCode,
+		ErrorMessage: errorMessage,
+	}
+	tmpl, err := template.ParseFiles("Templates/error.html")
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(statusCode)
+	tmpl.Execute(w, data)
+}

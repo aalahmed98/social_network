@@ -19,6 +19,13 @@ export default function Profile() {
   const [success, setSuccess] = useState("");
   const [updating, setUpdating] = useState(false);
 
+  // New state variables for follower and following counts
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
+  // Define backendUrl so that we can prepend it to avatar paths if needed.
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
   useEffect(() => {
     // Fetch user data
     const fetchUser = async () => {
@@ -75,6 +82,43 @@ export default function Profile() {
 
     fetchUser();
   }, [router]);
+
+  // New: Fetch follower and following counts once user data is available
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        if (user && user.id) {
+          const followerRes = await fetch(
+            `${backendUrl}/api/followers/count?user_id=${user.id}`,
+            { method: "GET", credentials: "include" }
+          );
+          if (followerRes.ok) {
+            const followerData = await followerRes.json();
+            setFollowerCount(followerData.followers_count);
+          } else {
+            console.error("Failed to fetch follower count");
+          }
+
+          const followingRes = await fetch(
+            `${backendUrl}/api/following/count?user_id=${user.id}`,
+            { method: "GET", credentials: "include" }
+          );
+          if (followingRes.ok) {
+            const followingData = await followingRes.json();
+            setFollowingCount(followingData.following_count);
+          } else {
+            console.error("Failed to fetch following count");
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching counts", err);
+      }
+    };
+
+    fetchCounts();
+  }, [user]);
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -170,8 +214,9 @@ export default function Profile() {
           <div className="md:w-1/3 bg-indigo-50 p-6 flex flex-col items-center">
             <div className="w-40 h-40 rounded-full overflow-hidden bg-gray-200 mb-6">
               {user?.avatar ? (
+                // Prepend backendUrl to the avatar path so the image loads correctly
                 <img
-                  src={user.avatar}
+                  src={`${backendUrl}/${user.avatar}`}
                   alt="Profile"
                   className="w-full h-full object-cover"
                 />
@@ -189,6 +234,17 @@ export default function Profile() {
               Member since{" "}
               {new Date(user?.created_at || Date.now()).toLocaleDateString()}
             </p>
+            {/* New: Display follower and following counts */}
+            <div className="flex space-x-4 mt-4">
+              <div className="text-center">
+                <p className="text-gray-500 mt-2">{followerCount}</p>
+                <p className="text-gray-600 text-sm">Followers</p>
+              </div>
+              <div className="text-center">
+                <p className="text-gray-500 mt-2">{followingCount}</p>
+                <p className="text-gray-600 text-sm">Following</p>
+              </div>
+            </div>
           </div>
 
           <div className="md:w-2/3 p-6">
