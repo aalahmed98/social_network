@@ -113,7 +113,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var imageData []byte
+		//var imageData []byte
 		if file != nil {
 			defer file.Close()
 
@@ -122,11 +122,11 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			imageData, err = io.ReadAll(file)
-			if err != nil {
-				ErrorHandler(w, r, http.StatusInternalServerError, "Error reading uploaded file")
-				return
-			}
+			// imageData, err = io.ReadAll(file)
+			// if err != nil {
+			// 	ErrorHandler(w, r, http.StatusInternalServerError, "Error reading uploaded file")
+			// 	return
+			// }
 		}
 	} else {
 		// Handle URL-encoded form data
