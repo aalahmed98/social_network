@@ -214,6 +214,9 @@ func main() {
 	authRouter.HandleFunc("/followers/count", sqlite.SendFollowerCount(db)).Methods("GET", "OPTIONS")
 	authRouter.HandleFunc("/following/count", sqlite.SendFollowingCount(db)).Methods("GET", "OPTIONS")
 
+	// PUBLIC: Search endpoint. (Changed from http.HandleFunc to registration on router.)
+	r.HandleFunc("/api/search", handlers.SearchUsers(db)).Methods("GET", "OPTIONS")
+
 	// 404 Handler for undefined routes
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip JSON errors for WebSocket requests
