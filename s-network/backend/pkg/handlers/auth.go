@@ -612,4 +612,34 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		"message": "Profile updated successfully",
 		"user":    user,
 	})
+}
+
+// GetCurrentUserHandler returns the current user's data
+func GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, "session")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user from database
+	user, err := db.GetUserById(userID)
+	if err != nil {
+		http.Error(w, "Failed to retrieve user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Remove password from response
+	delete(user, "password")
+
+	// Return user data
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
 } 

@@ -43,7 +43,6 @@ interface Follower {
 
 export default function Posts() {
   const router = useRouter();
-  const [posts, setPosts] = useState<Post[]>([]);
   const [content, setContent] = useState("");
   const [privacy, setPrivacy] = useState("public");
   const [image, setImage] = useState<File | null>(null);
@@ -51,43 +50,11 @@ export default function Posts() {
   const [selectedFollowers, setSelectedFollowers] = useState<number[]>([]);
   const [followers, setFollowers] = useState<Follower[]>([]);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [showFollowerSelect, setShowFollowerSelect] = useState(false);
 
-  // Fetch posts on page load and when page changes
+  // Fetch followers on page load
   useEffect(() => {
-    fetchPosts();
     fetchFollowers();
-  }, [page]);
-
-  // Fetch posts from the API
-  const fetchPosts = async () => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(
-        `${backendUrl}/api/posts?page=${page}&limit=10`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setPosts(data.posts || []);
-      } else if (response.status === 401) {
-        router.push("/login");
-      } else {
-        console.error("Failed to fetch posts:", await response.text());
-      }
-    } catch (error) {
-      console.error("Error fetching posts:", error);
-    }
-  };
+  }, []);
 
   // Fetch followers from the API
   const fetchFollowers = async () => {
@@ -186,8 +153,8 @@ export default function Posts() {
         setSelectedFollowers([]);
         setShowFollowerSelect(false);
 
-        // Refresh posts
-        fetchPosts();
+        // Redirect to home page after successful post
+        router.push("/");
       } else {
         const errorText = await response.text();
         let errorMessage = "Unknown error";
@@ -208,15 +175,11 @@ export default function Posts() {
     }
   };
 
-  // Format date to readable string
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  };
+  const [showFollowerSelect, setShowFollowerSelect] = useState(false);
 
   return (
     <div className="min-h-screen p-4 bg-gray-100">
-      <h1 className="text-3xl font-bold mb-6 text-center">Posts</h1>
+      <h1 className="text-3xl font-bold mb-6 text-center">Create Post</h1>
 
       {/* Create Post Form */}
       <div className="max-w-2xl mx-auto bg-white shadow rounded-lg p-6 mb-8">
@@ -233,11 +196,12 @@ export default function Posts() {
           </div>
 
           {imagePreview && (
-            <div className="mb-4 relative">
+            <div className="mb-4 relative rounded-lg overflow-hidden">
               <img
                 src={imagePreview}
                 alt="Preview"
-                className="max-h-64 rounded-lg mx-auto"
+                className="w-full h-auto rounded-lg"
+                style={{ maxWidth: "100%", objectFit: "contain" }}
               />
               <button
                 type="button"
@@ -346,100 +310,6 @@ export default function Posts() {
             {loading ? "Posting..." : "Post"}
           </button>
         </form>
-      </div>
-
-      {/* Posts List */}
-      <div className="max-w-2xl mx-auto">
-        {posts.length > 0 ? (
-          posts.map((post) => (
-            <div key={post.id} className="bg-white shadow rounded-lg p-6 mb-6">
-              <div className="flex items-center mb-4">
-                {post.author.avatar ? (
-                  <img
-                    src={post.author.avatar}
-                    alt={`${post.author.first_name} ${post.author.last_name}`}
-                    className="w-10 h-10 rounded-full mr-3"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
-                    {post.author.first_name.charAt(0)}
-                    {post.author.last_name.charAt(0)}
-                  </div>
-                )}
-                <div>
-                  <div className="font-semibold">
-                    {post.author.first_name} {post.author.last_name}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {formatDate(post.created_at)} ·
-                    <span className="ml-1">
-                      {post.privacy === "public"
-                        ? "Public"
-                        : post.privacy === "almost_private"
-                        ? "Followers Only"
-                        : "Private"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-4 whitespace-pre-line">{post.content}</div>
-
-              {post.image_url && (
-                <div className="mb-4">
-                  <img
-                    src={post.image_url}
-                    alt="Post image"
-                    className="max-h-96 rounded-lg mx-auto"
-                  />
-                </div>
-              )}
-
-              <div className="border-t pt-3 mt-3">
-                <button
-                  onClick={() => router.push(`/posts/${post.id}`)}
-                  className="text-blue-500 hover:text-blue-700"
-                >
-                  View {post.comments?.length || 0} comments
-                </button>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="text-center py-10">
-            <p className="text-gray-500">
-              No posts to display. Be the first to create a post!
-            </p>
-          </div>
-        )}
-
-        {/* Pagination */}
-        {posts.length > 0 && (
-          <div className="flex justify-between mt-4 mb-8">
-            <button
-              onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-              disabled={page === 1}
-              className={`px-4 py-2 rounded ${
-                page === 1
-                  ? "bg-gray-300 cursor-not-allowed"
-                  : "bg-blue-500 text-white hover:bg-blue-600"
-              }`}
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((prev) => prev + 1)}
-              disabled={posts.length < 10}
-              className={`px-4 py-2 rounded ${
-                posts.length < 10
-                  ? "bg-gray-300 cursor-not-allowed"
-                  : "bg-blue-500 text-white hover:bg-blue-600"
-              }`}
-            >
-              Next
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

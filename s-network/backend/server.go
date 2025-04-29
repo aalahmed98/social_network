@@ -166,8 +166,12 @@ func main() {
 	authRouter.HandleFunc("/posts", handlers.GetPostsHandler).Methods("GET", "OPTIONS")
 	authRouter.HandleFunc("/posts", handlers.CreatePostHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/posts/{id}", handlers.GetPostHandler).Methods("GET", "OPTIONS")
+	authRouter.HandleFunc("/posts/{id}", handlers.DeletePostHandler).Methods("DELETE", "OPTIONS")
 	authRouter.HandleFunc("/posts/{id}/comments", handlers.AddCommentHandler).Methods("POST", "OPTIONS")
+	authRouter.HandleFunc("/posts/{id}/comments/{commentId}", handlers.DeleteCommentHandler).Methods("DELETE", "OPTIONS")
 	authRouter.HandleFunc("/followers", handlers.GetUserFollowersHandler).Methods("GET", "OPTIONS")
+	// User data endpoint
+	authRouter.HandleFunc("/users/me", handlers.GetCurrentUserHandler).Methods("GET", "OPTIONS")
 	// Follow user endpoint
 	authRouter.HandleFunc("/follow/{id}", handlers.FollowUserHandler).Methods("POST", "OPTIONS")
 

@@ -340,43 +340,56 @@ func (db *DB) CreatePost(userID int, content string, imageURL string, privacy st
 
 // GetPostByID retrieves a post by ID
 func (db *DB) GetPostByID(postID int64) (map[string]interface{}, error) {
-	query := `SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
-			  u.first_name, u.last_name, u.avatar
-			  FROM posts p
-			  JOIN users u ON p.user_id = u.id
-			  WHERE p.id = ?`
+	query := `
+		SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
+			   u.first_name, u.last_name, u.avatar
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		WHERE p.id = ?
+	`
 	
 	row := db.QueryRow(query, postID)
 	
-	var id, userID int64
-	var content, privacy, createdAt, updatedAt, firstName, lastName string
-	var imageURL, avatar sql.NullString
+	var (
+		id          int64
+		userID      int64
+		content     string
+		imageURL    *string
+		privacy     string
+		createdAt   string
+		updatedAt   string
+		firstName   string
+		lastName    string
+		avatar      *string
+	)
 	
-	err := row.Scan(&id, &userID, &content, &imageURL, &privacy, 
-		&createdAt, &updatedAt, &firstName, &lastName, &avatar)
+	err := row.Scan(&id, &userID, &content, &imageURL, &privacy, &createdAt, &updatedAt, &firstName, &lastName, &avatar)
 	if err != nil {
 		return nil, err
 	}
 
+	// Build the post map
 	post := map[string]interface{}{
-		"id":         id,
-		"user_id":    userID,
-		"content":    content,
-		"privacy":    privacy,
-		"created_at": createdAt,
-		"updated_at": updatedAt,
+		"id":          id,
+		"user_id":     userID,
+		"content":     content,
+		"privacy":     privacy,
+		"created_at":  createdAt,
+		"updated_at":  updatedAt,
+		"is_author":   false, // This will be set by the handler
 		"author": map[string]interface{}{
+			"id":         userID,
 			"first_name": firstName,
 			"last_name":  lastName,
 		},
 	}
 
-	if imageURL.Valid {
-		post["image_url"] = imageURL.String
+	if imageURL != nil {
+		post["image_url"] = *imageURL
 	}
-	
-	if avatar.Valid {
-		post["author"].(map[string]interface{})["avatar"] = avatar.String
+
+	if avatar != nil {
+		post["author"].(map[string]interface{})["avatar"] = *avatar
 	}
 
 	return post, nil
@@ -535,12 +548,13 @@ func (db *DB) AddComment(postID, userID int64, content string, imageURL string) 
 // GetCommentsByPostID retrieves comments for a specific post
 func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error) {
 	query := `
-		SELECT c.id, c.user_id, c.content, c.image_url, c.created_at, c.updated_at,
-			   u.first_name, u.last_name, u.avatar
+		SELECT 
+			c.id, c.post_id, c.user_id, c.content, c.image_url, c.created_at,
+			u.first_name, u.last_name, u.avatar
 		FROM comments c
 		JOIN users u ON c.user_id = u.id
 		WHERE c.post_id = ?
-		ORDER BY c.created_at ASC
+		ORDER BY c.created_at DESC
 	`
 	
 	rows, err := db.Query(query, postID)
@@ -549,37 +563,45 @@ func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error
 	}
 	defer rows.Close()
 	
-	var comments []map[string]interface{}
+	comments := []map[string]interface{}{}
 	
 	for rows.Next() {
-		var id, userID int64
-		var content, createdAt, updatedAt, firstName, lastName string
-		var imageURL, avatar sql.NullString
+		var (
+			id        int64
+			postID    int64
+			userID    int64
+			content   string
+			imageURL  *string
+			createdAt string
+			firstName string
+			lastName  string
+			avatar    *string
+		)
 		
-		err := rows.Scan(&id, &userID, &content, &imageURL, &createdAt, &updatedAt, 
-			&firstName, &lastName, &avatar)
+		err := rows.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &firstName, &lastName, &avatar)
 		if err != nil {
 			return nil, err
 		}
 		
 		comment := map[string]interface{}{
 			"id":         id,
+			"post_id":    postID,
 			"user_id":    userID,
 			"content":    content,
 			"created_at": createdAt,
-			"updated_at": updatedAt,
 			"author": map[string]interface{}{
+				"id":         userID,
 				"first_name": firstName,
 				"last_name":  lastName,
 			},
 		}
 		
-		if imageURL.Valid {
-			comment["image_url"] = imageURL.String
+		if imageURL != nil {
+			comment["image_url"] = *imageURL
 		}
 		
-		if avatar.Valid {
-			comment["author"].(map[string]interface{})["avatar"] = avatar.String
+		if avatar != nil {
+			comment["author"].(map[string]interface{})["avatar"] = *avatar
 		}
 		
 		comments = append(comments, comment)
@@ -683,6 +705,117 @@ func (db *DB) FollowUser(followerID, followingID int) error {
 	_, err = db.Exec(query, followerID, followingID)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// DeletePost removes a post and its associated comments from the database
+func (db *DB) DeletePost(postID int64) error {
+	// Start a transaction to ensure data consistency
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// First delete all comments associated with the post
+	_, err = tx.Exec("DELETE FROM comments WHERE post_id = ?", postID)
+	if err != nil {
+		return err
+	}
+
+	// Then delete the post itself
+	result, err := tx.Exec("DELETE FROM posts WHERE id = ?", postID)
+	if err != nil {
+		return err
+	}
+
+	// Check if any row was affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("post with ID %d not found", postID)
+	}
+
+	// Commit the transaction
+	return tx.Commit()
+}
+
+// GetCommentByID retrieves a comment by its ID
+func (db *DB) GetCommentByID(commentID int64) (map[string]interface{}, error) {
+	row := db.QueryRow(`
+		SELECT 
+			c.id, c.post_id, c.user_id, c.content, c.image_url, c.created_at,
+			u.first_name, u.last_name, u.avatar
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		WHERE c.id = ?
+	`, commentID)
+
+	var (
+		id        int64
+		postID    int64
+		userID    int64
+		content   string
+		imageURL  *string
+		createdAt string
+		firstName string
+		lastName  string
+		avatar    *string
+	)
+
+	err := row.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &firstName, &lastName, &avatar)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("comment with ID %d not found", commentID)
+		}
+		return nil, err
+	}
+
+	// Convert to map
+	comment := map[string]interface{}{
+		"id":         id,
+		"post_id":    postID,
+		"user_id":    userID,
+		"content":    content,
+		"created_at": createdAt,
+		"user": map[string]interface{}{
+			"id":         userID,
+			"first_name": firstName,
+			"last_name":  lastName,
+		},
+	}
+
+	if imageURL != nil {
+		comment["image_url"] = *imageURL
+	}
+
+	if avatar != nil {
+		comment["user"].(map[string]interface{})["avatar"] = *avatar
+	}
+
+	return comment, nil
+}
+
+// DeleteComment removes a comment from the database
+func (db *DB) DeleteComment(commentID int64) error {
+	result, err := db.Exec("DELETE FROM comments WHERE id = ?", commentID)
+	if err != nil {
+		return err
+	}
+
+	// Check if any row was affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("comment with ID %d not found", commentID)
 	}
 
 	return nil
