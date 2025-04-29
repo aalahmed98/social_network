@@ -147,6 +147,66 @@ export default function Home() {
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
+  // Handle voting on a post
+  const handleVote = async (
+    postId: number,
+    voteType: 1 | -1,
+    event: React.MouseEvent
+  ) => {
+    event.stopPropagation(); // Prevent navigation to post detail
+
+    if (voting[postId]) return; // Prevent double clicks
+
+    setVoting((prev) => ({ ...prev, [postId]: true }));
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ vote_type: voteType }),
+      });
+
+      if (response.ok) {
+        const updatedPosts = posts.map((post) => {
+          if (post.id === postId) {
+            const previousVote = post.user_vote || 0;
+            let newUpvotes = post.upvotes || 0;
+            let newDownvotes = post.downvotes || 0;
+
+            // If user had a previous vote, remove it first
+            if (previousVote === 1) newUpvotes--;
+            if (previousVote === -1) newDownvotes--;
+
+            // Then add the new vote
+            if (voteType === 1) newUpvotes++;
+            if (voteType === -1) newDownvotes++;
+
+            return {
+              ...post,
+              upvotes: newUpvotes,
+              downvotes: newDownvotes,
+              user_vote: voteType === previousVote ? 0 : voteType,
+            };
+          }
+          return post;
+        });
+
+        setPosts(updatedPosts);
+      } else {
+        console.error("Failed to vote on post:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error voting on post:", error);
+    } finally {
+      setVoting((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
@@ -161,22 +221,24 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      <div className="max-w-5xl mx-auto px-4 py-8">
+    <main className="min-h-screen bg-gray-100 py-6">
+      <div className="max-w-5xl mx-auto px-4">
         {/* Header */}
-        <header className="flex justify-between items-center mb-8 pb-4 border-b border-gray-200">
+        <header className="flex justify-between items-center mb-8 pb-3 border-b border-gray-200">
           <div className="flex items-center">
-            <h1 className="text-3xl font-bold text-indigo-800">S-Network</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
+              S-Network
+            </h1>
             <div className="ml-4 text-sm text-gray-500 hidden md:block"></div>
           </div>
         </header>
 
         {!isLoggedIn && (
-          <div className="max-w-3xl mx-auto px-8 py-16 bg-white rounded-xl shadow-lg text-center">
-            <h2 className="text-4xl font-bold mb-4 text-indigo-800">
+          <div className="max-w-3xl mx-auto px-8 py-16 bg-white rounded-xl shadow-lg text-center transition-all hover:shadow-xl">
+            <h2 className="text-4xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
               Welcome to S-Network
             </h2>
-            <p className="text-xl mb-10 text-gray-600 max-w-lg mx-auto">
+            <p className="text-xl mb-10 text-gray-600 max-w-lg mx-auto leading-relaxed">
               Connect with colleagues, share ideas, and build your professional
               network with our secure and modern platform
             </p>
@@ -184,13 +246,13 @@ export default function Home() {
             <div className="flex gap-6 justify-center">
               <Link
                 href="/login"
-                className="px-8 py-4 bg-indigo-600 text-white rounded-lg shadow-md hover:bg-indigo-700 transition-all transform hover:-translate-y-1 font-medium"
+                className="px-8 py-4 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium"
               >
                 Sign In
               </Link>
               <Link
                 href="/register"
-                className="px-8 py-4 border-2 border-indigo-600 text-indigo-600 rounded-lg shadow-md hover:bg-indigo-50 transition-all transform hover:-translate-y-1 font-medium"
+                className="px-8 py-4 border-2 border-blue-600 text-blue-600 rounded-lg shadow-md hover:bg-blue-50 transition-all transform hover:-translate-y-1 font-medium"
               >
                 Create Account
               </Link>
@@ -200,21 +262,35 @@ export default function Home() {
 
         {isLoggedIn && (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Sidebar */}
               <div className="hidden lg:block">
-                <div className="bg-white rounded-lg shadow-sm p-6 mb-6 sticky top-4">
-                  <h2 className="font-semibold text-lg mb-4 text-gray-700">
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6 sticky top-4 transition-all hover:shadow-lg border border-gray-200">
+                  <h2 className="font-semibold text-lg mb-4 text-gray-800 flex items-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5 mr-2 text-blue-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
                     Quick Links
                   </h2>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Link
                       href="/posts"
-                      className="flex items-center p-3 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                      className="flex items-center p-3 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors font-medium"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-2"
+                        className="h-5 w-5 mr-3"
                         viewBox="0 0 20 20"
                         fill="currentColor"
                       >
@@ -232,7 +308,7 @@ export default function Home() {
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-2"
+                        className="h-5 w-5 mr-3 text-gray-500"
                         viewBox="0 0 20 20"
                         fill="currentColor"
                       >
@@ -250,96 +326,276 @@ export default function Home() {
 
               {/* Main Content - Posts feed */}
               <div className="lg:col-span-2">
-                <h2 className="text-xl font-semibold mb-4 text-gray-800">
+                <h2 className="text-xl font-semibold mb-5 text-gray-800 flex items-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6 mr-2 text-blue-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1M19 20a2 2 0 002-2V8a2 2 0 00-2-2h-5a2 2 0 00-2 2v12a2 2 0 002 2h5z"
+                    />
+                  </svg>
                   Your Feed
                 </h2>
 
                 {posts.length > 0 ? (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     {posts.map((post) => (
                       <div
                         key={post.id}
-                        className="bg-white shadow-sm rounded-lg overflow-hidden border border-gray-200 hover:shadow-md transition-shadow"
+                        className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
                       >
-                        <div className="p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center">
-                              {post.author.avatar ? (
-                                <img
-                                  src={
-                                    post.author.avatar.startsWith("http")
-                                      ? post.author.avatar
-                                      : `${
-                                          process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                          "http://localhost:8080"
-                                        }${post.author.avatar}`
-                                  }
-                                  alt={`${post.author.first_name} ${post.author.last_name}`}
-                                  className="w-10 h-10 rounded-full mr-3 object-cover border border-gray-200"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mr-3 font-semibold border border-gray-200">
-                                  {post.author.first_name.charAt(0)}
-                                  {post.author.last_name.charAt(0)}
+                        {/* Modern post layout */}
+                        <div className="flex">
+                          {/* Vote buttons - left side */}
+                          <div className="bg-gray-50 w-12 flex flex-col items-center py-4 border-r border-gray-100">
+                            <button
+                              onClick={(e) => handleVote(post.id, 1, e)}
+                              className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                                post.user_vote === 1
+                                  ? "text-orange-500 bg-orange-50"
+                                  : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
+                              }`}
+                              disabled={voting[post.id]}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                className="h-5 w-5"
+                              >
+                                <path d="M12 4l8 8h-6v8h-4v-8H4z" />
+                              </svg>
+                            </button>
+                            <span
+                              className={`text-sm font-medium my-1 ${
+                                post.user_vote === 1
+                                  ? "text-orange-500"
+                                  : post.user_vote === -1
+                                  ? "text-blue-500"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {(post.upvotes || 0) - (post.downvotes || 0)}
+                            </span>
+                            <button
+                              onClick={(e) => handleVote(post.id, -1, e)}
+                              className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                                post.user_vote === -1
+                                  ? "text-blue-500 bg-blue-50"
+                                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                              }`}
+                              disabled={voting[post.id]}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                className="h-5 w-5"
+                              >
+                                <path d="M12 20l-8-8h6V4h4v8h6z" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Post content - right side */}
+                          <div
+                            className="p-4 w-full cursor-pointer"
+                            onClick={() => router.push(`/posts/${post.id}`)}
+                          >
+                            {/* Post header with user info */}
+                            <div className="flex items-center mb-3">
+                              {/* User avatar */}
+                              <div className="flex-shrink-0 mr-3">
+                                {post.author.avatar ? (
+                                  <img
+                                    src={
+                                      post.author.avatar.startsWith("http")
+                                        ? post.author.avatar
+                                        : `${
+                                            process.env
+                                              .NEXT_PUBLIC_BACKEND_URL ||
+                                            "http://localhost:8080"
+                                          }${post.author.avatar}`
+                                    }
+                                    alt={`${post.author.first_name} ${post.author.last_name}`}
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
+                                    {post.author.first_name.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Post metadata */}
+                              <div className="flex flex-col">
+                                <div className="flex items-center">
+                                  <span className="font-semibold text-gray-900 mr-1 text-sm">
+                                    {post.author.first_name}{" "}
+                                    {post.author.last_name}
+                                  </span>
+                                  {post.is_author && (
+                                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full mr-2">
+                                      Author
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                              <div>
-                                <div className="font-semibold text-gray-800">
-                                  {post.author.first_name}{" "}
-                                  {post.author.last_name}
-                                </div>
-                                <div className="text-xs text-gray-500 flex items-center">
+                                <div className="flex items-center text-xs text-gray-500">
                                   <span>{formatDate(post.created_at)}</span>
-                                  <span className="mx-1.5">•</span>
-                                  <span className="inline-flex items-center">
+                                  <span className="mx-1">·</span>
+                                  <span className="flex items-center">
                                     {post.privacy === "public" ? (
-                                      <span className="flex items-center text-green-600">
+                                      <>
                                         <svg
                                           xmlns="http://www.w3.org/2000/svg"
                                           className="h-3 w-3 mr-1"
-                                          viewBox="0 0 20 20"
-                                          fill="currentColor"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
                                         >
-                                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
                                           <path
-                                            fillRule="evenodd"
-                                            d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-                                            clipRule="evenodd"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                           />
                                         </svg>
                                         Public
-                                      </span>
-                                    ) : (
-                                      <span className="flex items-center text-amber-600">
+                                      </>
+                                    ) : post.privacy === "almost_private" ? (
+                                      <>
                                         <svg
                                           xmlns="http://www.w3.org/2000/svg"
                                           className="h-3 w-3 mr-1"
-                                          viewBox="0 0 20 20"
-                                          fill="currentColor"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
                                         >
                                           <path
-                                            fillRule="evenodd"
-                                            d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                                            clipRule="evenodd"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                          />
+                                        </svg>
+                                        Followers
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          className="h-3 w-3 mr-1"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
                                           />
                                         </svg>
                                         Private
-                                      </span>
+                                      </>
                                     )}
                                   </span>
                                 </div>
                               </div>
+
+                              {/* Post controls for author */}
+                              {post.is_author && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeletePost(post.id, e);
+                                  }}
+                                  disabled={deleting}
+                                  className="ml-auto text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                                  title="Delete post"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
                             </div>
-                            {post.is_author && (
-                              <button
-                                onClick={(e) => handleDeletePost(post.id, e)}
-                                disabled={deleting}
-                                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
-                                title="Delete post"
+
+                            {/* Post title */}
+                            <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                              {post.content.split("\n")[0]}
+                            </h3>
+
+                            {/* Post content/body */}
+                            <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
+                              {post.content.split("\n").slice(1).join("\n")}
+                            </div>
+
+                            {/* Post image */}
+                            {post.image_url && (
+                              <div className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
+                                <div
+                                  className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                                  style={{
+                                    backgroundImage: `url(${
+                                      post.image_url.startsWith("http")
+                                        ? post.image_url
+                                        : `${
+                                            process.env
+                                              .NEXT_PUBLIC_BACKEND_URL ||
+                                            "http://localhost:8080"
+                                          }${post.image_url}`
+                                    })`,
+                                  }}
+                                ></div>
+                                <div className="relative z-10 flex justify-center bg-transparent">
+                                  <img
+                                    src={
+                                      post.image_url.startsWith("http")
+                                        ? post.image_url
+                                        : `${
+                                            process.env
+                                              .NEXT_PUBLIC_BACKEND_URL ||
+                                            "http://localhost:8080"
+                                          }${post.image_url}`
+                                    }
+                                    alt="Post image"
+                                    className="max-w-full mx-auto max-h-72 object-contain"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Post footer with actions */}
+                            <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
+                              <div
+                                className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/posts/${post.id}`);
+                                }}
                               >
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
-                                  className="h-5 w-5"
+                                  className="h-4 w-4 mr-1.5 text-gray-500"
                                   fill="none"
                                   viewBox="0 0 24 24"
                                   stroke="currentColor"
@@ -348,64 +604,55 @@ export default function Home() {
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
                                     strokeWidth={2}
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                                   />
                                 </svg>
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="mb-4 whitespace-pre-line text-gray-700">
-                            {post.content}
-                          </div>
-
-                          {post.image_url && (
-                            <div className="mb-4 rounded-lg overflow-hidden bg-gray-100">
-                              <img
-                                src={
-                                  post.image_url.startsWith("http")
-                                    ? post.image_url
-                                    : `${
-                                        process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                        "http://localhost:8080"
-                                      }${post.image_url}`
-                                }
-                                alt="Post image"
-                                className="w-full h-auto max-h-80 object-contain"
-                              />
+                                <span>{post.comment_count || 0} Comments</span>
+                              </div>
+                              <div
+                                className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard
+                                    .writeText(
+                                      window.location.origin +
+                                        `/posts/${post.id}`
+                                    )
+                                    .then(() =>
+                                      alert("Link copied to clipboard!")
+                                    )
+                                    .catch((err) =>
+                                      console.error("Failed to copy: ", err)
+                                    );
+                                }}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4 mr-1.5 text-gray-500"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                                  />
+                                </svg>
+                                <span>Share</span>
+                              </div>
                             </div>
-                          )}
-                        </div>
-
-                        <div className="bg-gray-50 px-6 py-3 border-t border-gray-200">
-                          <div
-                            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 flex items-center"
-                            onClick={() => router.push(`/posts/${post.id}`)}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-5 w-5 mr-2"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zM7 8H5v2h2V8zm2 0h2v2H9V8zm6 0h-2v2h2V8z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                            View post and comments
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="bg-white shadow-sm rounded-lg p-8 text-center border border-gray-200">
+                  <div className="bg-white shadow-md rounded-lg p-10 text-center border border-gray-200 transition-all hover:shadow-lg">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className="h-12 w-12 mx-auto text-gray-400 mb-4"
+                      className="h-16 w-16 mx-auto text-gray-400 mb-5"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -417,12 +664,12 @@ export default function Home() {
                         d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
                       />
                     </svg>
-                    <p className="text-gray-500 mb-4">
+                    <p className="text-gray-500 mb-5 text-lg">
                       No posts to display yet.
                     </p>
                     <Link
                       href="/posts"
-                      className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                      className="inline-flex items-center justify-center px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm hover:shadow"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"

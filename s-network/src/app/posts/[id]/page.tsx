@@ -20,6 +20,9 @@ interface Post {
   };
   comments?: Comment[];
   is_author?: boolean;
+  user_vote?: number;
+  upvotes?: number;
+  downvotes?: number;
 }
 
 // Comment type definition
@@ -37,6 +40,8 @@ interface Comment {
   };
   is_author?: boolean;
   is_post_author?: boolean;
+  vote_count: number;
+  user_vote: number;
 }
 
 export default function PostDetail() {
@@ -50,6 +55,7 @@ export default function PostDetail() {
   const [error, setError] = useState("");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [voting, setVoting] = useState(false);
 
   // Get post ID from URL params
   const postId = params?.id as string;
@@ -304,6 +310,91 @@ export default function PostDetail() {
     return date.toLocaleString();
   };
 
+  // Handle vote
+  const handleVote = async (vote: number) => {
+    if (post) {
+      setVoting(true);
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const response = await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ vote }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setPost({
+            ...post,
+            user_vote: data.user_vote,
+            upvotes: data.upvotes,
+            downvotes: data.downvotes,
+          });
+        } else {
+          const errorText = await response.text();
+          console.error("Error voting:", errorText);
+          alert("An error occurred while voting.");
+        }
+      } catch (error) {
+        console.error("Error voting:", error);
+        alert("An error occurred while voting.");
+      } finally {
+        setVoting(false);
+      }
+    }
+  };
+
+  // Handle comment vote
+  const handleCommentVote = async (commentId: number, vote: number) => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${backendUrl}/api/posts/${postId}/comments/${commentId}/vote`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ vote_type: vote }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // Update the comment in the post state
+        if (post && post.comments) {
+          const updatedComments = post.comments.map((comment) => {
+            if (comment.id === commentId) {
+              return {
+                ...comment,
+                vote_count: data.vote_count,
+                user_vote: data.user_vote,
+              };
+            }
+            return comment;
+          });
+
+          setPost({
+            ...post,
+            comments: updatedComments,
+          });
+        }
+      } else {
+        const errorText = await response.text();
+        console.error("Error voting on comment:", errorText);
+      }
+    } catch (error) {
+      console.error("Error voting on comment:", error);
+    }
+  };
+
   if (error) {
     return (
       <div className="min-h-screen p-4 flex items-center justify-center">
@@ -353,9 +444,11 @@ export default function PostDetail() {
         </button>
 
         {/* Post */}
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
+        <div className="bg-white shadow-lg rounded-lg overflow-hidden mb-6 border border-gray-200 transition-all hover:shadow-xl">
+          {/* Post Header */}
+          <div className="flex items-center px-6 pt-4 pb-2 border-b border-gray-100">
+            {/* Author avatar */}
+            <div className="flex-shrink-0 mr-3">
               {post?.author.avatar ? (
                 <img
                   src={
@@ -367,37 +460,89 @@ export default function PostDetail() {
                         }${post.author.avatar}`
                   }
                   alt={`${post.author.first_name} ${post.author.last_name}`}
-                  className="w-10 h-10 rounded-full mr-3"
+                  className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
                   {post?.author.first_name.charAt(0)}
-                  {post?.author.last_name.charAt(0)}
                 </div>
               )}
-              <div>
-                <div className="font-semibold">
-                  {post?.author.first_name} {post?.author.last_name}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {post && formatDate(post.created_at)} ·
-                  <span className="ml-1">
-                    {post?.privacy === "public"
-                      ? "Public"
-                      : post?.privacy === "almost_private"
-                      ? "Followers Only"
-                      : "Private"}
-                  </span>
-                </div>
+            </div>
+
+            {/* Post metadata */}
+            <div className="flex flex-col">
+              <span className="font-semibold text-gray-900 text-sm">
+                {post?.author.first_name} {post?.author.last_name}
+              </span>
+              <div className="flex items-center text-xs text-gray-500">
+                <span>{post && formatDate(post.created_at)}</span>
+                <span className="mx-1">·</span>
+                <span className="flex items-center">
+                  {post?.privacy === "public" ? (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-3 w-3 mr-1"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      Public
+                    </>
+                  ) : post?.privacy === "almost_private" ? (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-3 w-3 mr-1"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                        />
+                      </svg>
+                      Followers Only
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-3 w-3 mr-1"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                        />
+                      </svg>
+                      Private
+                    </>
+                  )}
+                </span>
               </div>
             </div>
 
-            {/* Add Delete button if user is the author of the post */}
+            {/* Delete button for post owner */}
             {post.is_author && (
               <button
                 onClick={handleDeletePost}
                 disabled={deleting}
-                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
+                className="ml-auto text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
                 title="Delete post"
               >
                 <svg
@@ -418,34 +563,179 @@ export default function PostDetail() {
             )}
           </div>
 
-          <div className="mb-4 whitespace-pre-line">{post?.content}</div>
+          {/* Post Content */}
+          <div className="flex px-6">
+            {/* Left vote column */}
+            <div className="pt-4 w-10 flex flex-col items-center">
+              <button
+                onClick={() => handleVote(1)}
+                disabled={voting}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                  post.user_vote === 1
+                    ? "text-orange-500 bg-orange-50"
+                    : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
+                }`}
+                title="Upvote"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path d="M12 4l8 8h-6v8h-4v-8H4z" />
+                </svg>
+              </button>
 
-          {post?.image_url && (
-            <div className="mb-4">
-              <img
-                src={
-                  post.image_url.startsWith("http")
-                    ? post.image_url
-                    : `${
-                        process.env.NEXT_PUBLIC_BACKEND_URL ||
-                        "http://localhost:8080"
-                      }${post.image_url}`
-                }
-                alt="Post image"
-                className="max-h-96 rounded-lg mx-auto"
-              />
+              <div
+                className={`text-sm font-medium my-1 ${
+                  post.user_vote === 1
+                    ? "text-orange-500"
+                    : post.user_vote === -1
+                    ? "text-blue-500"
+                    : "text-gray-800"
+                }`}
+              >
+                {((post.upvotes || 0) - (post.downvotes || 0)).toString()}
+              </div>
+
+              <button
+                onClick={() => handleVote(-1)}
+                disabled={voting}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                  post.user_vote === -1
+                    ? "text-blue-500 bg-blue-50"
+                    : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                }`}
+                title="Downvote"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path d="M12 20l-8-8h6V4h4v8h6z" />
+                </svg>
+              </button>
             </div>
-          )}
+
+            {/* Main content */}
+            <div className="flex-1 py-4 pl-4">
+              <div className="whitespace-pre-line text-gray-800 mb-4 text-base leading-relaxed">
+                {post?.content}
+              </div>
+
+              {post?.image_url && (
+                <div className="mb-5 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shadow-sm relative">
+                  <div
+                    className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                    style={{
+                      backgroundImage: `url(${
+                        post.image_url.startsWith("http")
+                          ? post.image_url
+                          : `${
+                              process.env.NEXT_PUBLIC_BACKEND_URL ||
+                              "http://localhost:8080"
+                            }${post.image_url}`
+                      })`,
+                    }}
+                  ></div>
+                  <div className="relative z-10 flex justify-center bg-transparent">
+                    <img
+                      src={
+                        post.image_url.startsWith("http")
+                          ? post.image_url
+                          : `${
+                              process.env.NEXT_PUBLIC_BACKEND_URL ||
+                              "http://localhost:8080"
+                            }${post.image_url}`
+                      }
+                      alt="Post image"
+                      className="max-h-[28rem] w-auto max-w-full mx-auto object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Post actions */}
+          <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-sm text-gray-600">
+            <div className="flex items-center">
+              <div className="flex items-center mr-6">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-2 text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                  />
+                </svg>
+                <span>{post.comments?.length || 0} comments</span>
+              </div>
+
+              <div className="flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-2 text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+                <button
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(window.location.href)
+                      .then(() => alert("Link copied to clipboard!"))
+                      .catch((err) => console.error("Failed to copy: ", err));
+                  }}
+                  className="hover:text-blue-600 transition-colors font-medium"
+                >
+                  Share
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Add Comment Form */}
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Add a Comment</h2>
+        {/* Add Comment Form - Modern Style */}
+        <div className="bg-white shadow-md rounded-lg border border-gray-200 p-5 mb-6 transition-all hover:shadow-lg">
+          <h2 className="text-base font-semibold mb-4 text-gray-800 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 mr-2 text-blue-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+              />
+            </svg>
+            Add a Comment
+          </h2>
           <form onSubmit={handleAddComment}>
             <div className="mb-4">
               <textarea
-                className="w-full border rounded-lg p-3 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Write a comment..."
+                className="w-full border border-gray-300 rounded-lg p-3 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                placeholder="What are your thoughts?"
                 value={commentContent}
                 onChange={(e) => setCommentContent(e.target.value)}
                 required
@@ -454,14 +744,22 @@ export default function PostDetail() {
 
             {commentImagePreview && (
               <div className="mb-4 relative">
-                <img
-                  src={commentImagePreview}
-                  alt="Preview"
-                  className="max-h-64 rounded-lg mx-auto"
-                />
+                <div
+                  className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110 rounded-lg"
+                  style={{
+                    backgroundImage: `url(${commentImagePreview})`,
+                  }}
+                ></div>
+                <div className="relative z-10">
+                  <img
+                    src={commentImagePreview}
+                    alt="Preview"
+                    className="max-h-64 rounded-lg mx-auto border border-gray-200 shadow-sm"
+                  />
+                </div>
                 <button
                   type="button"
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"
+                  className="absolute top-2 right-2 z-20 bg-white text-red-500 rounded-full p-1.5 shadow-md hover:bg-red-50 transition-colors"
                   onClick={() => {
                     setCommentImage(null);
                     setCommentImagePreview("");
@@ -469,7 +767,7 @@ export default function PostDetail() {
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
+                    className="h-4 w-4"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                   >
@@ -483,120 +781,280 @@ export default function PostDetail() {
               </div>
             )}
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Add an Image (Optional)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                onChange={handleCommentImageChange}
-              />
-            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="cursor-pointer flex items-center text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-colors">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 mr-1.5 text-blue-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                  Add Image
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleCommentImageChange}
+                  />
+                </label>
+              </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg"
-            >
-              {loading ? "Posting..." : "Post Comment"}
-            </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
+                  loading
+                    ? "bg-gray-300 text-gray-500"
+                    : "bg-blue-500 hover:bg-blue-600 text-white shadow-sm hover:shadow"
+                }`}
+              >
+                {loading ? (
+                  <span className="flex items-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Posting...
+                  </span>
+                ) : (
+                  "Post Comment"
+                )}
+              </button>
+            </div>
           </form>
         </div>
 
-        {/* Comments List */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-4">
-            Comments ({post?.comments?.length || 0})
-          </h2>
+        {/* Comments List - Modern Style */}
+        <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden transition-all hover:shadow-lg">
+          <div className="px-5 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+            <h2 className="font-semibold text-gray-800 flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-2 text-blue-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"
+                />
+              </svg>
+              Comments ({post?.comments?.length || 0})
+            </h2>
+          </div>
 
           {post?.comments && post.comments.length > 0 ? (
-            post.comments.map((comment) => (
-              <div key={comment.id} className="border-b last:border-b-0 py-4">
-                <div className="flex items-start">
-                  {comment.author.avatar ? (
-                    <img
-                      src={
-                        comment.author.avatar.startsWith("http")
-                          ? comment.author.avatar
-                          : `${
-                              process.env.NEXT_PUBLIC_BACKEND_URL ||
-                              "http://localhost:8080"
-                            }${comment.author.avatar}`
-                      }
-                      alt={`${comment.author.first_name} ${comment.author.last_name}`}
-                      className="w-8 h-8 rounded-full mr-3 mt-1"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center mr-3 mt-1">
-                      {comment.author.first_name.charAt(0)}
-                      {comment.author.last_name.charAt(0)}
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center">
-                        <span className="font-medium mr-2">
-                          {comment.author.first_name} {comment.author.last_name}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {formatDate(comment.created_at)}
-                        </span>
-                      </div>
-
-                      {/* Add Delete button if user is author of comment or post */}
-                      {(comment.is_author ||
-                        comment.is_post_author ||
-                        post.is_author) && (
-                        <button
-                          onClick={() => handleDeleteComment(comment.id)}
-                          disabled={deleting}
-                          className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
-                          title="Delete comment"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="whitespace-pre-line">{comment.content}</div>
-                    {comment.image_url && (
-                      <div className="mt-2">
+            <div className="divide-y divide-gray-100">
+              {post.comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  className="p-5 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex">
+                    <div className="flex-shrink-0 mr-3">
+                      {comment.author.avatar ? (
                         <img
                           src={
-                            comment.image_url.startsWith("http")
-                              ? comment.image_url
+                            comment.author.avatar.startsWith("http")
+                              ? comment.author.avatar
                               : `${
                                   process.env.NEXT_PUBLIC_BACKEND_URL ||
                                   "http://localhost:8080"
-                                }${comment.image_url}`
+                                }${comment.author.avatar}`
                           }
-                          alt="Comment image"
-                          className="max-h-64 rounded-lg"
+                          alt={`${comment.author.first_name} ${comment.author.last_name}`}
+                          className="w-8 h-8 rounded-full border-2 border-gray-100 object-cover"
                         />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold text-white shadow-sm">
+                          {comment.author.first_name.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 -mt-0.5">
+                      <div className="flex items-center mb-1">
+                        <span className="text-sm font-medium text-gray-900 mr-2">
+                          {comment.author.first_name} {comment.author.last_name}
+                        </span>
+                        {comment.is_author && (
+                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full mr-2">
+                            Author
+                          </span>
+                        )}
+                        {comment.is_post_author && !comment.is_author && (
+                          <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded-full mr-2">
+                            OP
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {formatDate(comment.created_at)}
+                        </span>
+
+                        {/* Add Delete button if user is author of comment or post */}
+                        {(comment.is_author ||
+                          comment.is_post_author ||
+                          post.is_author) && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            disabled={deleting}
+                            className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                            title="Delete comment"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        )}
                       </div>
-                    )}
+                      <div className="text-sm text-gray-800 whitespace-pre-line mb-3 leading-relaxed">
+                        {comment.content}
+                      </div>
+                      {comment.image_url && (
+                        <div className="mt-2 mb-3 relative">
+                          <div
+                            className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110 rounded-lg"
+                            style={{
+                              backgroundImage: `url(${
+                                comment.image_url.startsWith("http")
+                                  ? comment.image_url
+                                  : `${
+                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                      "http://localhost:8080"
+                                    }${comment.image_url}`
+                              })`,
+                            }}
+                          ></div>
+                          <div className="relative z-10">
+                            <img
+                              src={
+                                comment.image_url.startsWith("http")
+                                  ? comment.image_url
+                                  : `${
+                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                      "http://localhost:8080"
+                                    }${comment.image_url}`
+                              }
+                              alt="Comment image"
+                              className="max-h-60 max-w-full rounded-lg border border-gray-200 shadow-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center text-xs text-gray-500 mt-2">
+                        <div className="flex items-center bg-gray-50 border border-gray-200 rounded-full px-1">
+                          <button
+                            onClick={() => handleCommentVote(comment.id, 1)}
+                            className={`p-1 rounded-full ${
+                              comment.user_vote === 1
+                                ? "text-orange-500 bg-orange-50"
+                                : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
+                            } transition-colors`}
+                            title="Upvote"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="w-4 h-4"
+                            >
+                              <path d="M12 4l8 8h-6v8h-4v-8H4z" />
+                            </svg>
+                          </button>
+                          <span
+                            className={`mx-1 font-medium ${
+                              comment.user_vote === 1
+                                ? "text-orange-500"
+                                : comment.user_vote === -1
+                                ? "text-blue-500"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {comment.vote_count || 0}
+                          </span>
+                          <button
+                            onClick={() => handleCommentVote(comment.id, -1)}
+                            className={`p-1 rounded-full ${
+                              comment.user_vote === -1
+                                ? "text-blue-500 bg-blue-50"
+                                : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                            } transition-colors`}
+                            title="Downvote"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="w-4 h-4"
+                            >
+                              <path d="M12 20l-8-8h6V4h4v8h6z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
-            <p className="text-gray-500 text-center py-4">
-              No comments yet. Be the first to comment!
-            </p>
+            <div className="p-8 text-center text-gray-500">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-16 w-16 mx-auto text-gray-300 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                />
+              </svg>
+              <p className="text-sm font-medium">
+                No comments yet. Be the first to comment!
+              </p>
+            </div>
           )}
         </div>
       </div>

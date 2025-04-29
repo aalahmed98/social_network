@@ -531,7 +531,7 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 		}
 
 		// Check user's vote on this post
-		userVote, err := db.GetUserVote(userID, id)
+		userVote, err := db.GetUserVote(userID, id, "post")
 		if err == nil {
 			post["user_vote"] = userVote
 		}
@@ -564,7 +564,7 @@ func (db *DB) AddComment(postID, userID int64, content string, imageURL string) 
 func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error) {
 	query := `
 		SELECT 
-			c.id, c.post_id, c.user_id, c.content, c.image_url, c.created_at,
+			c.id, c.post_id, c.user_id, c.content, c.image_url, c.created_at, c.vote_count,
 			u.first_name, u.last_name, u.avatar
 		FROM comments c
 		JOIN users u ON c.user_id = u.id
@@ -588,12 +588,13 @@ func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error
 			content   string
 			imageURL  *string
 			createdAt string
+			voteCount int
 			firstName string
 			lastName  string
 			avatar    *string
 		)
 		
-		err := rows.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &firstName, &lastName, &avatar)
+		err := rows.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &voteCount, &firstName, &lastName, &avatar)
 		if err != nil {
 			return nil, err
 		}
@@ -604,6 +605,7 @@ func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error
 			"user_id":    userID,
 			"content":    content,
 			"created_at": createdAt,
+			"vote_count": voteCount,
 			"author": map[string]interface{}{
 				"id":         userID,
 				"first_name": firstName,
@@ -764,7 +766,7 @@ func (db *DB) DeletePost(postID int64) error {
 func (db *DB) GetCommentByID(commentID int64) (map[string]interface{}, error) {
 	row := db.QueryRow(`
 		SELECT 
-			c.id, c.post_id, c.user_id, c.content, c.image_url, c.created_at,
+			c.id, c.post_id, c.user_id, c.content, c.image_url, c.created_at, c.vote_count,
 			u.first_name, u.last_name, u.avatar
 		FROM comments c
 		JOIN users u ON c.user_id = u.id
@@ -778,12 +780,13 @@ func (db *DB) GetCommentByID(commentID int64) (map[string]interface{}, error) {
 		content   string
 		imageURL  *string
 		createdAt string
+		voteCount int
 		firstName string
 		lastName  string
 		avatar    *string
 	)
 
-	err := row.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &firstName, &lastName, &avatar)
+	err := row.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &voteCount, &firstName, &lastName, &avatar)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("comment with ID %d not found", commentID)
@@ -798,7 +801,8 @@ func (db *DB) GetCommentByID(commentID int64) (map[string]interface{}, error) {
 		"user_id":    userID,
 		"content":    content,
 		"created_at": createdAt,
-		"user": map[string]interface{}{
+		"vote_count": voteCount,
+		"author": map[string]interface{}{
 			"id":         userID,
 			"first_name": firstName,
 			"last_name":  lastName,
@@ -810,7 +814,7 @@ func (db *DB) GetCommentByID(commentID int64) (map[string]interface{}, error) {
 	}
 
 	if avatar != nil {
-		comment["user"].(map[string]interface{})["avatar"] = *avatar
+		comment["author"].(map[string]interface{})["avatar"] = *avatar
 	}
 
 	return comment, nil
@@ -836,8 +840,8 @@ func (db *DB) DeleteComment(commentID int64) error {
 	return nil
 }
 
-// VotePost adds or updates a user's vote on a post
-func (db *DB) VotePost(userID int, postID int64, voteType int) error {
+// Vote adds or updates a user's vote on a post or comment
+func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int) error {
 	// Start a transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -848,8 +852,8 @@ func (db *DB) VotePost(userID int, postID int64, voteType int) error {
 	// Check if user has already voted
 	var existingVoteType int
 	var voteExists bool
-	existingVoteQuery := `SELECT vote_type FROM votes WHERE user_id = ? AND post_id = ?`
-	err = tx.QueryRow(existingVoteQuery, userID, postID).Scan(&existingVoteType)
+	existingVoteQuery := `SELECT vote_type FROM votes WHERE user_id = ? AND content_id = ? AND content_type = ?`
+	err = tx.QueryRow(existingVoteQuery, userID, contentID, contentType).Scan(&existingVoteType)
 	if err == nil {
 		voteExists = true
 	} else if err != sql.ErrNoRows {
@@ -859,33 +863,43 @@ func (db *DB) VotePost(userID int, postID int64, voteType int) error {
 	if voteExists {
 		// If vote type is the same, remove the vote (toggle off)
 		if existingVoteType == voteType {
-			_, err = tx.Exec(`DELETE FROM votes WHERE user_id = ? AND post_id = ?`, userID, postID)
+			_, err = tx.Exec(`DELETE FROM votes WHERE user_id = ? AND content_id = ? AND content_type = ?`, 
+				userID, contentID, contentType)
 			if err != nil {
 				return err
 			}
 
-			// Update post vote counts
-			if voteType == 1 {
-				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1 WHERE id = ?`, postID)
-			} else {
-				_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes - 1 WHERE id = ?`, postID)
+			// Update vote counts based on content type
+			if contentType == "post" {
+				if voteType == 1 {
+					_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1 WHERE id = ?`, contentID)
+				} else {
+					_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes - 1 WHERE id = ?`, contentID)
+				}
+			} else if contentType == "comment" {
+				_, err = tx.Exec(`UPDATE comments SET vote_count = vote_count - ? WHERE id = ?`, voteType, contentID)
 			}
 			if err != nil {
 				return err
 			}
 		} else {
 			// Change vote type
-			_, err = tx.Exec(`UPDATE votes SET vote_type = ? WHERE user_id = ? AND post_id = ?`, 
-				voteType, userID, postID)
+			_, err = tx.Exec(`UPDATE votes SET vote_type = ? WHERE user_id = ? AND content_id = ? AND content_type = ?`, 
+				voteType, userID, contentID, contentType)
 			if err != nil {
 				return err
 			}
 
-			// Update post vote counts
-			if voteType == 1 {
-				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1, downvotes = downvotes - 1 WHERE id = ?`, postID)
-			} else {
-				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1, downvotes = downvotes + 1 WHERE id = ?`, postID)
+			// Update vote counts based on content type
+			if contentType == "post" {
+				if voteType == 1 {
+					_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1, downvotes = downvotes - 1 WHERE id = ?`, contentID)
+				} else {
+					_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1, downvotes = downvotes + 1 WHERE id = ?`, contentID)
+				}
+			} else if contentType == "comment" {
+				// For comment, update vote count by twice the vote type (flip from -1 to 1 adds 2, flip from 1 to -1 subtracts 2)
+				_, err = tx.Exec(`UPDATE comments SET vote_count = vote_count + ? WHERE id = ?`, voteType*2, contentID)
 			}
 			if err != nil {
 				return err
@@ -893,17 +907,21 @@ func (db *DB) VotePost(userID int, postID int64, voteType int) error {
 		}
 	} else {
 		// Create new vote
-		_, err = tx.Exec(`INSERT INTO votes (user_id, post_id, vote_type) VALUES (?, ?, ?)`, 
-			userID, postID, voteType)
+		_, err = tx.Exec(`INSERT INTO votes (user_id, content_id, content_type, vote_type) VALUES (?, ?, ?, ?)`, 
+			userID, contentID, contentType, voteType)
 		if err != nil {
 			return err
 		}
 
-		// Update post vote counts
-		if voteType == 1 {
-			_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?`, postID)
-		} else {
-			_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes + 1 WHERE id = ?`, postID)
+		// Update vote counts based on content type
+		if contentType == "post" {
+			if voteType == 1 {
+				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?`, contentID)
+			} else {
+				_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes + 1 WHERE id = ?`, contentID)
+			}
+		} else if contentType == "comment" {
+			_, err = tx.Exec(`UPDATE comments SET vote_count = vote_count + ? WHERE id = ?`, voteType, contentID)
 		}
 		if err != nil {
 			return err
@@ -914,11 +932,11 @@ func (db *DB) VotePost(userID int, postID int64, voteType int) error {
 	return tx.Commit()
 }
 
-// GetUserVote returns the user's vote for a post
-func (db *DB) GetUserVote(userID int, postID int64) (int, error) {
-	query := `SELECT vote_type FROM votes WHERE user_id = ? AND post_id = ?`
+// GetUserVote returns a user's vote for content (post or comment)
+func (db *DB) GetUserVote(userID int, contentID int64, contentType string) (int, error) {
+	query := `SELECT vote_type FROM votes WHERE user_id = ? AND content_id = ? AND content_type = ?`
 	var voteType int
-	err := db.QueryRow(query, userID, postID).Scan(&voteType)
+	err := db.QueryRow(query, userID, contentID, contentType).Scan(&voteType)
 	if err == sql.ErrNoRows {
 		return 0, nil // User hasn't voted
 	}
@@ -926,4 +944,34 @@ func (db *DB) GetUserVote(userID int, postID int64) (int, error) {
 		return 0, err
 	}
 	return voteType, nil
+}
+
+// For backward compatibility - uses the generalized Vote function
+func (db *DB) VotePost(userID int, postID int64, voteType int) error {
+	return db.Vote(userID, postID, "post", voteType)
+}
+
+// GetCommentsByPostIDWithUserVotes retrieves comments for a specific post with user votes
+func (db *DB) GetCommentsByPostIDWithUserVotes(postID int64, userID int) ([]map[string]interface{}, error) {
+	// First get all comments
+	comments, err := db.GetCommentsByPostID(postID)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Then get user votes for each comment
+	for i, comment := range comments {
+		commentID, ok := comment["id"].(int64)
+		if !ok {
+			continue
+		}
+		
+		// Get user's vote on this comment
+		userVote, err := db.GetUserVote(userID, commentID, "comment")
+		if err == nil {
+			comments[i]["user_vote"] = userVote
+		}
+	}
+	
+	return comments, nil
 } 
