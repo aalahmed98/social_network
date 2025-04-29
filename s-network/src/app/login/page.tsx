@@ -44,12 +44,7 @@ export default function Login() {
     }
 
     try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-
-      console.log("Sending login request to:", `${backendUrl}/api/login`);
-
-      const response = await fetch(`${backendUrl}/api/login`, {
+      const response = await fetch(`/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

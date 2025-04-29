@@ -24,7 +24,7 @@ var (
 	store *sessions.CookieStore
 )
 
-// SetDependencies initializes the dependencies for auth handlers
+// SetDependencies initializes the handlers package with the database and session store
 func SetDependencies(database *sqlite.DB, sessionStore *sessions.CookieStore) {
 	db = database
 	store = sessionStore
@@ -283,10 +283,28 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// Set session cookie
 	session, _ := store.Get(r, "session")
 	session.Values["session_id"] = sessionID
+	session.Values["user_id"] = user["id"].(int)
 	session.Options.MaxAge = 60 * 60 * 24 * 7 // 7 days
 	session.Options.HttpOnly = true
 	session.Options.Path = "/"
-	session.Save(r, w)
+	
+	// For development, we don't need these settings
+	// In production, set these to true
+	isDev := true
+	if !isDev {
+		session.Options.SameSite = http.SameSiteNoneMode
+		session.Options.Secure = true
+	}
+	
+	err = session.Save(r, w)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Failed to save session: " + err.Error(),
+		})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

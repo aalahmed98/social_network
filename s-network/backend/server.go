@@ -30,6 +30,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours cache
 
 		// Handle preflight OPTIONS requests
 		if r.Method == "OPTIONS" {
@@ -113,11 +114,22 @@ func init() {
 
 	// Initialize session store
 	store = sessions.NewCookieStore(sessionKey)
-	store.Options = &sessions.Options{
+	
+	// In development, we don't need SameSite=None and Secure
+	isDev := true // Set to false in production
+	
+	storeOptions := &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
 	}
+	
+	if !isDev {
+		storeOptions.SameSite = http.SameSiteNoneMode
+		storeOptions.Secure = true
+	}
+	
+	store.Options = storeOptions
 	
 	// Initialize auth handlers
 	handlers.SetDependencies(db, store)
@@ -131,8 +143,8 @@ func main() {
 	r.Use(corsMiddleware)
 	// Error handling middleware next
 	r.Use(errorMiddleware)
-	// Apply route protection middleware for frontend routes
-	r.Use(middleware.RouteProtectionMiddleware)
+	// Apply cookie configuration middleware
+	r.Use(middleware.CookieConfigMiddleware)
 
 	// Serve static files from the uploads directory
 	fs := http.FileServer(http.Dir("./uploads"))
@@ -149,6 +161,15 @@ func main() {
 	authRouter.HandleFunc("/profile", handlers.GetProfile).Methods("GET", "OPTIONS")
 	authRouter.HandleFunc("/profile/update", handlers.UpdateProfile).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/logout", handlers.LogoutHandler).Methods("POST", "OPTIONS")
+	
+	// Posts routes
+	authRouter.HandleFunc("/posts", handlers.GetPostsHandler).Methods("GET", "OPTIONS")
+	authRouter.HandleFunc("/posts", handlers.CreatePostHandler).Methods("POST", "OPTIONS")
+	authRouter.HandleFunc("/posts/{id}", handlers.GetPostHandler).Methods("GET", "OPTIONS")
+	authRouter.HandleFunc("/posts/{id}/comments", handlers.AddCommentHandler).Methods("POST", "OPTIONS")
+	authRouter.HandleFunc("/followers", handlers.GetUserFollowersHandler).Methods("GET", "OPTIONS")
+	// Follow user endpoint
+	authRouter.HandleFunc("/follow/{id}", handlers.FollowUserHandler).Methods("POST", "OPTIONS")
 
 	// 404 Handler for undefined routes
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

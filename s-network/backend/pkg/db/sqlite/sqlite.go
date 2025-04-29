@@ -13,7 +13,7 @@ import (
 
 // DB represents the database connection
 type DB struct {
-	*sql.DB
+	*sql.DB // Embedding a pointer to sql.DB
 }
 
 // New creates a new database connection
@@ -289,4 +289,401 @@ func (db *DB) UpdateUser(userID int, data map[string]interface{}) error {
 	// Execute the query
 	_, err := db.Exec(query, args...)
 	return err
+}
+
+// CreatePost adds a new post to the database
+func (db *DB) CreatePost(userID int, content string, imageURL string, privacy string, allowedFollowers []int) (int64, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Insert post
+	query := `INSERT INTO posts (user_id, content, image_url, privacy) 
+			  VALUES (?, ?, ?, ?)`
+	
+	result, err := tx.Exec(query, userID, content, imageURL, privacy)
+	if err != nil {
+		return 0, err
+	}
+
+	postID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	// If it's a private post, add allowed followers
+	if privacy == "private" && len(allowedFollowers) > 0 {
+		// Insert private access records for each allowed follower
+		for _, followerID := range allowedFollowers {
+			_, err := tx.Exec(
+				"INSERT INTO post_access (post_id, follower_id) VALUES (?, ?)",
+				postID, followerID,
+			)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return postID, nil
+}
+
+// GetPostByID retrieves a post by ID
+func (db *DB) GetPostByID(postID int64) (map[string]interface{}, error) {
+	query := `SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
+			  u.first_name, u.last_name, u.avatar
+			  FROM posts p
+			  JOIN users u ON p.user_id = u.id
+			  WHERE p.id = ?`
+	
+	row := db.QueryRow(query, postID)
+	
+	var id, userID int64
+	var content, privacy, createdAt, updatedAt, firstName, lastName string
+	var imageURL, avatar sql.NullString
+	
+	err := row.Scan(&id, &userID, &content, &imageURL, &privacy, 
+		&createdAt, &updatedAt, &firstName, &lastName, &avatar)
+	if err != nil {
+		return nil, err
+	}
+
+	post := map[string]interface{}{
+		"id":         id,
+		"user_id":    userID,
+		"content":    content,
+		"privacy":    privacy,
+		"created_at": createdAt,
+		"updated_at": updatedAt,
+		"author": map[string]interface{}{
+			"first_name": firstName,
+			"last_name":  lastName,
+		},
+	}
+
+	if imageURL.Valid {
+		post["image_url"] = imageURL.String
+	}
+	
+	if avatar.Valid {
+		post["author"].(map[string]interface{})["avatar"] = avatar.String
+	}
+
+	return post, nil
+}
+
+// GetPosts retrieves posts based on the current user and requested filters
+func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, error) {
+	offset := (page - 1) * limit
+
+	// Check if followers table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName)
+	if err != nil {
+		// If followers table doesn't exist, just get public posts and user's own posts
+		query := `
+			SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
+				u.first_name, u.last_name, u.avatar
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			WHERE 
+				p.privacy = 'public'
+				OR p.user_id = ?
+			ORDER BY p.created_at DESC
+			LIMIT ? OFFSET ?
+		`
+		
+		rows, err := db.Query(query, userID, limit, offset)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		
+		var posts []map[string]interface{}
+		
+		for rows.Next() {
+			var id, userID int64
+			var content, privacy, createdAt, updatedAt, firstName, lastName string
+			var imageURL, avatar sql.NullString
+			
+			err := rows.Scan(&id, &userID, &content, &imageURL, &privacy, 
+				&createdAt, &updatedAt, &firstName, &lastName, &avatar)
+			if err != nil {
+				return nil, err
+			}
+			
+			post := map[string]interface{}{
+				"id":         id,
+				"user_id":    userID,
+				"content":    content,
+				"privacy":    privacy,
+				"created_at": createdAt,
+				"updated_at": updatedAt,
+				"author": map[string]interface{}{
+					"first_name": firstName,
+					"last_name":  lastName,
+				},
+			}
+			
+			if imageURL.Valid {
+				post["image_url"] = imageURL.String
+			}
+			
+			if avatar.Valid {
+				post["author"].(map[string]interface{})["avatar"] = avatar.String
+			}
+			
+			posts = append(posts, post)
+		}
+		
+		return posts, nil
+	}
+
+	// If followers table exists, use complex query
+	query := `
+		SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
+			   u.first_name, u.last_name, u.avatar
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		WHERE 
+			p.privacy = 'public'
+			OR (p.privacy = 'almost_private' AND p.user_id IN (
+				SELECT following_id FROM followers WHERE follower_id = ?
+			))
+			OR (p.privacy = 'private' AND p.id IN (
+				SELECT post_id FROM post_access WHERE follower_id = ?
+			))
+			OR p.user_id = ?
+		ORDER BY p.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	
+	rows, err := db.Query(query, userID, userID, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var posts []map[string]interface{}
+	
+	for rows.Next() {
+		var id, userID int64
+		var content, privacy, createdAt, updatedAt, firstName, lastName string
+		var imageURL, avatar sql.NullString
+		
+		err := rows.Scan(&id, &userID, &content, &imageURL, &privacy, 
+			&createdAt, &updatedAt, &firstName, &lastName, &avatar)
+		if err != nil {
+			return nil, err
+		}
+		
+		post := map[string]interface{}{
+			"id":         id,
+			"user_id":    userID,
+			"content":    content,
+			"privacy":    privacy,
+			"created_at": createdAt,
+			"updated_at": updatedAt,
+			"author": map[string]interface{}{
+				"first_name": firstName,
+				"last_name":  lastName,
+			},
+		}
+		
+		if imageURL.Valid {
+			post["image_url"] = imageURL.String
+		}
+		
+		if avatar.Valid {
+			post["author"].(map[string]interface{})["avatar"] = avatar.String
+		}
+		
+		posts = append(posts, post)
+	}
+	
+	return posts, nil
+}
+
+// AddComment adds a comment to a post
+func (db *DB) AddComment(postID, userID int64, content string, imageURL string) (int64, error) {
+	query := `INSERT INTO comments (post_id, user_id, content, image_url) 
+			  VALUES (?, ?, ?, ?)`
+	
+	result, err := db.Exec(query, postID, userID, content, imageURL)
+	if err != nil {
+		return 0, err
+	}
+
+	commentID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return commentID, nil
+}
+
+// GetCommentsByPostID retrieves comments for a specific post
+func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error) {
+	query := `
+		SELECT c.id, c.user_id, c.content, c.image_url, c.created_at, c.updated_at,
+			   u.first_name, u.last_name, u.avatar
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		WHERE c.post_id = ?
+		ORDER BY c.created_at ASC
+	`
+	
+	rows, err := db.Query(query, postID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var comments []map[string]interface{}
+	
+	for rows.Next() {
+		var id, userID int64
+		var content, createdAt, updatedAt, firstName, lastName string
+		var imageURL, avatar sql.NullString
+		
+		err := rows.Scan(&id, &userID, &content, &imageURL, &createdAt, &updatedAt, 
+			&firstName, &lastName, &avatar)
+		if err != nil {
+			return nil, err
+		}
+		
+		comment := map[string]interface{}{
+			"id":         id,
+			"user_id":    userID,
+			"content":    content,
+			"created_at": createdAt,
+			"updated_at": updatedAt,
+			"author": map[string]interface{}{
+				"first_name": firstName,
+				"last_name":  lastName,
+			},
+		}
+		
+		if imageURL.Valid {
+			comment["image_url"] = imageURL.String
+		}
+		
+		if avatar.Valid {
+			comment["author"].(map[string]interface{})["avatar"] = avatar.String
+		}
+		
+		comments = append(comments, comment)
+	}
+	
+	return comments, nil
+}
+
+// GetUserFollowers returns the list of followers for a user
+func (db *DB) GetUserFollowers(userID int) ([]map[string]interface{}, error) {
+	// Check if followers table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName)
+	if err != nil {
+		// If followers table doesn't exist, return empty array instead of error
+		return []map[string]interface{}{}, nil
+	}
+
+	query := `
+		SELECT u.id, u.first_name, u.last_name, u.avatar
+		FROM followers f
+		JOIN users u ON f.follower_id = u.id
+		WHERE f.following_id = ?
+	`
+	
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var followers []map[string]interface{}
+	
+	for rows.Next() {
+		var id int
+		var firstName, lastName string
+		var avatar sql.NullString
+		
+		err := rows.Scan(&id, &firstName, &lastName, &avatar)
+		if err != nil {
+			return nil, err
+		}
+		
+		follower := map[string]interface{}{
+			"id":         id,
+			"first_name": firstName,
+			"last_name":  lastName,
+		}
+		
+		if avatar.Valid {
+			follower["avatar"] = avatar.String
+		}
+		
+		followers = append(followers, follower)
+	}
+	
+	return followers, nil
+}
+
+// FollowUser adds a follower relationship between two users
+func (db *DB) FollowUser(followerID, followingID int) error {
+	// Check if the following user exists
+	query := `SELECT id FROM users WHERE id = ?`
+	row := db.QueryRow(query, followingID)
+	var id int
+	err := row.Scan(&id)
+	if err != nil {
+		return fmt.Errorf("user to follow not found")
+	}
+
+	// Check if followers table exists
+	var tableName string
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName)
+	if err != nil {
+		// Create followers table if it doesn't exist
+		_, err = db.Exec(`
+			CREATE TABLE IF NOT EXISTS followers (
+				follower_id INTEGER NOT NULL,
+				following_id INTEGER NOT NULL,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (follower_id, following_id),
+				FOREIGN KEY (follower_id) REFERENCES users (id) ON DELETE CASCADE,
+				FOREIGN KEY (following_id) REFERENCES users (id) ON DELETE CASCADE
+			)
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to create followers table: %w", err)
+		}
+	}
+
+	// Check if already following
+	query = `SELECT follower_id FROM followers WHERE follower_id = ? AND following_id = ?`
+	row = db.QueryRow(query, followerID, followingID)
+	err = row.Scan(&id)
+	if err == nil {
+		return fmt.Errorf("already following this user")
+	}
+
+	// Create the follow relationship
+	query = `INSERT INTO followers (follower_id, following_id) VALUES (?, ?)`
+	_, err = db.Exec(query, followerID, followingID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 } 
