@@ -160,9 +160,43 @@ export default function Home() {
     setVoting((prev) => ({ ...prev, [postId]: true }));
 
     try {
+      // Simple optimistic UI update
+      // Determine the new vote state (toggle if same, change if different)
+      const updatedPosts = posts.map((post) => {
+        if (post.id === postId) {
+          const currentVote = post.user_vote || 0;
+          const newVote = currentVote === voteType ? 0 : voteType;
+
+          // Update upvotes/downvotes
+          let newUpvotes = post.upvotes || 0;
+          let newDownvotes = post.downvotes || 0;
+
+          // Remove old vote if exists
+          if (currentVote === 1) newUpvotes--;
+          if (currentVote === -1) newDownvotes--;
+
+          // Add new vote if not toggling off
+          if (newVote === 1) newUpvotes++;
+          if (newVote === -1) newDownvotes++;
+
+          return {
+            ...post,
+            user_vote: newVote,
+            upvotes: newUpvotes,
+            downvotes: newDownvotes,
+          };
+        }
+        return post;
+      });
+
+      // Update UI immediately
+      setPosts(updatedPosts);
+
+      // Send API request
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
+
+      await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -171,37 +205,12 @@ export default function Home() {
         body: JSON.stringify({ vote_type: voteType }),
       });
 
-      if (response.ok) {
-        const updatedPosts = posts.map((post) => {
-          if (post.id === postId) {
-            const previousVote = post.user_vote || 0;
-            let newUpvotes = post.upvotes || 0;
-            let newDownvotes = post.downvotes || 0;
-
-            // If user had a previous vote, remove it first
-            if (previousVote === 1) newUpvotes--;
-            if (previousVote === -1) newDownvotes--;
-
-            // Then add the new vote
-            if (voteType === 1) newUpvotes++;
-            if (voteType === -1) newDownvotes++;
-
-            return {
-              ...post,
-              upvotes: newUpvotes,
-              downvotes: newDownvotes,
-              user_vote: voteType === previousVote ? 0 : voteType,
-            };
-          }
-          return post;
-        });
-
-        setPosts(updatedPosts);
-      } else {
-        console.error("Failed to vote on post:", await response.text());
-      }
+      // Note: We're not updating the UI again with the server response
+      // This makes the vote appear immediate, without waiting for the server
     } catch (error) {
       console.error("Error voting on post:", error);
+      // On error, refresh posts to ensure data consistency
+      fetchPosts();
     } finally {
       setVoting((prev) => ({ ...prev, [postId]: false }));
     }
@@ -363,12 +372,13 @@ export default function Home() {
                                   : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
                               }`}
                               disabled={voting[post.id]}
+                              aria-label="Upvote"
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 viewBox="0 0 24 24"
                                 fill="currentColor"
-                                className="h-5 w-5"
+                                className="w-5 h-5"
                               >
                                 <path d="M12 4l8 8h-6v8h-4v-8H4z" />
                               </svg>
@@ -392,12 +402,13 @@ export default function Home() {
                                   : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
                               }`}
                               disabled={voting[post.id]}
+                              aria-label="Downvote"
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 viewBox="0 0 24 24"
                                 fill="currentColor"
-                                className="h-5 w-5"
+                                className="w-5 h-5"
                               >
                                 <path d="M12 20l-8-8h6V4h4v8h6z" />
                               </svg>

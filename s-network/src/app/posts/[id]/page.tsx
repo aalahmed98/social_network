@@ -315,33 +315,47 @@ export default function PostDetail() {
     if (post) {
       setVoting(true);
       try {
+        // Optimistic UI update
+        const currentVote = post.user_vote || 0;
+        const newVote = currentVote === vote ? 0 : vote;
+
+        // Calculate new vote counts
+        let newUpvotes = post.upvotes || 0;
+        let newDownvotes = post.downvotes || 0;
+
+        // Remove old vote if exists
+        if (currentVote === 1) newUpvotes--;
+        if (currentVote === -1) newDownvotes--;
+
+        // Add new vote if not toggling off
+        if (newVote === 1) newUpvotes++;
+        if (newVote === -1) newDownvotes++;
+
+        // Update the UI immediately
+        setPost({
+          ...post,
+          user_vote: newVote,
+          upvotes: newUpvotes,
+          downvotes: newDownvotes,
+        });
+
+        // Send the request to the server
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        const response = await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
+        await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
           method: "POST",
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ vote }),
+          body: JSON.stringify({ vote_type: vote }),
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          setPost({
-            ...post,
-            user_vote: data.user_vote,
-            upvotes: data.upvotes,
-            downvotes: data.downvotes,
-          });
-        } else {
-          const errorText = await response.text();
-          console.error("Error voting:", errorText);
-          alert("An error occurred while voting.");
-        }
+        // Note: We're not updating from server response to make it feel instantaneous
       } catch (error) {
         console.error("Error voting:", error);
-        alert("An error occurred while voting.");
+        // On error, refresh the post to ensure correct data
+        fetchPost();
       } finally {
         setVoting(false);
       }
