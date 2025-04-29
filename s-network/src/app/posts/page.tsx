@@ -282,7 +282,14 @@ export default function Posts() {
                     >
                       {follower.avatar ? (
                         <img
-                          src={follower.avatar}
+                          src={
+                            follower.avatar.startsWith("http")
+                              ? follower.avatar
+                              : `${
+                                  process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                  "http://localhost:8080"
+                                }${follower.avatar}`
+                          }
                           alt={`${follower.first_name} ${follower.last_name}`}
                           className="w-8 h-8 rounded-full mr-2"
                         />

@@ -12,6 +12,10 @@ interface Post {
   privacy: string;
   created_at: string;
   updated_at: string;
+  upvotes?: number;
+  downvotes?: number;
+  comment_count?: number;
+  user_vote?: number;
   author: {
     id?: number;
     first_name: string;
@@ -27,6 +31,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<Post[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [voting, setVoting] = useState<{ [postId: number]: boolean }>({});
 
   useEffect(() => {
     // Check authentication status
@@ -261,7 +266,14 @@ export default function Home() {
                             <div className="flex items-center">
                               {post.author.avatar ? (
                                 <img
-                                  src={post.author.avatar}
+                                  src={
+                                    post.author.avatar.startsWith("http")
+                                      ? post.author.avatar
+                                      : `${
+                                          process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                          "http://localhost:8080"
+                                        }${post.author.avatar}`
+                                  }
                                   alt={`${post.author.first_name} ${post.author.last_name}`}
                                   className="w-10 h-10 rounded-full mr-3 object-cover border border-gray-200"
                                 />
@@ -350,7 +362,14 @@ export default function Home() {
                           {post.image_url && (
                             <div className="mb-4 rounded-lg overflow-hidden bg-gray-100">
                               <img
-                                src={post.image_url}
+                                src={
+                                  post.image_url.startsWith("http")
+                                    ? post.image_url
+                                    : `${
+                                        process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                        "http://localhost:8080"
+                                      }${post.image_url}`
+                                }
                                 alt="Post image"
                                 className="w-full h-auto max-h-80 object-contain"
                               />

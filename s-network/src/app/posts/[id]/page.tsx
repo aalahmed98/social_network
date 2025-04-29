@@ -358,7 +358,14 @@ export default function PostDetail() {
             <div className="flex items-center">
               {post?.author.avatar ? (
                 <img
-                  src={post.author.avatar}
+                  src={
+                    post.author.avatar.startsWith("http")
+                      ? post.author.avatar
+                      : `${
+                          process.env.NEXT_PUBLIC_BACKEND_URL ||
+                          "http://localhost:8080"
+                        }${post.author.avatar}`
+                  }
                   alt={`${post.author.first_name} ${post.author.last_name}`}
                   className="w-10 h-10 rounded-full mr-3"
                 />
@@ -416,7 +423,14 @@ export default function PostDetail() {
           {post?.image_url && (
             <div className="mb-4">
               <img
-                src={post.image_url}
+                src={
+                  post.image_url.startsWith("http")
+                    ? post.image_url
+                    : `${
+                        process.env.NEXT_PUBLIC_BACKEND_URL ||
+                        "http://localhost:8080"
+                      }${post.image_url}`
+                }
                 alt="Post image"
                 className="max-h-96 rounded-lg mx-auto"
               />
@@ -503,7 +517,14 @@ export default function PostDetail() {
                 <div className="flex items-start">
                   {comment.author.avatar ? (
                     <img
-                      src={comment.author.avatar}
+                      src={
+                        comment.author.avatar.startsWith("http")
+                          ? comment.author.avatar
+                          : `${
+                              process.env.NEXT_PUBLIC_BACKEND_URL ||
+                              "http://localhost:8080"
+                            }${comment.author.avatar}`
+                      }
                       alt={`${comment.author.first_name} ${comment.author.last_name}`}
                       className="w-8 h-8 rounded-full mr-3 mt-1"
                     />
@@ -555,7 +576,14 @@ export default function PostDetail() {
                     {comment.image_url && (
                       <div className="mt-2">
                         <img
-                          src={comment.image_url}
+                          src={
+                            comment.image_url.startsWith("http")
+                              ? comment.image_url
+                              : `${
+                                  process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                  "http://localhost:8080"
+                                }${comment.image_url}`
+                          }
                           alt="Comment image"
                           className="max-h-64 rounded-lg"
                         />

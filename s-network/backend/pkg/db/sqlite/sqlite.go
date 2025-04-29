@@ -338,11 +338,12 @@ func (db *DB) CreatePost(userID int, content string, imageURL string, privacy st
 	return postID, nil
 }
 
-// GetPostByID retrieves a post by ID
+// GetPostByID retrieves a specific post by ID
 func (db *DB) GetPostByID(postID int64) (map[string]interface{}, error) {
 	query := `
-		SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
-			   u.first_name, u.last_name, u.avatar
+		SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
+		       p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
+		       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
 		FROM posts p
 		JOIN users u ON p.user_id = u.id
 		WHERE p.id = ?
@@ -350,33 +351,28 @@ func (db *DB) GetPostByID(postID int64) (map[string]interface{}, error) {
 	
 	row := db.QueryRow(query, postID)
 	
-	var (
-		id          int64
-		userID      int64
-		content     string
-		imageURL    *string
-		privacy     string
-		createdAt   string
-		updatedAt   string
-		firstName   string
-		lastName    string
-		avatar      *string
-	)
+	var id, userID int64
+	var content, privacy, createdAt, updatedAt string
+	var imageURL, avatar sql.NullString
+	var firstName, lastName string
+	var upvotes, downvotes, commentCount int
 	
-	err := row.Scan(&id, &userID, &content, &imageURL, &privacy, &createdAt, &updatedAt, &firstName, &lastName, &avatar)
+	err := row.Scan(&id, &userID, &content, &imageURL, &privacy, &createdAt, &updatedAt, 
+	                &upvotes, &downvotes, &firstName, &lastName, &avatar, &commentCount)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build the post map
 	post := map[string]interface{}{
-		"id":          id,
-		"user_id":     userID,
-		"content":     content,
-		"privacy":     privacy,
-		"created_at":  createdAt,
-		"updated_at":  updatedAt,
-		"is_author":   false, // This will be set by the handler
+		"id":         id,
+		"user_id":    userID,
+		"content":    content,
+		"privacy":    privacy,
+		"created_at": createdAt,
+		"updated_at": updatedAt,
+		"upvotes":    upvotes,
+		"downvotes":  downvotes,
+		"comment_count": commentCount,
 		"author": map[string]interface{}{
 			"id":         userID,
 			"first_name": firstName,
@@ -384,29 +380,41 @@ func (db *DB) GetPostByID(postID int64) (map[string]interface{}, error) {
 		},
 	}
 
-	if imageURL != nil {
-		post["image_url"] = *imageURL
+	if imageURL.Valid {
+		post["image_url"] = imageURL.String
 	}
-
-	if avatar != nil {
-		post["author"].(map[string]interface{})["avatar"] = *avatar
+	
+	if avatar.Valid {
+		post["author"].(map[string]interface{})["avatar"] = avatar.String
 	}
 
 	return post, nil
 }
 
-// GetPosts retrieves posts based on the current user and requested filters
+// GetPosts retrieves posts for the authenticated user
 func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, error) {
 	offset := (page - 1) * limit
 
 	// Check if followers table exists
-	var tableName string
-	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName)
-	if err != nil {
-		// If followers table doesn't exist, just get public posts and user's own posts
-		query := `
-			SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
-				u.first_name, u.last_name, u.avatar
+	var followersTableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&followersTableName)
+	followersTableExists := err == nil
+
+	// Check if post_access table exists
+	var postAccessTableName string
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='post_access'").Scan(&postAccessTableName)
+	postAccessTableExists := err == nil
+
+	// Build the query based on which tables exist
+	var query string
+	var args []interface{}
+
+	if !followersTableExists && !postAccessTableExists {
+		// Simplified query with just public posts and user's own posts
+		query = `
+			SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
+				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
+				(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
 			FROM posts p
 			JOIN users u ON p.user_id = u.id
 			WHERE 
@@ -415,104 +423,105 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 			ORDER BY p.created_at DESC
 			LIMIT ? OFFSET ?
 		`
-		
-		rows, err := db.Query(query, userID, limit, offset)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		
-		var posts []map[string]interface{}
-		
-		for rows.Next() {
-			var id, userID int64
-			var content, privacy, createdAt, updatedAt, firstName, lastName string
-			var imageURL, avatar sql.NullString
-			
-			err := rows.Scan(&id, &userID, &content, &imageURL, &privacy, 
-				&createdAt, &updatedAt, &firstName, &lastName, &avatar)
-			if err != nil {
-				return nil, err
-			}
-			
-			post := map[string]interface{}{
-				"id":         id,
-				"user_id":    userID,
-				"content":    content,
-				"privacy":    privacy,
-				"created_at": createdAt,
-				"updated_at": updatedAt,
-				"author": map[string]interface{}{
-					"first_name": firstName,
-					"last_name":  lastName,
-				},
-			}
-			
-			if imageURL.Valid {
-				post["image_url"] = imageURL.String
-			}
-			
-			if avatar.Valid {
-				post["author"].(map[string]interface{})["avatar"] = avatar.String
-			}
-			
-			posts = append(posts, post)
-		}
-		
-		return posts, nil
+		args = append(args, userID, limit, offset)
+	} else if followersTableExists && !postAccessTableExists {
+		// Query with followers but no post_access
+		query = `
+			SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
+				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
+				(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			WHERE 
+				p.privacy = 'public'
+				OR p.user_id = ?
+				OR (p.privacy = 'almost_private' AND EXISTS (
+					SELECT 1 FROM followers f WHERE f.follower_id = ? AND f.following_id = p.user_id
+				))
+			ORDER BY p.created_at DESC
+			LIMIT ? OFFSET ?
+		`
+		args = append(args, userID, userID, limit, offset)
+	} else if !followersTableExists && postAccessTableExists {
+		// Query with post_access but no followers
+		query = `
+			SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
+				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
+				(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			WHERE 
+				p.privacy = 'public'
+				OR p.user_id = ?
+				OR (p.privacy = 'private' AND EXISTS (
+					SELECT 1 FROM post_access pa WHERE pa.post_id = p.id AND pa.follower_id = ?
+				))
+			ORDER BY p.created_at DESC
+			LIMIT ? OFFSET ?
+		`
+		args = append(args, userID, userID, limit, offset)
+	} else {
+		// Full query with both tables
+		query = `
+			SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
+				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
+				(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			WHERE 
+				p.privacy = 'public'
+				OR p.user_id = ?
+				OR (p.privacy = 'almost_private' AND EXISTS (
+					SELECT 1 FROM followers f WHERE f.follower_id = ? AND f.following_id = p.user_id
+				))
+				OR (p.privacy = 'private' AND EXISTS (
+					SELECT 1 FROM post_access pa WHERE pa.post_id = p.id AND pa.follower_id = ?
+				))
+			ORDER BY p.created_at DESC
+			LIMIT ? OFFSET ?
+		`
+		args = append(args, userID, userID, userID, limit, offset)
 	}
-
-	// If followers table exists, use complex query
-	query := `
-		SELECT p.id, p.user_id, p.content, p.image_url, p.privacy, p.created_at, p.updated_at,
-			   u.first_name, u.last_name, u.avatar
-		FROM posts p
-		JOIN users u ON p.user_id = u.id
-		WHERE 
-			p.privacy = 'public'
-			OR (p.privacy = 'almost_private' AND p.user_id IN (
-				SELECT following_id FROM followers WHERE follower_id = ?
-			))
-			OR (p.privacy = 'private' AND p.id IN (
-				SELECT post_id FROM post_access WHERE follower_id = ?
-			))
-			OR p.user_id = ?
-		ORDER BY p.created_at DESC
-		LIMIT ? OFFSET ?
-	`
 	
-	rows, err := db.Query(query, userID, userID, userID, limit, offset)
+	// Execute the query
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
-	var posts []map[string]interface{}
-	
+
+	posts := []map[string]interface{}{}
+
 	for rows.Next() {
-		var id, userID int64
-		var content, privacy, createdAt, updatedAt, firstName, lastName string
+		var id, postUserID int64
+		var content, privacy, createdAt, updatedAt string
 		var imageURL, avatar sql.NullString
+		var firstName, lastName string
+		var upvotes, downvotes, commentCount int
 		
-		err := rows.Scan(&id, &userID, &content, &imageURL, &privacy, 
-			&createdAt, &updatedAt, &firstName, &lastName, &avatar)
+		err := rows.Scan(&id, &postUserID, &content, &imageURL, &privacy, &createdAt, &updatedAt, 
+		                 &upvotes, &downvotes, &firstName, &lastName, &avatar, &commentCount)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		post := map[string]interface{}{
 			"id":         id,
-			"user_id":    userID,
+			"user_id":    postUserID,
 			"content":    content,
 			"privacy":    privacy,
 			"created_at": createdAt,
 			"updated_at": updatedAt,
+			"upvotes":    upvotes,
+			"downvotes":  downvotes,
+			"comment_count": commentCount,
 			"author": map[string]interface{}{
+				"id":         postUserID,
 				"first_name": firstName,
 				"last_name":  lastName,
 			},
 		}
-		
+
 		if imageURL.Valid {
 			post["image_url"] = imageURL.String
 		}
@@ -520,10 +529,16 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 		if avatar.Valid {
 			post["author"].(map[string]interface{})["avatar"] = avatar.String
 		}
-		
+
+		// Check user's vote on this post
+		userVote, err := db.GetUserVote(userID, id)
+		if err == nil {
+			post["user_vote"] = userVote
+		}
+
 		posts = append(posts, post)
 	}
-	
+
 	return posts, nil
 }
 
@@ -819,4 +834,96 @@ func (db *DB) DeleteComment(commentID int64) error {
 	}
 
 	return nil
+}
+
+// VotePost adds or updates a user's vote on a post
+func (db *DB) VotePost(userID int, postID int64, voteType int) error {
+	// Start a transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Check if user has already voted
+	var existingVoteType int
+	var voteExists bool
+	existingVoteQuery := `SELECT vote_type FROM votes WHERE user_id = ? AND post_id = ?`
+	err = tx.QueryRow(existingVoteQuery, userID, postID).Scan(&existingVoteType)
+	if err == nil {
+		voteExists = true
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+
+	if voteExists {
+		// If vote type is the same, remove the vote (toggle off)
+		if existingVoteType == voteType {
+			_, err = tx.Exec(`DELETE FROM votes WHERE user_id = ? AND post_id = ?`, userID, postID)
+			if err != nil {
+				return err
+			}
+
+			// Update post vote counts
+			if voteType == 1 {
+				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1 WHERE id = ?`, postID)
+			} else {
+				_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes - 1 WHERE id = ?`, postID)
+			}
+			if err != nil {
+				return err
+			}
+		} else {
+			// Change vote type
+			_, err = tx.Exec(`UPDATE votes SET vote_type = ? WHERE user_id = ? AND post_id = ?`, 
+				voteType, userID, postID)
+			if err != nil {
+				return err
+			}
+
+			// Update post vote counts
+			if voteType == 1 {
+				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1, downvotes = downvotes - 1 WHERE id = ?`, postID)
+			} else {
+				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1, downvotes = downvotes + 1 WHERE id = ?`, postID)
+			}
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		// Create new vote
+		_, err = tx.Exec(`INSERT INTO votes (user_id, post_id, vote_type) VALUES (?, ?, ?)`, 
+			userID, postID, voteType)
+		if err != nil {
+			return err
+		}
+
+		// Update post vote counts
+		if voteType == 1 {
+			_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?`, postID)
+		} else {
+			_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes + 1 WHERE id = ?`, postID)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	// Commit transaction
+	return tx.Commit()
+}
+
+// GetUserVote returns the user's vote for a post
+func (db *DB) GetUserVote(userID int, postID int64) (int, error) {
+	query := `SELECT vote_type FROM votes WHERE user_id = ? AND post_id = ?`
+	var voteType int
+	err := db.QueryRow(query, userID, postID).Scan(&voteType)
+	if err == sql.ErrNoRows {
+		return 0, nil // User hasn't voted
+	}
+	if err != nil {
+		return 0, err
+	}
+	return voteType, nil
 } 

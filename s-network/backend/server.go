@@ -25,7 +25,7 @@ var (
 // CORS middleware function with proper error handling
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always set CORS headers
+		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
@@ -169,6 +169,7 @@ func main() {
 	authRouter.HandleFunc("/posts/{id}", handlers.DeletePostHandler).Methods("DELETE", "OPTIONS")
 	authRouter.HandleFunc("/posts/{id}/comments", handlers.AddCommentHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/posts/{id}/comments/{commentId}", handlers.DeleteCommentHandler).Methods("DELETE", "OPTIONS")
+	authRouter.HandleFunc("/posts/{id}/vote", handlers.VotePostHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/followers", handlers.GetUserFollowersHandler).Methods("GET", "OPTIONS")
 	// User data endpoint
 	authRouter.HandleFunc("/users/me", handlers.GetCurrentUserHandler).Methods("GET", "OPTIONS")
