@@ -39,6 +39,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# Explicitly allow backend pkg directory
-!s-network/backend/pkg/

@@ -70,7 +70,7 @@ export default function Navbar() {
 
   if (loading) {
     return (
-      <nav className="bg-white shadow">
+      <nav className="bg-white shadow fixed top-0 left-0 right-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex-shrink-0 flex items-center">
@@ -85,7 +85,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-white shadow">
+    <nav className="bg-white shadow fixed top-0 left-0 right-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex-shrink-0 flex items-center">
@@ -97,56 +97,6 @@ export default function Navbar() {
           <div className="flex items-center">
             {isLoggedIn ? (
               <>
-                <Link
-                  href="/"
-                  className={`px-3 py-2 mx-2 rounded-md text-sm font-medium ${
-                    pathname === "/"
-                      ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  Home
-                </Link>
-                <Link
-                  href="/dashboard"
-                  className={`px-3 py-2 mx-2 rounded-md text-sm font-medium ${
-                    pathname === "/dashboard"
-                      ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/posts"
-                  className={`px-3 py-2 mx-2 rounded-md text-sm font-medium ${
-                    pathname === "/posts" || pathname.startsWith("/posts/")
-                      ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  Posts
-                </Link>
-                <Link
-                  href="/chats"
-                  className={`px-3 py-2 mx-2 rounded-md text-sm font-medium ${
-                    pathname === "/chats" || pathname.startsWith("/chats/")
-                      ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  Chat
-                </Link>
-                <Link
-                  href="/profile"
-                  className={`px-3 py-2 mx-2 rounded-md text-sm font-medium ${
-                    pathname === "/profile"
-                      ? "bg-indigo-100 text-indigo-700"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  Profile
-                </Link>
                 <button
                   onClick={handleLogout}
                   className="px-3 py-2 mx-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50"
@@ -155,11 +105,7 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              pathname !== "/login" &&
-              pathname !== "/register" && (
-                <>
-                </>
-              )
+              pathname !== "/login" && pathname !== "/register" && <></>
             )}
           </div>
         </div>

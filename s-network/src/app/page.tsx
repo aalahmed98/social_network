@@ -230,128 +230,213 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 py-6">
-      <div className="max-w-5xl mx-auto px-4">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-8 pb-3 border-b border-gray-200">
-          <div className="flex items-center">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
-              S-Network
-            </h1>
-            <div className="ml-4 text-sm text-gray-500 hidden md:block"></div>
-          </div>
-        </header>
-
-        {!isLoggedIn && (
-          <div className="max-w-3xl mx-auto px-8 py-16 bg-white rounded-xl shadow-lg text-center transition-all hover:shadow-xl">
-            <h2 className="text-4xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
-              Welcome to S-Network
-            </h2>
-            <p className="text-xl mb-10 text-gray-600 max-w-lg mx-auto leading-relaxed">
-              Connect with colleagues, share ideas, and build your professional
-              network with our secure and modern platform
-            </p>
-
-            <div className="flex gap-6 justify-center">
-              <Link
-                href="/login"
-                className="px-8 py-4 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/register"
-                className="px-8 py-4 border-2 border-blue-600 text-blue-600 rounded-lg shadow-md hover:bg-blue-50 transition-all transform hover:-translate-y-1 font-medium"
-              >
-                Create Account
-              </Link>
+    <main className="min-h-screen bg-gray-100 flex">
+      {/* Instagram-style sidebar - fixed to left side */}
+      {isLoggedIn && (
+        <div className="w-64 shrink-0 h-screen fixed top-0 left-0 bg-white shadow-md border-r border-gray-200">
+          <div className="p-6 h-full overflow-y-auto">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold italic mb-6">Instagram</h1>
             </div>
-          </div>
-        )}
+            <div className="space-y-4">
+              <Link
+                href="/"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                </svg>
+                Home
+              </Link>
 
-        {isLoggedIn && (
-          <>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Sidebar */}
-              <div className="hidden lg:block">
-                <div className="bg-white rounded-lg shadow-md p-6 mb-6 sticky top-4 transition-all hover:shadow-lg border border-gray-200">
-                  <h2 className="font-semibold text-lg mb-4 text-gray-800 flex items-center">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5 mr-2 text-blue-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                    Quick Links
-                  </h2>
-                  <div className="space-y-3">
-                    <Link
-                      href="/posts"
-                      className="flex items-center p-3 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors font-medium"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-3"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      Create Post
-                    </Link>
-                    <Link
-                      href="/profile"
-                      className="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-3 text-gray-500"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      Profile
-                    </Link>
-                  </div>
+              <Link
+                href="/search"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Search
+              </Link>
+
+              <Link
+                href="/explore"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Explore
+              </Link>
+
+              <Link
+                href="/messages"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors relative"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+                  <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
+                </svg>
+                Messages
+                <span className="absolute right-2 top-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  1
+                </span>
+              </Link>
+
+              <Link
+                href="/notifications"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                </svg>
+                Notifications
+              </Link>
+
+              <Link
+                href="/posts"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Create
+              </Link>
+
+              <Link
+                href="/profile"
+                className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <div className="w-5 h-5 mr-3 rounded-full bg-gradient-to-r from-pink-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm overflow-hidden">
+                  <img
+                    src="/avatar.png"
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = "none";
+                    }}
+                  />
                 </div>
-              </div>
+                Profile
+              </Link>
 
-              {/* Main Content - Posts feed */}
-              <div className="lg:col-span-2">
-                <h2 className="text-xl font-semibold mb-5 text-gray-800 flex items-center">
+              <div className="mt-10 pt-6 border-t border-gray-100">
+                <Link
+                  href="/threads"
+                  className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors relative"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6 mr-2 text-blue-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                    className="h-5 w-5 mr-3"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1M19 20a2 2 0 002-2V8a2 2 0 00-2-2h-5a2 2 0 00-2 2v12a2 2 0 002 2h5z"
-                    />
+                    <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
                   </svg>
-                  Your Feed
-                </h2>
+                  Threads
+                  <span className="absolute right-2 top-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    1
+                  </span>
+                </Link>
+
+                <Link
+                  href="/more"
+                  className="flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 mr-3"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
+                  More
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main content area with left padding to accommodate fixed sidebar */}
+      <div className={`flex-1 py-6 ${isLoggedIn ? "ml-64" : ""}`}>
+        <div className="max-w-6xl mx-auto px-4">
+          {!isLoggedIn && (
+            <div className="max-w-3xl mx-auto px-8 py-16 bg-white rounded-xl shadow-lg text-center transition-all hover:shadow-xl">
+              <h2 className="text-4xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
+                Welcome to S-Network
+              </h2>
+              <p className="text-xl mb-10 text-gray-600 max-w-lg mx-auto leading-relaxed">
+                Connect with colleagues, share ideas, and build your
+                professional network with our secure and modern platform
+              </p>
+
+              <div className="flex gap-6 justify-center">
+                <Link
+                  href="/login"
+                  className="px-8 py-4 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-8 py-4 border-2 border-blue-600 text-blue-600 rounded-lg shadow-md hover:bg-blue-50 transition-all transform hover:-translate-y-1 font-medium"
+                >
+                  Create Account
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {isLoggedIn && (
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Main Content - Posts feed */}
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold mb-5 text-gray-800 flex items-center"></h2>
 
                 {posts.length > 0 ? (
                   <div className="space-y-4">
@@ -700,8 +785,8 @@ export default function Home() {
                 )}
               </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );
