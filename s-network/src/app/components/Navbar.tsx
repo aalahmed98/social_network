@@ -1,14 +1,50 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { FiSearch, FiUser, FiX } from "react-icons/fi";
+import Image from "next/image";
+
+interface SearchResult {
+  id: number;
+  firstName: string;
+  lastName: string;
+  avatar: string;
+  nickname?: string;
+  verified: boolean;
+}
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { isLoggedIn, loading, logout } = useAuth();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchResultsRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Close search results when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        searchResultsRef.current &&
+        !searchResultsRef.current.contains(event.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSearchResults(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -20,6 +56,52 @@ export default function Navbar() {
       // If on other pages, redirect to home page
       router.push("/");
     }
+  };
+
+  // Search functionality
+  const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+
+    if (value.length > 1) {
+      setIsSearching(true);
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const response = await fetch(
+          `${backendUrl}/api/users/search?q=${encodeURIComponent(value)}`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setSearchResults(data.users || []);
+          setShowSearchResults(true);
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    } else {
+      setSearchResults([]);
+      setShowSearchResults(false);
+    }
+  };
+
+  const handleSearchResultClick = (userId: number) => {
+    setShowSearchResults(false);
+    setSearchTerm("");
+    router.push(`/profile/${userId}`);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm("");
+    setSearchResults([]);
+    setShowSearchResults(false);
   };
 
   if (loading) {
@@ -37,6 +119,88 @@ export default function Navbar() {
       <Link href="/" className="text-xl font-bold text-indigo-600">
         Social Network
       </Link>
+
+      {isLoggedIn && (
+        <div className="relative mx-auto max-w-md w-full px-4 hidden md:block">
+          <div className="relative">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search for people..."
+              value={searchTerm}
+              onChange={handleSearch}
+              className="w-full py-2 pl-10 pr-10 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            <div className="absolute left-3 top-2.5 text-gray-400">
+              <FiSearch size={20} />
+            </div>
+            {searchTerm && (
+              <button
+                onClick={clearSearch}
+                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <FiX size={20} />
+              </button>
+            )}
+          </div>
+
+          {showSearchResults && searchResults.length > 0 && (
+            <div
+              ref={searchResultsRef}
+              className="absolute mt-1 w-full bg-white rounded-lg shadow-lg z-10 max-h-96 overflow-y-auto"
+            >
+              {searchResults.map((result) => (
+                <div
+                  key={result.id}
+                  className="p-3 hover:bg-gray-100 cursor-pointer flex items-center"
+                  onClick={() => handleSearchResultClick(result.id)}
+                >
+                  <div className="relative h-10 w-10 rounded-full overflow-hidden bg-gray-200 mr-3">
+                    {result.avatar ? (
+                      <Image
+                        src={
+                          result.avatar.startsWith("http")
+                            ? result.avatar
+                            : result.avatar.startsWith("/")
+                            ? `http://localhost:8080${result.avatar}`
+                            : `http://localhost:8080/uploads/${result.avatar}`
+                        }
+                        alt={`${result.firstName} ${result.lastName}`}
+                        fill
+                        sizes="40px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full w-full bg-indigo-100 text-indigo-500">
+                        <FiUser size={20} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium flex items-center">
+                      {result.firstName} {result.lastName}
+                      {result.verified && (
+                        <span className="ml-1 text-blue-500">✓</span>
+                      )}
+                    </div>
+                    {result.nickname && (
+                      <div className="text-sm text-gray-500">
+                        @{result.nickname}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {isSearching && (
+            <div className="absolute top-0 right-3 h-full flex items-center">
+              <div className="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"></div>
+            </div>
+          )}
+        </div>
+      )}
 
       {isLoggedIn ? (
         <button

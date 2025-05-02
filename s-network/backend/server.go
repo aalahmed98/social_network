@@ -178,6 +178,9 @@ func main() {
 	r.HandleFunc("/api/login", handlers.LoginHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/check", handlers.CheckAuth).Methods("GET", "OPTIONS")
 	
+	// User search endpoint - available without authentication
+	r.HandleFunc("/api/users/search", handlers.UserSearchHandler).Methods("GET", "OPTIONS")
+	
 	// Private routes (require authentication)
 	authRouter := r.PathPrefix("/api").Subrouter()
 	authRouter.Use(handlers.AuthMiddleware)
@@ -195,9 +198,6 @@ func main() {
 	authRouter.HandleFunc("/posts/{id}/vote", handlers.VotePostHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/posts/{id}/comments/{commentId}/vote", handlers.VoteCommentHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/followers", handlers.GetUserFollowersHandler).Methods("GET", "OPTIONS")
-	
-	// User search endpoint - available without authentication
-	r.HandleFunc("/api/users/search", handlers.UserSearchHandler).Methods("GET", "OPTIONS")
 	
 	// User data endpoint
 	authRouter.HandleFunc("/users/me", handlers.GetCurrentUserHandler).Methods("GET", "OPTIONS")

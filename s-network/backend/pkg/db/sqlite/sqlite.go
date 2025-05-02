@@ -723,4 +723,66 @@ func (db *DB) GetCommentsByPostIDWithUserVotes(postID int64, userID int) ([]map[
 	}
 	
 	return comments, nil
+}
+
+// SearchUsers searches for users based on the provided search term
+func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
+	query := `
+		SELECT 
+			id, email, first_name, last_name, avatar, nickname, about_me, is_public 
+		FROM 
+			users 
+		WHERE 
+			LOWER(first_name) LIKE ? OR 
+			LOWER(last_name) LIKE ? OR 
+			LOWER(first_name || ' ' || last_name) LIKE ? OR
+			LOWER(nickname) LIKE ? OR
+			LOWER(email) LIKE ?
+		LIMIT 10
+	`
+
+	rows, err := db.Query(query, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var email, firstName, lastName string
+		var avatar, nickname, aboutMe sql.NullString
+		var isPublic bool
+
+		err := rows.Scan(&id, &email, &firstName, &lastName, &avatar, &nickname, &aboutMe, &isPublic)
+		if err != nil {
+			return nil, err
+		}
+
+		user := map[string]interface{}{
+			"id":          id,
+			"email":       email,
+			"first_name":  firstName,
+			"last_name":   lastName,
+			"is_public":   isPublic,
+		}
+
+		if avatar.Valid {
+			user["avatar"] = avatar.String
+		}
+		if nickname.Valid {
+			user["nickname"] = nickname.String
+		}
+		if aboutMe.Valid {
+			user["about_me"] = aboutMe.String
+		}
+
+		// Only add public profiles to search results
+		if isPublic {
+			users = append(users, user)
+		}
+	}
+
+	return users, nil
 } 
