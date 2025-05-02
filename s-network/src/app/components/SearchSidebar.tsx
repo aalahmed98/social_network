@@ -320,24 +320,7 @@ export default function SearchSidebar() {
                         )}
                       </div>
                       <p className="text-xs text-gray-500">@{user.username}</p>
-                      {user.description && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">
-                          {user.description}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                  <div className="text-xs text-gray-500 flex flex-col items-end">
-                    <span>{user.followers.toLocaleString()} followers</span>
-                    <button
-                      className="mt-1 px-2 py-1 bg-indigo-100 text-indigo-800 rounded hover:bg-indigo-200"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleNavigation(`/profile/${user.username}`);
-                      }}
-                    >
-                      View
-                    </button>
                   </div>
                 </div>
               ))}
