@@ -2,10 +2,24 @@
 
 import React, { useEffect, useState, FormEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
+import {
+  FiEdit3,
+  FiCamera,
+  FiLock,
+  FiGlobe,
+  FiUsers,
+  FiMessageSquare,
+  FiHeart,
+  FiCalendar,
+} from "react-icons/fi";
+import { BiArrowBack } from "react-icons/bi";
 
 // Post type definition
 interface Post {
   id: number;
+  title?: string;
   content: string;
   image_url?: string;
   privacy: string;
@@ -84,7 +98,7 @@ export default function Profile() {
           lastName: userData.last_name || "",
           nickname: userData.nickname || "",
           aboutMe: userData.about_me || "",
-          isPublic: userData.is_public || true,
+          isPublic: userData.is_public === false ? false : true,
           avatar: null,
         });
 
@@ -132,7 +146,8 @@ export default function Profile() {
   ) => {
     const { name, value, type } = e.target as HTMLInputElement;
 
-    if (type === "checkbox") {
+    // Note: isPublic is now handled by the onClick handler directly on the toggle
+    if (type === "checkbox" && name !== "isPublic") {
       const target = e.target as HTMLInputElement;
       setFormData((prev) => ({ ...prev, [name]: target.checked }));
     } else {
@@ -223,6 +238,13 @@ export default function Profile() {
     router.push(`/posts/${postId}`);
   };
 
+  // Helper function to get the correct image URL
+  const getImageUrl = (path: string) => {
+    if (!path) return "";
+    if (path.startsWith("http")) return path;
+    return `http://localhost:8080${path}`;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -232,36 +254,97 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 pt-20 pb-12">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gray-50 pt-6 pb-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Back button */}
+        <div className="mb-4">
+          <button
+            onClick={() => router.back()}
+            className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            <BiArrowBack className="mr-2" />
+            <span>Back</span>
+          </button>
+        </div>
+
         {/* Profile Header */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 h-32 md:h-48"></div>
-          <div className="px-6 py-4 md:px-8 md:py-6 relative">
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-500 h-40 md:h-60 relative">
+            {/* Camera icon for cover photo (decoration only in this version) */}
+            <button className="absolute bottom-3 right-3 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md text-gray-700 hover:bg-white transition-colors">
+              <FiCamera size={18} />
+            </button>
+          </div>
+
+          <div className="px-6 py-6 md:px-8 md:py-6 relative">
             {/* Avatar - positioned to overlap the gradient banner */}
-            <div className="absolute -top-16 left-6 w-32 h-32 rounded-full overflow-hidden border-4 border-white bg-white shadow-md">
-              {user?.avatar ? (
-                <img
-                  src={user.avatar}
-                  alt="Profile"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-indigo-300 bg-indigo-50">
-                  {user?.first_name?.charAt(0)}
+            <div className="absolute -top-20 left-6 rounded-full overflow-hidden border-4 border-white bg-white shadow-md">
+              <div className="relative w-32 h-32">
+                {user?.avatar ? (
+                  <Image
+                    src={getImageUrl(user.avatar)}
+                    alt={`${user?.first_name || "User"}'s profile picture`}
+                    fill
+                    className="object-cover"
+                    unoptimized={user.avatar.startsWith("http")}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-indigo-500 to-purple-600">
+                    {user?.first_name?.charAt(0) || "?"}
+                  </div>
+                )}
+                {/* Camera icon overlay for avatar */}
+                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                  <div className="bg-white p-2 rounded-full">
+                    <FiCamera className="text-gray-700" />
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* User Info */}
-            <div className="ml-0 mt-16 md:ml-36 md:mt-0 md:flex md:justify-between md:items-center">
+            <div className="ml-0 mt-16 md:ml-36 md:mt-0 md:flex md:justify-between md:items-start">
               <div>
-                <h2 className="text-2xl font-bold text-gray-800">
-                  {user?.first_name} {user?.last_name}
-                </h2>
+                <div className="flex items-center">
+                  <h2 className="text-2xl font-bold text-gray-800">
+                    {user?.first_name} {user?.last_name}
+                  </h2>
+                  {user?.is_public && (
+                    <div className="ml-2 text-gray-500" title="Private profile">
+                      <FiLock size={16} />
+                    </div>
+                  )}
+                  {/* Verification badge (decorative) */}
+                  {followers.length > 10 && (
+                    <div className="ml-2 bg-blue-500 text-white p-1 rounded-full">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="w-3 h-3"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  )}
+                </div>
                 {user?.nickname && (
                   <p className="text-gray-600">@{user.nickname}</p>
                 )}
+                <div className="flex items-center mt-1 text-sm text-gray-500">
+                  {user?.created_at && (
+                    <div className="flex items-center">
+                      <FiCalendar className="mr-1" />
+                      <span>
+                        Joined {new Date(user.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 {user?.about_me && (
                   <p className="text-gray-700 mt-3 max-w-2xl">
                     {user.about_me}
@@ -271,15 +354,16 @@ export default function Profile() {
               <div className="mt-4 md:mt-0">
                 <button
                   onClick={() => setShowEditForm(!showEditForm)}
-                  className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition duration-200 shadow-sm"
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition duration-200 shadow-sm"
                 >
-                  {showEditForm ? "Hide Edit Form" : "Edit Profile"}
+                  <FiEdit3 className="mr-2" />
+                  {showEditForm ? "Hide Editor" : "Edit Profile"}
                 </button>
               </div>
             </div>
 
             {/* User Stats */}
-            <div className="mt-6 flex border-t border-gray-200 pt-4">
+            <div className="mt-6 flex border-t border-gray-200 pt-6">
               <div className="text-center w-1/3">
                 <div className="text-xl font-bold">{posts.length}</div>
                 <div className="text-gray-600 text-sm">Posts</div>
@@ -298,17 +382,20 @@ export default function Profile() {
 
         {/* Edit Profile Form */}
         {showEditForm && (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6 p-6">
-            <h2 className="text-xl font-bold mb-6">Edit Profile</h2>
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 p-6">
+            <h2 className="text-xl font-bold mb-6 flex items-center">
+              <FiEdit3 className="mr-2 text-indigo-600" />
+              Edit Profile
+            </h2>
 
             {error && (
-              <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
+              <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm border border-red-200">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">
+              <div className="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm border border-green-200">
                 {success}
               </div>
             )}
@@ -358,14 +445,19 @@ export default function Profile() {
                 >
                   Nickname (Optional)
                 </label>
-                <input
-                  type="text"
-                  id="nickname"
-                  name="nickname"
-                  value={formData.nickname}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                />
+                <div className="mt-1 flex rounded-md shadow-sm">
+                  <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                    @
+                  </span>
+                  <input
+                    type="text"
+                    id="nickname"
+                    name="nickname"
+                    value={formData.nickname}
+                    onChange={handleChange}
+                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
               </div>
 
               <div>
@@ -381,8 +473,12 @@ export default function Profile() {
                   rows={4}
                   value={formData.aboutMe}
                   onChange={handleChange}
+                  placeholder="Tell us about yourself..."
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 />
+                <p className="mt-1 text-sm text-gray-500">
+                  Brief description for your profile.
+                </p>
               </div>
 
               <div>
@@ -392,47 +488,145 @@ export default function Profile() {
                 >
                   Profile Picture (Optional)
                 </label>
-                <input
-                  type="file"
-                  id="avatar"
-                  name="avatar"
-                  onChange={handleFileChange}
-                  accept="image/*"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Leave empty to keep current image
-                </p>
+                <div className="mt-1 flex items-center">
+                  <div className="flex-shrink-0 h-12 w-12 rounded-full overflow-hidden bg-gray-100">
+                    {formData.avatar ? (
+                      <img
+                        src={URL.createObjectURL(formData.avatar)}
+                        alt="Preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : user?.avatar ? (
+                      <div className="relative h-full w-full">
+                        <Image
+                          src={getImageUrl(user.avatar)}
+                          alt={`${
+                            user?.first_name || "User"
+                          }'s profile picture`}
+                          fill
+                          className="object-cover"
+                          unoptimized={user.avatar.startsWith("http")}
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center bg-indigo-600 text-white font-bold">
+                        {formData.firstName.charAt(0) || "?"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="ml-4 flex">
+                    <div className="relative bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm flex items-center hover:bg-gray-50 cursor-pointer">
+                      <label
+                        htmlFor="avatar"
+                        className="cursor-pointer flex items-center text-sm font-medium text-gray-700"
+                      >
+                        <FiCamera className="mr-2" />
+                        Change
+                      </label>
+                      <input
+                        id="avatar"
+                        name="avatar"
+                        type="file"
+                        onChange={handleFileChange}
+                        accept="image/*"
+                        className="sr-only"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="isPublic"
-                  name="isPublic"
-                  checked={formData.isPublic}
-                  onChange={handleChange}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                />
-                <label
-                  htmlFor="isPublic"
-                  className="ml-2 block text-sm text-gray-700"
-                >
-                  Public Profile (Anyone can view your profile and follow you)
+              <div className="mt-6 border-t border-gray-200 pt-6">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">
+                      Profile Privacy
+                    </span>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {!formData.isPublic
+                        ? "Your profile is public and visible to everyone"
+                        : "Your profile is private and only visible to your followers"}
+                    </p>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="flex flex-col items-end mr-3">
+                      <span
+                        className={`text-xs font-medium ${
+                          !formData.isPublic
+                            ? "text-gray-500"
+                            : "text-indigo-600"
+                        }`}
+                      >
+                        {!formData.isPublic ? "Public" : "Private"}
+                      </span>
+                      {!formData.isPublic && (
+                        <span className="text-[10px] text-gray-500">
+                          default
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                        formData.isPublic ? "bg-indigo-600" : "bg-gray-300"
+                      }`}
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          isPublic: !prev.isPublic,
+                        }))
+                      }
+                      role="switch"
+                      aria-checked={formData.isPublic}
+                      tabIndex={0}
+                      title={
+                        formData.isPublic
+                          ? "Switch to public profile"
+                          : "Switch to private profile"
+                      }
+                    >
+                      <span className="sr-only">Toggle profile privacy</span>
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          formData.isPublic ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                      <span
+                        className={`absolute right-1.5 text-xs font-bold text-white ${
+                          formData.isPublic ? "opacity-100" : "opacity-0"
+                        }`}
+                      >
+                        <FiLock size={12} />
+                      </span>
+                      <span
+                        className={`absolute left-1.5 text-xs font-bold text-white ${
+                          !formData.isPublic ? "opacity-100" : "opacity-0"
+                        }`}
+                      >
+                        <FiGlobe size={12} />
+                      </span>
+                    </div>
+                  </div>
                 </label>
               </div>
 
-              <div className="pt-4">
+              <div className="pt-4 flex gap-3">
                 <button
                   type="submit"
                   disabled={updating}
-                  className={`w-full md:w-auto flex justify-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                  className={`flex justify-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
                     updating
                       ? "bg-indigo-400"
                       : "bg-indigo-600 hover:bg-indigo-700"
                   } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
                 >
-                  {updating ? "Updating..." : "Save Changes"}
+                  {updating ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditForm(false)}
+                  className="flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Cancel
                 </button>
               </div>
             </form>
@@ -440,23 +634,31 @@ export default function Profile() {
         )}
 
         {/* Posts Section */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-xl font-bold">Your Posts</h2>
+            <Link
+              href="/posts"
+              className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-700"
+            >
+              Create New <span className="ml-1">+</span>
+            </Link>
           </div>
 
           {posts.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="text-5xl text-gray-300 mb-4">📝</div>
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+                <FiMessageSquare size={24} />
+              </div>
               <h3 className="text-lg font-medium text-gray-800 mb-2">
                 No posts yet
               </h3>
-              <p className="text-gray-600 mb-6">
-                You haven't created any posts. Start sharing with your
+              <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                You haven't created any posts yet. Start sharing with your
                 followers!
               </p>
-              <button
-                onClick={() => router.push("/posts")}
+              <Link
+                href="/posts"
                 className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 <svg
@@ -472,44 +674,70 @@ export default function Profile() {
                   />
                 </svg>
                 Create New Post
-              </button>
+              </Link>
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
               {posts.map((post) => (
                 <div
                   key={post.id}
-                  className="p-6 hover:bg-gray-50 transition cursor-pointer"
+                  className="p-6 hover:bg-gray-50 transition cursor-pointer relative"
                   onClick={() => navigateToPost(post.id)}
                 >
+                  {/* Privacy indicator in top right corner */}
+                  <div className="absolute top-4 right-4 flex items-center text-xs font-medium">
+                    {post.privacy === "public" ? (
+                      <span
+                        className="flex items-center text-gray-500"
+                        title="Public post"
+                      >
+                        <FiGlobe className="w-4 h-4" />
+                      </span>
+                    ) : post.privacy === "almost_private" ? (
+                      <span
+                        className="flex items-center text-gray-500"
+                        title="Visible to followers"
+                      >
+                        <FiUsers className="w-4 h-4" />
+                      </span>
+                    ) : (
+                      <span
+                        className="flex items-center text-gray-500"
+                        title="Private post"
+                      >
+                        <FiLock className="w-4 h-4" />
+                      </span>
+                    )}
+                  </div>
+
                   <div className="flex items-center mb-3">
                     <div className="flex-shrink-0 mr-3">
                       {user?.avatar ? (
-                        <img
-                          src={user.avatar}
-                          alt="Profile"
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
+                        <div className="relative w-10 h-10 rounded-full overflow-hidden">
+                          <Image
+                            src={getImageUrl(user.avatar)}
+                            alt={`${
+                              user?.first_name || "User"
+                            }'s profile picture`}
+                            fill
+                            className="object-cover"
+                            unoptimized={user.avatar.startsWith("http")}
+                          />
+                        </div>
                       ) : (
                         <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
-                          {user?.first_name?.charAt(0)}
+                          {user?.first_name?.charAt(0) || "?"}
                         </div>
                       )}
                     </div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        {user?.first_name} {user?.last_name}
-                      </h3>
-                      <p className="text-xs text-gray-500">
+                    <div className="flex-grow">
+                      <div className="flex items-center">
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          {user?.first_name} {user?.last_name}
+                        </h3>
+                      </div>
+                      <p className="text-xs text-gray-500 flex items-center">
                         {formatDate(post.created_at)}
-                        <span className="mx-1">·</span>
-                        <span className="flex items-center">
-                          {post.privacy === "public"
-                            ? "Public"
-                            : post.privacy === "almost_private"
-                            ? "Followers Only"
-                            : "Private"}
-                        </span>
                       </p>
                     </div>
                   </div>
@@ -520,54 +748,25 @@ export default function Profile() {
 
                   {post.image_url && (
                     <div className="rounded-lg overflow-hidden bg-gray-100 my-3">
-                      <img
-                        src={
-                          post.image_url.startsWith("http")
-                            ? post.image_url
-                            : `${
-                                process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                "http://localhost:8080"
-                              }${post.image_url}`
-                        }
-                        alt="Post"
-                        className="max-h-80 w-auto mx-auto object-contain"
-                      />
+                      <div className="relative h-80 w-full">
+                        <Image
+                          src={getImageUrl(post.image_url)}
+                          alt="Post content"
+                          fill
+                          className="object-contain"
+                          unoptimized={post.image_url.startsWith("http")}
+                        />
+                      </div>
                     </div>
                   )}
 
                   <div className="flex items-center text-gray-500 text-sm mt-4">
                     <div className="flex items-center mr-4">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 mr-1"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"
-                        />
-                      </svg>
+                      <FiHeart className="h-4 w-4 mr-1" />
                       {post.upvotes || 0} likes
                     </div>
                     <div className="flex items-center">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 mr-1"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                        />
-                      </svg>
+                      <FiMessageSquare className="h-4 w-4 mr-1" />
                       {post.comments?.length || 0} comments
                     </div>
                   </div>
@@ -578,12 +777,24 @@ export default function Profile() {
 
           {posts.length > 0 && (
             <div className="p-4 border-t border-gray-200 text-center">
-              <button
-                onClick={() => router.push("/posts")}
-                className="px-4 py-2 text-indigo-600 hover:text-indigo-800 font-medium rounded-md hover:bg-indigo-50 transition-colors"
+              <Link
+                href="/posts"
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-sm transition-colors"
               >
+                <svg
+                  className="-ml-1 mr-2 h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
                 Create New Post
-              </button>
+              </Link>
             </div>
           )}
         </div>

@@ -1,6 +1,24 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  # Frontend Next.js application
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  # Backend Golang service
   backend:
     build:
       context: ./backend
@@ -9,26 +27,15 @@ services:
       - "8080:8080"
     volumes:
       - ./backend:/app
-      - backend_data:/app/data
+      - ./backend/data:/app/data
+      - ./backend/uploads:/app/uploads
     networks:
-      - s-network
+      - app-network
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8080
-    depends_on:
-      - backend
-    networks:
-      - s-network
-
+# Define a network for the services to communicate
 networks:
-  s-network:
+  app-network:
     driver: bridge
 
 volumes:
-  backend_data: 
+  backend_data:

@@ -2,24 +2,46 @@
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { SearchProvider, useSearch } from "@/context/SearchContext";
 import Navbar from "@/app/components/Navbar";
 import Sidebar from "@/app/components/Sidebar";
-import { usePathname } from "next/navigation";
+import MinimalSidebar from "@/app/components/MinimalSidebar";
+import SearchSidebar from "@/app/components/SearchSidebar";
+import { usePathname, useRouter } from "next/navigation";
 import PageTransition from "@/components/ui/PageTransition";
+import ErrorNotification from "@/components/ui/ErrorNotification";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+// Wrapper component that includes the SearchProvider
 export default function AppLayout({ children }: AppLayoutProps) {
+  return (
+    <SearchProvider>
+      <AppLayoutInner>{children}</AppLayoutInner>
+    </SearchProvider>
+  );
+}
+
+function AppLayoutInner({ children }: AppLayoutProps) {
   const { isLoggedIn, loading } = useAuth();
+  const { isSearchExpanded, collapseSearch } = useSearch();
   const pathname = usePathname();
+  const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Don't show sidebar on login and register pages
   const showSidebar =
     isLoggedIn && pathname !== "/login" && pathname !== "/register";
+
+  // Close search sidebar when navigating to any page
+  useEffect(() => {
+    if (isSearchExpanded) {
+      collapseSearch();
+    }
+  }, [pathname, collapseSearch]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -52,12 +74,35 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <Navbar />
 
       <div className="flex pt-16">
-        {showSidebar && <Sidebar />}
+        {showSidebar && (
+          <>
+            {/* Always show the minimal sidebar when expanded */}
+            {isSearchExpanded ? (
+              <>
+                <MinimalSidebar />
+                <SearchSidebar />
+              </>
+            ) : (
+              <Sidebar />
+            )}
+          </>
+        )}
 
-        <main className={`flex-1 ${showSidebar ? "ml-64" : ""}`}>
+        <main
+          className={`flex-1 ${
+            showSidebar
+              ? isSearchExpanded
+                ? "ml-96" // 16px (minimal sidebar) + 80px (search sidebar)
+                : "ml-64"
+              : ""
+          }`}
+        >
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
+
+      {/* Error Notification */}
+      <ErrorNotification />
     </div>
   );
 }

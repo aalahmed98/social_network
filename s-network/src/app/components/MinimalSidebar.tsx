@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSearch } from "@/context/SearchContext";
 
-export default function Sidebar() {
+export default function MinimalSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { expandSearch, isSearchExpanded, collapseSearch } = useSearch();
@@ -21,44 +21,63 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-64 shrink-0 h-screen fixed top-0 left-0 bg-white shadow-md border-r border-gray-200 z-30">
-      <div className="p-6 h-full overflow-y-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-black font-serif tracking-tight mb-6 text-indigo-600">
-            Social Network
-          </h1>
+    <div className="w-16 shrink-0 h-screen fixed top-0 left-0 bg-white shadow-md border-r border-gray-200 z-30">
+      <div className="p-3 h-full flex flex-col items-center">
+        <div className="mb-8 py-3">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="w-8 h-8 text-indigo-600"
+          >
+            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-1 15v-2h2v2h-2zm2-4h-2V7h2v6z" />
+          </svg>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-6 flex flex-col items-center">
           <a
             href="#"
             onClick={(e) => handleLinkClick(e, "/")}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
-              pathname === "/" && !isSearchExpanded
-                ? "bg-gray-100 font-medium"
-                : ""
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
+              pathname === "/" && !isSearchExpanded ? "bg-gray-100" : ""
             }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
+              className="h-6 w-6"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
               <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
             </svg>
-            Home
+          </a>
+
+          <a
+            href="#"
+            onClick={(e) => handleLinkClick(e, "/posts")}
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
+              pathname === "/posts" && !isSearchExpanded ? "bg-gray-100" : ""
+            }`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+            </svg>
           </a>
 
           <a
             href="#"
             onClick={handleSearchClick}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
-              isSearchExpanded ? "bg-gray-100 font-medium" : ""
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
+              isSearchExpanded ? "bg-gray-100" : ""
             }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
+              className="h-6 w-6"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -68,21 +87,18 @@ export default function Sidebar() {
                 clipRule="evenodd"
               />
             </svg>
-            Search
           </a>
 
           <a
             href="#"
             onClick={(e) => handleLinkClick(e, "/explore")}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
-              pathname === "/explore" && !isSearchExpanded
-                ? "bg-gray-100 font-medium"
-                : ""
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
+              pathname === "/explore" && !isSearchExpanded ? "bg-gray-100" : ""
             }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
+              className="h-6 w-6"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -92,29 +108,25 @@ export default function Sidebar() {
                 clipRule="evenodd"
               />
             </svg>
-            Explore
           </a>
 
           <a
             href="#"
             onClick={(e) => handleLinkClick(e, "/chats")}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors relative ${
-              pathname === "/chats" && !isSearchExpanded
-                ? "bg-gray-100 font-medium"
-                : ""
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors relative ${
+              pathname === "/chats" && !isSearchExpanded ? "bg-gray-100" : ""
             }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
+              className="h-6 w-6"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
               <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
               <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
             </svg>
-            Messages
-            <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
               2
             </span>
           </a>
@@ -122,15 +134,13 @@ export default function Sidebar() {
           <a
             href="#"
             onClick={(e) => handleLinkClick(e, "/profile")}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
-              pathname === "/profile" && !isSearchExpanded
-                ? "bg-gray-100 font-medium"
-                : ""
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
+              pathname === "/profile" && !isSearchExpanded ? "bg-gray-100" : ""
             }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
+              className="h-6 w-6"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -140,47 +150,25 @@ export default function Sidebar() {
                 clipRule="evenodd"
               />
             </svg>
-            Profile
-          </a>
-
-          <a
-            href="#"
-            onClick={(e) => handleLinkClick(e, "/posts")}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
-              pathname === "/posts" && !isSearchExpanded
-                ? "bg-gray-100 font-medium"
-                : ""
-            }`}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-            </svg>
-            Create
           </a>
 
           <a
             href="#"
             onClick={(e) => handleLinkClick(e, "/dashboard")}
-            className={`flex items-center p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
+            className={`p-2 text-gray-800 hover:bg-gray-100 rounded-lg transition-colors ${
               pathname === "/dashboard" && !isSearchExpanded
-                ? "bg-gray-100 font-medium"
+                ? "bg-gray-100"
                 : ""
             }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-3"
+              className="h-6 w-6"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
               <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM14 11a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" />
             </svg>
-            Dashboard
           </a>
         </div>
       </div>

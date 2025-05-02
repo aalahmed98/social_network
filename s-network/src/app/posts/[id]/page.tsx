@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 // Post type definition
 interface Post {
   id: number;
+  title?: string;
   content: string;
   image_url?: string;
   privacy: string;
@@ -636,6 +637,11 @@ export default function PostDetail() {
 
             {/* Main content */}
             <div className="flex-1 py-4 pl-4">
+              {post?.title && (
+                <h1 className="text-2xl font-bold mb-4 text-gray-900">
+                  {post.title}
+                </h1>
+              )}
               <div className="whitespace-pre-line text-gray-800 mb-4 text-base leading-relaxed">
                 {post?.content}
               </div>

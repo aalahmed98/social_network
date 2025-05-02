@@ -14,6 +14,7 @@ import (
 
 // CreatePostRequest represents the JSON structure for creating a post
 type CreatePostRequest struct {
+	Title            string `json:"title"`
 	Content          string `json:"content"`
 	Privacy          string `json:"privacy"`
 	AllowedFollowers []int  `json:"allowedFollowers,omitempty"`
@@ -42,12 +43,11 @@ func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get form values
+	title := r.FormValue("title")
+	
+	// Content is now optional, no validation needed
 	content := r.FormValue("content")
-	if content == "" {
-		http.Error(w, "Content is required", http.StatusBadRequest)
-		return
-	}
-
+	
 	privacy := r.FormValue("privacy")
 	if privacy == "" {
 		privacy = "public" // Default to public
@@ -104,14 +104,14 @@ func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create post in the database
-	postID, err := db.CreatePost(userID, content, imageURL, privacy, allowedFollowers)
+	postID, err := db.CreatePost(userID, title, content, imageURL, privacy, allowedFollowers)
 	if err != nil {
 		http.Error(w, "Failed to create post: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Get the newly created post
-	post, err := db.GetPostByID(postID)
+	post, err := db.GetPost(postID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve created post", http.StatusInternalServerError)
 		return
@@ -213,7 +213,7 @@ func GetPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get post data
-	post, err := db.GetPostByID(postID)
+	post, err := db.GetPost(postID)
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {
 			http.Error(w, "Post not found", http.StatusNotFound)
@@ -295,7 +295,7 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get post to check ownership
-	post, err := db.GetPostByID(postID)
+	post, err := db.GetPost(postID)
 	if err != nil {
 		http.Error(w, "Post not found", http.StatusNotFound)
 		return
@@ -499,7 +499,7 @@ func DeletePostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get post to check if the user is the owner
-	post, err := db.GetPostByID(postID)
+	post, err := db.GetPost(postID)
 	if err != nil {
 		http.Error(w, "Post not found", http.StatusNotFound)
 		return
@@ -583,7 +583,7 @@ func DeleteCommentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the post to check if the user is the post owner (post owners can delete any comment on their post)
-	post, err := db.GetPostByID(postID)
+	post, err := db.GetPost(postID)
 	if err != nil {
 		http.Error(w, "Post not found", http.StatusNotFound)
 		return
@@ -700,7 +700,7 @@ func VotePostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get updated post
-	post, err := db.GetPostByID(postID)
+	post, err := db.GetPost(postID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve updated post", http.StatusInternalServerError)
 		return
