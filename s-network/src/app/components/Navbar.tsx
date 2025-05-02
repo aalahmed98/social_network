@@ -1,70 +1,24 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Check authentication status
-    const checkAuth = async () => {
-      try {
-        // Use the backend API directly
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        console.log("Checking auth status at:", `${backendUrl}/api/auth/check`);
-
-        const response = await fetch(`${backendUrl}/api/auth/check`, {
-          method: "GET",
-          credentials: "include", // Include cookies in the request
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setIsLoggedIn(data.authenticated === true);
-        } else {
-          setIsLoggedIn(false);
-        }
-      } catch (error) {
-        console.error("Auth check error:", error);
-        setIsLoggedIn(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, [pathname]);
+  const { isLoggedIn, loading, logout } = useAuth();
 
   const handleLogout = async () => {
-    try {
-      // Use the backend API directly
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+    await logout();
 
-      console.log("Attempting logout at:", `${backendUrl}/api/logout`);
-
-      await fetch(`${backendUrl}/api/logout`, {
-        method: "POST",
-        credentials: "include", // Include cookies in the request
-      });
-
-      setIsLoggedIn(false);
-
-      // If already on home page, refresh the page
-      if (pathname === "/") {
-        window.location.reload();
-      } else {
-        // If on other pages, redirect to home page
-        router.push("/");
-      }
-    } catch (error) {
-      console.error("Error logging out:", error);
+    // If already on home page, refresh the page
+    if (pathname === "/") {
+      window.location.reload();
+    } else {
+      // If on other pages, redirect to home page
+      router.push("/");
     }
   };
 
