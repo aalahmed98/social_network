@@ -185,9 +185,7 @@ export default function Posts() {
     <div className="py-6">
       <div className="max-w-4xl mx-auto px-4">
         <div className="mb-6">
-          <h1 className="text-2xl font-black text-gray-800 font-serif tracking-tight">
-            Create New Post
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-800">Create New Post</h1>
           <p className="text-gray-600">Share your thoughts with your network</p>
         </div>
 
@@ -206,7 +204,7 @@ export default function Posts() {
                 <input
                   id="title"
                   type="text"
-                  className="w-full border border-gray-300 rounded-lg p-3 text-gray-800 font-serif font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full border border-gray-300 rounded-lg p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Add a descriptive title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}

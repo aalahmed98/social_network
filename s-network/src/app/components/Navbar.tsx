@@ -25,10 +25,7 @@ export default function Navbar() {
   if (loading) {
     return (
       <nav className="bg-white shadow fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-        <Link
-          href="/"
-          className="text-xl font-black font-serif tracking-tight text-indigo-600"
-        >
+        <Link href="/" className="text-xl font-bold text-indigo-600">
           Social Network
         </Link>
       </nav>
@@ -37,10 +34,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-white shadow fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-      <Link
-        href="/"
-        className="text-xl font-black font-serif tracking-tight text-indigo-600"
-      >
+      <Link href="/" className="text-xl font-bold text-indigo-600">
         Social Network
       </Link>
 

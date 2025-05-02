@@ -209,7 +209,7 @@ export default function Home() {
       <div className="max-w-6xl mx-auto px-4">
         {!isLoggedIn && (
           <div className="max-w-3xl mx-auto px-8 py-16 bg-white rounded-xl shadow-lg text-center transition-all hover:shadow-xl">
-            <h2 className="text-4xl font-black font-serif tracking-tight mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
+            <h2 className="text-4xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
               Welcome to S-Network
             </h2>
             <p className="text-xl mb-10 text-gray-600 max-w-lg mx-auto leading-relaxed">
@@ -238,9 +238,7 @@ export default function Home() {
           <div className="flex flex-col md:flex-row gap-6">
             {/* Main Content - Posts feed */}
             <div className="flex-1">
-              <h2 className="text-xl font-black font-serif tracking-tight mb-5 text-gray-800 flex items-center">
-                Latest Posts
-              </h2>
+              <h2 className="text-xl font-semibold mb-5 text-gray-800 flex items-center"></h2>
 
               {postsLoading && (
                 <div className="bg-white shadow-md rounded-lg p-8 flex justify-center items-center">

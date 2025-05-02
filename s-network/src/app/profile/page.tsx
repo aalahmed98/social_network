@@ -13,6 +13,8 @@ import {
   FiMessageSquare,
   FiHeart,
   FiCalendar,
+  FiSettings,
+  FiX,
 } from "react-icons/fi";
 import { BiArrowBack } from "react-icons/bi";
 
@@ -36,6 +38,7 @@ interface Post {
   user_vote?: number;
   upvotes?: number;
   downvotes?: number;
+  comment_count?: number;
 }
 
 export default function Profile() {
@@ -57,6 +60,7 @@ export default function Profile() {
   const [following, setFollowing] = useState<any[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [showSettingsPopup, setShowSettingsPopup] = useState(false);
 
   useEffect(() => {
     // Fetch user data
@@ -202,18 +206,38 @@ export default function Profile() {
       }
 
       setSuccess("Profile updated successfully");
-      setShowEditForm(false);
+      setShowSettingsPopup(false);
 
-      // Refresh user data
-      const profileResponse = await fetch(`${backendUrl}/api/profile`, {
-        method: "GET",
-        credentials: "include",
-      });
+      // Refresh user data and posts
+      const fetchUpdatedData = async () => {
+        // Fetch updated profile
+        const profileResponse = await fetch(`${backendUrl}/api/profile`, {
+          method: "GET",
+          credentials: "include",
+        });
 
-      if (profileResponse.ok) {
-        const userData = await profileResponse.json();
-        setUser(userData);
-      }
+        if (profileResponse.ok) {
+          const userData = await profileResponse.json();
+          setUser(userData);
+        }
+
+        // Fetch updated posts
+        const postsResponse = await fetch(`${backendUrl}/api/posts`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (postsResponse.ok) {
+          const postsData = await postsResponse.json();
+          const userPosts = postsData.posts.filter(
+            (post: Post) => post.user_id === user.id
+          );
+          setPosts(userPosts);
+        }
+      };
+
+      // Refresh data
+      await fetchUpdatedData();
     } catch (err: any) {
       console.error("Profile update error:", err);
       setError(err.message || "Failed to update profile");
@@ -242,7 +266,14 @@ export default function Profile() {
   const getImageUrl = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
-    return `http://localhost:8080${path}`;
+
+    const backendUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+    // Make sure we don't double up on slashes
+    if (path.startsWith("/")) {
+      return `${backendUrl}${path}`;
+    }
+    return `${backendUrl}/${path}`;
   };
 
   if (loading) {
@@ -254,22 +285,11 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-6 pb-12">
+    <div className="min-h-screen bg-gray-100 pt-6 pb-12">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back button */}
-        <div className="mb-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            <BiArrowBack className="mr-2" />
-            <span>Back</span>
-          </button>
-        </div>
-
         {/* Profile Header */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-500 h-40 md:h-60 relative">
+        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6 border border-gray-200">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-40 md:h-60 relative">
             {/* Camera icon for cover photo (decoration only in this version) */}
             <button className="absolute bottom-3 right-3 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md text-gray-700 hover:bg-white transition-colors">
               <FiCamera size={18} />
@@ -285,11 +305,26 @@ export default function Profile() {
                     src={getImageUrl(user.avatar)}
                     alt={`${user?.first_name || "User"}'s profile picture`}
                     fill
+                    sizes="128px"
                     className="object-cover"
-                    unoptimized={user.avatar.startsWith("http")}
+                    unoptimized={user.avatar?.startsWith("http")}
+                    priority
+                    onError={(e) => {
+                      // If image fails to load, replace with initial
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = "none";
+                      const parent = target.parentElement;
+                      if (parent) {
+                        const fallback = document.createElement("div");
+                        fallback.className =
+                          "w-full h-full flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600";
+                        fallback.innerText = user?.first_name?.charAt(0) || "?";
+                        parent.appendChild(fallback);
+                      }
+                    }}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-indigo-500 to-purple-600">
+                  <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600">
                     {user?.first_name?.charAt(0) || "?"}
                   </div>
                 )}
@@ -353,283 +388,334 @@ export default function Profile() {
               </div>
               <div className="mt-4 md:mt-0">
                 <button
-                  onClick={() => setShowEditForm(!showEditForm)}
-                  className="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition duration-200 shadow-sm"
+                  onClick={() => setShowSettingsPopup(true)}
+                  className="inline-flex items-center p-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition duration-200 hover:shadow-sm"
+                  aria-label="Settings"
+                  title="Profile Settings"
                 >
-                  <FiEdit3 className="mr-2" />
-                  {showEditForm ? "Hide Editor" : "Edit Profile"}
+                  <FiSettings className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
             {/* User Stats */}
-            <div className="mt-6 flex border-t border-gray-200 pt-6">
-              <div className="text-center w-1/3">
-                <div className="text-xl font-bold">{posts.length}</div>
-                <div className="text-gray-600 text-sm">Posts</div>
+            <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6">
+              <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                <div className="text-xl font-bold text-indigo-600">
+                  {posts.length}
+                </div>
+                <div className="text-gray-600 text-sm font-medium">Posts</div>
               </div>
-              <div className="text-center w-1/3">
-                <div className="text-xl font-bold">{followers.length}</div>
-                <div className="text-gray-600 text-sm">Followers</div>
+              <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                <div className="text-xl font-bold text-indigo-600">
+                  {followers.length}
+                </div>
+                <div className="text-gray-600 text-sm font-medium">
+                  Followers
+                </div>
               </div>
-              <div className="text-center w-1/3">
-                <div className="text-xl font-bold">0</div>
-                <div className="text-gray-600 text-sm">Following</div>
+              <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                <div className="text-xl font-bold text-indigo-600">0</div>
+                <div className="text-gray-600 text-sm font-medium">
+                  Following
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Edit Profile Form */}
-        {showEditForm && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 p-6">
-            <h2 className="text-xl font-bold mb-6 flex items-center">
-              <FiEdit3 className="mr-2 text-indigo-600" />
-              Edit Profile
-            </h2>
-
-            {error && (
-              <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm border border-red-200">
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div className="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm border border-green-200">
-                {success}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="firstName"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    id="firstName"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="lastName"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    id="lastName"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="nickname"
-                  className="block text-sm font-medium text-gray-700"
+        {/* Settings Popup */}
+        {showSettingsPopup && (
+          <div
+            className="fixed inset-0 z-50 backdrop-blur-sm bg-black/30 flex items-center justify-center overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowSettingsPopup(false);
+              }
+            }}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-md my-8 mx-4 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
+                <h2 className="text-xl font-bold flex items-center">
+                  <FiSettings className="mr-2 text-indigo-600" />
+                  Profile Settings
+                </h2>
+                <button
+                  onClick={() => setShowSettingsPopup(false)}
+                  className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
                 >
-                  Nickname (Optional)
-                </label>
-                <div className="mt-1 flex rounded-md shadow-sm">
-                  <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                    @
-                  </span>
-                  <input
-                    type="text"
-                    id="nickname"
-                    name="nickname"
-                    value={formData.nickname}
-                    onChange={handleChange}
-                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
+                  <FiX size={20} />
+                </button>
               </div>
 
-              <div>
-                <label
-                  htmlFor="aboutMe"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  About Me (Optional)
-                </label>
-                <textarea
-                  id="aboutMe"
-                  name="aboutMe"
-                  rows={4}
-                  value={formData.aboutMe}
-                  onChange={handleChange}
-                  placeholder="Tell us about yourself..."
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Brief description for your profile.
-                </p>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="avatar"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Profile Picture (Optional)
-                </label>
-                <div className="mt-1 flex items-center">
-                  <div className="flex-shrink-0 h-12 w-12 rounded-full overflow-hidden bg-gray-100">
-                    {formData.avatar ? (
-                      <img
-                        src={URL.createObjectURL(formData.avatar)}
-                        alt="Preview"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : user?.avatar ? (
-                      <div className="relative h-full w-full">
-                        <Image
-                          src={getImageUrl(user.avatar)}
-                          alt={`${
-                            user?.first_name || "User"
-                          }'s profile picture`}
-                          fill
-                          className="object-cover"
-                          unoptimized={user.avatar.startsWith("http")}
-                        />
-                      </div>
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center bg-indigo-600 text-white font-bold">
-                        {formData.firstName.charAt(0) || "?"}
-                      </div>
-                    )}
+              <div className="p-6">
+                {error && (
+                  <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm border border-red-200">
+                    {error}
                   </div>
-                  <div className="ml-4 flex">
-                    <div className="relative bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm flex items-center hover:bg-gray-50 cursor-pointer">
+                )}
+
+                {success && (
+                  <div className="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm border border-green-200">
+                    {success}
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
                       <label
-                        htmlFor="avatar"
-                        className="cursor-pointer flex items-center text-sm font-medium text-gray-700"
+                        htmlFor="firstName"
+                        className="block text-sm font-medium text-gray-700"
                       >
-                        <FiCamera className="mr-2" />
-                        Change
+                        First Name
                       </label>
                       <input
-                        id="avatar"
-                        name="avatar"
-                        type="file"
-                        onChange={handleFileChange}
-                        accept="image/*"
-                        className="sr-only"
+                        type="text"
+                        id="firstName"
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleChange}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="lastName"
+                        className="block text-sm font-medium text-gray-700"
+                      >
+                        Last Name
+                      </label>
+                      <input
+                        type="text"
+                        id="lastName"
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleChange}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        required
                       />
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="mt-6 border-t border-gray-200 pt-6">
-                <label className="flex items-center justify-between cursor-pointer">
                   <div>
-                    <span className="text-sm font-medium text-gray-700">
-                      Profile Privacy
-                    </span>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {!formData.isPublic
-                        ? "Your profile is public and visible to everyone"
-                        : "Your profile is private and only visible to your followers"}
+                    <label
+                      htmlFor="nickname"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Nickname (Optional)
+                    </label>
+                    <div className="mt-1 flex rounded-md shadow-sm">
+                      <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                        @
+                      </span>
+                      <input
+                        type="text"
+                        id="nickname"
+                        name="nickname"
+                        value={formData.nickname}
+                        onChange={handleChange}
+                        className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="aboutMe"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      About Me (Optional)
+                    </label>
+                    <textarea
+                      id="aboutMe"
+                      name="aboutMe"
+                      rows={4}
+                      value={formData.aboutMe}
+                      onChange={handleChange}
+                      placeholder="Tell us about yourself..."
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      Brief description for your profile.
                     </p>
                   </div>
-                  <div className="flex items-center">
-                    <div className="flex flex-col items-end mr-3">
-                      <span
-                        className={`text-xs font-medium ${
-                          !formData.isPublic
-                            ? "text-gray-500"
-                            : "text-indigo-600"
-                        }`}
-                      >
-                        {!formData.isPublic ? "Public" : "Private"}
-                      </span>
-                      {!formData.isPublic && (
-                        <span className="text-[10px] text-gray-500">
-                          default
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                        formData.isPublic ? "bg-indigo-600" : "bg-gray-300"
-                      }`}
-                      onClick={() =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          isPublic: !prev.isPublic,
-                        }))
-                      }
-                      role="switch"
-                      aria-checked={formData.isPublic}
-                      tabIndex={0}
-                      title={
-                        formData.isPublic
-                          ? "Switch to public profile"
-                          : "Switch to private profile"
-                      }
+
+                  <div>
+                    <label
+                      htmlFor="avatar"
+                      className="block text-sm font-medium text-gray-700"
                     >
-                      <span className="sr-only">Toggle profile privacy</span>
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          formData.isPublic ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                      <span
-                        className={`absolute right-1.5 text-xs font-bold text-white ${
-                          formData.isPublic ? "opacity-100" : "opacity-0"
-                        }`}
-                      >
-                        <FiLock size={12} />
-                      </span>
-                      <span
-                        className={`absolute left-1.5 text-xs font-bold text-white ${
-                          !formData.isPublic ? "opacity-100" : "opacity-0"
-                        }`}
-                      >
-                        <FiGlobe size={12} />
-                      </span>
+                      Profile Picture (Optional)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <div className="flex-shrink-0 h-12 w-12 rounded-full overflow-hidden bg-gray-100">
+                        {formData.avatar ? (
+                          <img
+                            src={URL.createObjectURL(formData.avatar)}
+                            alt="Preview"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : user?.avatar ? (
+                          <div className="relative h-full w-full">
+                            <Image
+                              src={getImageUrl(user.avatar)}
+                              alt={`${
+                                user?.first_name || "User"
+                              }'s profile picture`}
+                              fill
+                              sizes="48px"
+                              className="object-cover"
+                              unoptimized={user.avatar?.startsWith("http")}
+                              onError={(e) => {
+                                // If image fails to load, replace with initial
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = "none";
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  const fallback =
+                                    document.createElement("div");
+                                  fallback.className =
+                                    "h-full w-full flex items-center justify-center bg-indigo-600 text-white font-bold";
+                                  fallback.innerText =
+                                    formData.firstName.charAt(0) || "?";
+                                  parent.appendChild(fallback);
+                                }
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center bg-indigo-600 text-white font-bold">
+                            {formData.firstName.charAt(0) || "?"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="ml-4 flex">
+                        <div className="relative bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm flex items-center hover:bg-gray-50 cursor-pointer">
+                          <label
+                            htmlFor="avatar"
+                            className="cursor-pointer flex items-center text-sm font-medium text-gray-700"
+                          >
+                            <FiCamera className="mr-2" />
+                            Change
+                          </label>
+                          <input
+                            id="avatar"
+                            name="avatar"
+                            type="file"
+                            onChange={handleFileChange}
+                            accept="image/*"
+                            className="sr-only"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </label>
-              </div>
 
-              <div className="pt-4 flex gap-3">
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className={`flex justify-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                    updating
-                      ? "bg-indigo-400"
-                      : "bg-indigo-600 hover:bg-indigo-700"
-                  } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
-                >
-                  {updating ? "Saving..." : "Save Changes"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEditForm(false)}
-                  className="flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Cancel
-                </button>
+                  <div className="mt-6 border-t border-gray-200 pt-6">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">
+                          Profile Privacy
+                        </span>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {!formData.isPublic
+                            ? "Your profile is public and visible to everyone"
+                            : "Your profile is private and only visible to your followers"}
+                        </p>
+                      </div>
+                      <div className="flex items-center">
+                        <div className="flex flex-col items-end mr-3">
+                          <span
+                            className={`text-xs font-medium ${
+                              !formData.isPublic
+                                ? "text-gray-500"
+                                : "text-indigo-600"
+                            }`}
+                          >
+                            {!formData.isPublic ? "Public" : "Private"}
+                          </span>
+                          {!formData.isPublic && (
+                            <span className="text-[10px] text-gray-500">
+                              default
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                            formData.isPublic ? "bg-indigo-600" : "bg-gray-300"
+                          }`}
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              isPublic: !prev.isPublic,
+                            }))
+                          }
+                          role="switch"
+                          aria-checked={formData.isPublic}
+                          tabIndex={0}
+                          title={
+                            formData.isPublic
+                              ? "Switch to public profile"
+                              : "Switch to private profile"
+                          }
+                        >
+                          <span className="sr-only">
+                            Toggle profile privacy
+                          </span>
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              formData.isPublic
+                                ? "translate-x-6"
+                                : "translate-x-1"
+                            }`}
+                          />
+                          <span
+                            className={`absolute right-1.5 text-xs font-bold text-white ${
+                              formData.isPublic ? "opacity-100" : "opacity-0"
+                            }`}
+                          >
+                            <FiLock size={12} />
+                          </span>
+                          <span
+                            className={`absolute left-1.5 text-xs font-bold text-white ${
+                              !formData.isPublic ? "opacity-100" : "opacity-0"
+                            }`}
+                          >
+                            <FiGlobe size={12} />
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="pt-4 flex gap-3">
+                    <button
+                      type="submit"
+                      disabled={updating}
+                      className={`flex justify-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                        updating
+                          ? "bg-indigo-400"
+                          : "bg-indigo-600 hover:bg-indigo-700"
+                      } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+                    >
+                      {updating ? "Saving..." : "Save Changes"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowSettingsPopup(false)}
+                      className="flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
+            </div>
           </div>
         )}
 
@@ -681,120 +767,212 @@ export default function Profile() {
               {posts.map((post) => (
                 <div
                   key={post.id}
-                  className="p-6 hover:bg-gray-50 transition cursor-pointer relative"
-                  onClick={() => navigateToPost(post.id)}
+                  className="bg-white rounded-lg border border-gray-200 shadow-md overflow-hidden m-4"
                 >
-                  {/* Privacy indicator in top right corner */}
-                  <div className="absolute top-4 right-4 flex items-center text-xs font-medium">
-                    {post.privacy === "public" ? (
-                      <span
-                        className="flex items-center text-gray-500"
-                        title="Public post"
+                  {/* Modern post layout */}
+                  <div className="flex">
+                    {/* Vote buttons - left side */}
+                    <div className="bg-gray-50 w-12 flex flex-col items-center py-4 border-r border-gray-100">
+                      <button
+                        className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                          post.user_vote === 1
+                            ? "text-orange-500 bg-orange-50"
+                            : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
+                        }`}
+                        aria-label="Upvote"
                       >
-                        <FiGlobe className="w-4 h-4" />
-                      </span>
-                    ) : post.privacy === "almost_private" ? (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="w-5 h-5"
+                        >
+                          <path d="M12 4l8 8h-6v8h-4v-8H4z" />
+                        </svg>
+                      </button>
                       <span
-                        className="flex items-center text-gray-500"
-                        title="Visible to followers"
+                        className={`text-sm font-medium my-1 ${
+                          post.user_vote === 1
+                            ? "text-orange-500"
+                            : post.user_vote === -1
+                            ? "text-blue-500"
+                            : "text-gray-700"
+                        }`}
                       >
-                        <FiUsers className="w-4 h-4" />
+                        {(post.upvotes || 0) - (post.downvotes || 0)}
                       </span>
-                    ) : (
-                      <span
-                        className="flex items-center text-gray-500"
-                        title="Private post"
+                      <button
+                        className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                          post.user_vote === -1
+                            ? "text-blue-500 bg-blue-50"
+                            : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                        }`}
+                        aria-label="Downvote"
                       >
-                        <FiLock className="w-4 h-4" />
-                      </span>
-                    )}
-                  </div>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="w-5 h-5"
+                        >
+                          <path d="M12 20l-8-8h6V4h4v8h6z" />
+                        </svg>
+                      </button>
+                    </div>
 
-                  <div className="flex items-center mb-3">
-                    <div className="flex-shrink-0 mr-3">
-                      {user?.avatar ? (
-                        <div className="relative w-10 h-10 rounded-full overflow-hidden">
-                          <Image
-                            src={getImageUrl(user.avatar)}
-                            alt={`${
-                              user?.first_name || "User"
-                            }'s profile picture`}
-                            fill
-                            className="object-cover"
-                            unoptimized={user.avatar.startsWith("http")}
-                          />
+                    {/* Post content - right side */}
+                    <div
+                      className="p-4 w-full cursor-pointer"
+                      onClick={() => navigateToPost(post.id)}
+                    >
+                      {/* Post header with user info */}
+                      <div className="flex items-center mb-3">
+                        {/* User avatar */}
+                        <div className="flex-shrink-0 mr-3">
+                          {user?.avatar ? (
+                            <div className="relative w-10 h-10 rounded-full overflow-hidden">
+                              <Image
+                                src={getImageUrl(user.avatar)}
+                                alt={`${
+                                  user?.first_name || "User"
+                                }'s profile picture`}
+                                fill
+                                sizes="40px"
+                                className="object-cover"
+                                unoptimized={user.avatar?.startsWith("http")}
+                                onError={(e) => {
+                                  // If image fails to load, replace with initial
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = "none";
+                                  const parent = target.parentElement;
+                                  if (parent) {
+                                    const fallback =
+                                      document.createElement("div");
+                                    fallback.className =
+                                      "w-full h-full flex items-center justify-center text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500";
+                                    fallback.innerText =
+                                      user?.first_name?.charAt(0) || "?";
+                                    parent.appendChild(fallback);
+                                  }
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
+                              {user?.first_name?.charAt(0) || "?"}
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
-                          {user?.first_name?.charAt(0) || "?"}
+
+                        {/* Post metadata */}
+                        <div className="flex flex-col">
+                          <div className="flex items-center">
+                            <span className="font-semibold text-gray-900 mr-1 text-sm">
+                              {user?.first_name} {user?.last_name}
+                            </span>
+                            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full mr-2">
+                              Author
+                            </span>
+                          </div>
+                          <div className="flex items-center text-xs text-gray-500">
+                            <span>{formatDate(post.created_at)}</span>
+                            <span className="mx-1">·</span>
+                            <span className="flex items-center">
+                              {post.privacy === "public" ? (
+                                <>
+                                  <FiGlobe className="w-3 h-3 mr-1" />
+                                  Public
+                                </>
+                              ) : post.privacy === "almost_private" ? (
+                                <>
+                                  <FiUsers className="w-3 h-3 mr-1" />
+                                  Followers
+                                </>
+                              ) : (
+                                <>
+                                  <FiLock className="w-3 h-3 mr-1" />
+                                  Private
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Post title */}
+                      {post.title && (
+                        <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                          {post.title}
+                        </h3>
+                      )}
+
+                      {/* Post content */}
+                      <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
+                        {post.content}
+                      </div>
+
+                      {/* Post image */}
+                      {post.image_url && (
+                        <div className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
+                          <div
+                            className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                            style={{
+                              backgroundImage: `url(${getImageUrl(
+                                post.image_url
+                              )})`,
+                            }}
+                          ></div>
+                          <div className="relative z-10 flex justify-center bg-transparent">
+                            <img
+                              src={getImageUrl(post.image_url)}
+                              alt="Post image"
+                              className="max-w-full mx-auto max-h-72 object-contain"
+                            />
+                          </div>
                         </div>
                       )}
-                    </div>
-                    <div className="flex-grow">
-                      <div className="flex items-center">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          {user?.first_name} {user?.last_name}
-                        </h3>
+
+                      {/* Post footer with actions */}
+                      <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
+                        <div className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors">
+                          <FiMessageSquare className="h-4 w-4 mr-1.5 text-gray-500" />
+                          <span>{post.comment_count || 0} Comments</span>
+                        </div>
+                        <div
+                          className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard
+                              .writeText(
+                                window.location.origin + `/posts/${post.id}`
+                              )
+                              .then(() => alert("Link copied to clipboard!"))
+                              .catch((err) =>
+                                console.error("Failed to copy: ", err)
+                              );
+                          }}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 mr-1.5 text-gray-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                            />
+                          </svg>
+                          <span>Share</span>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 flex items-center">
-                        {formatDate(post.created_at)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <p className="text-gray-800">{post.content}</p>
-                  </div>
-
-                  {post.image_url && (
-                    <div className="rounded-lg overflow-hidden bg-gray-100 my-3">
-                      <div className="relative h-80 w-full">
-                        <Image
-                          src={getImageUrl(post.image_url)}
-                          alt="Post content"
-                          fill
-                          className="object-contain"
-                          unoptimized={post.image_url.startsWith("http")}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center text-gray-500 text-sm mt-4">
-                    <div className="flex items-center mr-4">
-                      <FiHeart className="h-4 w-4 mr-1" />
-                      {post.upvotes || 0} likes
-                    </div>
-                    <div className="flex items-center">
-                      <FiMessageSquare className="h-4 w-4 mr-1" />
-                      {post.comments?.length || 0} comments
                     </div>
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {posts.length > 0 && (
-            <div className="p-4 border-t border-gray-200 text-center">
-              <Link
-                href="/posts"
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-sm transition-colors"
-              >
-                <svg
-                  className="-ml-1 mr-2 h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Create New Post
-              </Link>
             </div>
           )}
         </div>
