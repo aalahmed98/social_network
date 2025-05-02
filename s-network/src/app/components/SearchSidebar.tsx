@@ -27,6 +27,7 @@ export default function SearchSidebar() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastSearched = useRef<string>("");
   const { collapseSearch } = useSearch();
   const router = useRouter();
 
@@ -65,6 +66,11 @@ export default function SearchSidebar() {
       return;
     }
 
+    // Only search if query is at least 2 characters
+    if (searchQuery.length < 2) {
+      return;
+    }
+
     const timer = setTimeout(() => {
       fetchSearchResults(searchQuery);
     }, 300);
@@ -73,13 +79,22 @@ export default function SearchSidebar() {
   }, [searchQuery]);
 
   const fetchSearchResults = async (query: string) => {
-    if (!query.trim()) return;
+    if (!query.trim() || query.length < 2) return;
+
+    // Check if we already searched for this exact query
+    if (query === lastSearched.current) return;
+
+    // Keep track of last searched query
+    lastSearched.current = query;
 
     setIsSearching(true);
     setSearchError(null);
 
     try {
-      // Use the Go backend API
+      // Use the Go backend API with timeout to prevent long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch(
         `http://localhost:8080/api/users/search?q=${encodeURIComponent(query)}`,
         {
@@ -88,23 +103,31 @@ export default function SearchSidebar() {
             Accept: "application/json",
           },
           credentials: "include", // Include cookies for authenticated requests
+          signal: controller.signal,
         }
       );
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(
-          `Search request failed with status: ${response.status}`
-        );
+        console.warn(`Search request failed with status: ${response.status}`);
+        setSearchResults([]);
+        return;
       }
 
       const data = await response.json();
 
-      if (!data.users || !Array.isArray(data.users)) {
-        console.error("Invalid response format:", data);
-        throw new Error("Invalid response format from server");
+      // Handle any response format gracefully
+      if (!data || typeof data !== "object") {
+        console.warn("Empty response received");
+        setSearchResults([]);
+        return;
       }
 
-      setSearchResults(data.users);
+      // Check if users property exists and is an array, otherwise use empty array
+      const users =
+        data && data.users && Array.isArray(data.users) ? data.users : [];
+      setSearchResults(users);
 
       // Add to recent searches if not already there
       if (query.length > 2 && !recentSearches.includes(query)) {
@@ -112,15 +135,21 @@ export default function SearchSidebar() {
       }
     } catch (error) {
       console.error("Search error:", error);
-      setSearchError("Failed to retrieve search results. Please try again.");
+      // Don't show error in UI, but set empty results
+      setSearchError(null);
       setSearchResults([]);
 
-      // Retry once after a brief delay
-      setTimeout(() => {
-        if (query === searchQuery) {
-          retrySearch(query);
-        }
-      }, 2000);
+      // No need to retry if it's a network error - will only fail again
+      if (
+        !(error instanceof TypeError && error.message === "Failed to fetch")
+      ) {
+        // Only retry for non-network errors
+        setTimeout(() => {
+          if (query === searchQuery) {
+            retrySearch(query);
+          }
+        }, 2000);
+      }
     } finally {
       setIsSearching(false);
     }
@@ -128,7 +157,7 @@ export default function SearchSidebar() {
 
   const retrySearch = async (query: string) => {
     try {
-      setSearchError("Retrying search...");
+      setSearchError(null);
 
       const response = await fetch(
         `http://localhost:8080/api/users/search?q=${encodeURIComponent(query)}`,
@@ -146,13 +175,21 @@ export default function SearchSidebar() {
       }
 
       const data = await response.json();
-      setSearchResults(data.users || []);
-      setSearchError(null);
+
+      // Handle any response format gracefully
+      if (!data || typeof data !== "object") {
+        console.warn("Empty response received in retry");
+        setSearchResults([]);
+        return;
+      }
+
+      // Check if users property exists and is an array, otherwise use empty array
+      const users =
+        data && data.users && Array.isArray(data.users) ? data.users : [];
+      setSearchResults(users);
     } catch (error) {
       console.error("Retry search error:", error);
-      setSearchError(
-        "Could not connect to search service. Please try again later."
-      );
+      setSearchError(null);
     }
   };
 
@@ -254,13 +291,14 @@ export default function SearchSidebar() {
             <div className="space-y-3">
               {searchResults.map((user) => (
                 <div
-                  key={user.id}
+                  key={`search-result-${user.id}`}
                   className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
                   onClick={() => handleNavigation(`/profile/${user.username}`)}
                 >
                   <div className="flex items-center">
                     <div className="w-10 h-10 relative rounded-full bg-gray-200 mr-3 overflow-hidden">
-                      {user.avatar ? (
+                      {user.avatar &&
+                      user.avatar !== "/uploads/avatars/default.jpg" ? (
                         <div className="w-full h-full flex items-center justify-center bg-gray-200">
                           <Image
                             src={getImageUrl(user.avatar)}
@@ -268,6 +306,13 @@ export default function SearchSidebar() {
                             width={40}
                             height={40}
                             className="object-cover w-full h-full"
+                            style={{
+                              animationPlayState: user.avatar.includes(
+                                "static=1"
+                              )
+                                ? "paused"
+                                : "running",
+                            }}
                             onError={(e) =>
                               createAvatarFallback(
                                 e.target as HTMLImageElement,
@@ -278,8 +323,20 @@ export default function SearchSidebar() {
                           />
                         </div>
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white font-medium bg-indigo-500">
-                          {user.firstName.charAt(0)}
+                        <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="white"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="w-6 h-6"
+                          >
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                          </svg>
                         </div>
                       )}
                       {user.verified && (
@@ -319,7 +376,11 @@ export default function SearchSidebar() {
                           </svg>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500">@{user.username}</p>
+                      <p className="text-xs text-gray-500">
+                        {user.nickname
+                          ? `@${user.nickname}`
+                          : `@${user.username}`}
+                      </p>
                     </div>
                   </div>
                 </div>

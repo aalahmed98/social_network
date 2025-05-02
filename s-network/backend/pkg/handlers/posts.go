@@ -639,7 +639,6 @@ func DeleteCommentHandler(w http.ResponseWriter, r *http.Request) {
 		"comments": comments,
 	})
 }
-
 // VotePostHandler handles upvotes and downvotes on posts
 func VotePostHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle CORS preflight request

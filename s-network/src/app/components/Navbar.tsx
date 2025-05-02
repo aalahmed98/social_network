@@ -66,6 +66,10 @@ export default function Navbar() {
     if (value.length > 1) {
       setIsSearching(true);
       try {
+        // Add timeout to prevent long waits
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
         const response = await fetch(
@@ -73,16 +77,29 @@ export default function Navbar() {
           {
             method: "GET",
             credentials: "include",
+            signal: controller.signal,
           }
         );
 
+        clearTimeout(timeoutId);
+
         if (response.ok) {
           const data = await response.json();
-          setSearchResults(data.users || []);
+          // Safely check if data and data.users exist and are valid
+          if (data && typeof data === "object") {
+            setSearchResults(Array.isArray(data.users) ? data.users : []);
+          } else {
+            setSearchResults([]);
+          }
           setShowSearchResults(true);
+        } else {
+          setSearchResults([]);
+          setShowSearchResults(false);
         }
       } catch (error) {
         console.error("Search error:", error);
+        setSearchResults([]);
+        setShowSearchResults(false);
       } finally {
         setIsSearching(false);
       }
@@ -151,12 +168,13 @@ export default function Navbar() {
             >
               {searchResults.map((result) => (
                 <div
-                  key={result.id}
+                  key={`navbar-search-${result.id}`}
                   className="p-3 hover:bg-gray-100 cursor-pointer flex items-center"
                   onClick={() => handleSearchResultClick(result.id)}
                 >
                   <div className="relative h-10 w-10 rounded-full overflow-hidden bg-gray-200 mr-3">
-                    {result.avatar ? (
+                    {result.avatar &&
+                    result.avatar !== "/uploads/avatars/default.jpg" ? (
                       <Image
                         src={
                           result.avatar.startsWith("http")
@@ -169,10 +187,28 @@ export default function Navbar() {
                         fill
                         sizes="40px"
                         className="object-cover"
+                        style={{
+                          objectFit: "cover",
+                          animationPlayState: result.avatar.includes("static=1")
+                            ? "paused"
+                            : "running",
+                        }}
                       />
                     ) : (
-                      <div className="flex items-center justify-center h-full w-full bg-indigo-100 text-indigo-500">
-                        <FiUser size={20} />
+                      <div className="flex items-center justify-center h-full w-full bg-gray-300">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="w-5 h-5"
+                        >
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
                       </div>
                     )}
                   </div>

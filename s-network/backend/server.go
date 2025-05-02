@@ -27,8 +27,19 @@ var (
 // CORS middleware function with proper error handling
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		// Get the origin from the request
+		origin := r.Header.Get("Origin")
+		
+		// Check if the origin is from localhost (any port)
+		if strings.HasPrefix(origin, "http://localhost:") || 
+		   strings.HasPrefix(origin, "https://localhost:") ||
+		   origin == "http://localhost" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else {
+			// Default to the Next.js development server
+			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		}
+		
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")

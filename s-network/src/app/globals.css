@@ -24,3 +24,11 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Prevent animation for GIFs in search results */
+img[src*="static=1"] {
+  animation: none !important;
+  -webkit-animation: none !important;
+  animation-play-state: paused !important;
+  -webkit-animation-play-state: paused !important;
+}
