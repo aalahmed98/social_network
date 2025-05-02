@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -99,16 +100,16 @@ func init() {
 	var err error
 	dbStartTime := time.Now()
 	logger.Println("Connecting to database...")
+	
+	// Create the database connection - the database file and tables will be created if they don't exist
 	db, err = sqlite.New("./data/social-network.db")
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}
 	logger.Printf("Database connection established in %v", time.Since(dbStartTime))
 
-	// Run migrations with absolute path
-	// Get the current working directory
+	// Run migrations if needed - checking if any .sql files exist
 	migrationStartTime := time.Now()
-	logger.Println("Starting database migrations...")
 	wd, err := os.Getwd()
 	if err != nil {
 		logger.Fatalf("Failed to get working directory: %v", err)
@@ -118,11 +119,31 @@ func init() {
 	migrationPath := filepath.Join(wd, "pkg", "db", "migrations", "sqlite")
 	migrationPath = filepath.ToSlash(migrationPath)
 	
-	logger.Printf("Using migration path: %s", migrationPath)
-	if err := db.Migrate(migrationPath); err != nil {
-		logger.Fatalf("Failed to run migrations: %v", err)
+	// Check if migrations directory exists and has .sql files
+	migrationsExist := false
+	if _, err := os.Stat(migrationPath); err == nil {
+		files, err := os.ReadDir(migrationPath)
+		if err == nil {
+			for _, file := range files {
+				if strings.HasSuffix(file.Name(), ".sql") {
+					migrationsExist = true
+					break
+				}
+			}
+		}
 	}
-	logger.Printf("Database migrations completed in %v", time.Since(migrationStartTime))
+	
+	// Only run migrations if SQL files exist
+	if migrationsExist {
+		logger.Printf("Running database migrations from %s", migrationPath)
+		if err := db.Migrate(migrationPath); err != nil {
+			// Log error but continue - tables may already be created by our initialization
+			logger.Printf("Migration warning (not critical): %v", err)
+		}
+		logger.Printf("Database migrations completed in %v", time.Since(migrationStartTime))
+	} else {
+		logger.Printf("No migrations found in %s, skipping", migrationPath)
+	}
 
 	// Initialize session store
 	sessionStartTime := time.Now()

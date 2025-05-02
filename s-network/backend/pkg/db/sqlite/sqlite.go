@@ -3,6 +3,8 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -18,6 +20,15 @@ type DB struct {
 
 // New creates a new database connection
 func New(dbPath string) (*DB, error) {
+	// Check if the database directory exists, create it if it doesn't
+	dbDir := filepath.Dir(dbPath)
+	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dbDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create database directory: %w", err)
+		}
+	}
+
+	// Open the database with SQLite's auto-create mode
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
@@ -26,8 +37,156 @@ func New(dbPath string) (*DB, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
+	
+	// Initialize the database struct
+	sqliteDB := &DB{db}
+	
+	// Ensure all tables exist
+	if err := sqliteDB.InitializeTables(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize tables: %w", err)
+	}
 
-	return &DB{db}, nil
+	return sqliteDB, nil
+}
+
+// InitializeTables ensures all necessary tables exist in the database
+func (db *DB) InitializeTables() error {
+	// Create users table if it doesn't exist
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			first_name TEXT NOT NULL,
+			last_name TEXT NOT NULL,
+			date_of_birth TEXT NOT NULL,
+			avatar TEXT,
+			nickname TEXT,
+			about_me TEXT,
+			is_public BOOLEAN DEFAULT 1,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create sessions table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			data TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			expires_at TIMESTAMP NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create auth_tokens table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS auth_tokens (
+			id TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			token_type TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			expires_at TIMESTAMP NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create posts table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS posts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			title TEXT,
+			content TEXT NOT NULL,
+			image_url TEXT,
+			privacy TEXT DEFAULT 'public',
+			upvotes INTEGER DEFAULT 0,
+			downvotes INTEGER DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create comments table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS comments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			post_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			image_url TEXT,
+			vote_count INTEGER DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create votes table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS votes (
+			user_id INTEGER NOT NULL,
+			content_id INTEGER NOT NULL,
+			content_type TEXT NOT NULL,
+			vote_type INTEGER NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, content_id, content_type),
+			FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create followers table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS followers (
+			follower_id INTEGER NOT NULL,
+			following_id INTEGER NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (follower_id, following_id),
+			FOREIGN KEY (follower_id) REFERENCES users (id) ON DELETE CASCADE,
+			FOREIGN KEY (following_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create post_access table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS post_access (
+			post_id INTEGER NOT NULL,
+			follower_id INTEGER NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (post_id, follower_id),
+			FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE,
+			FOREIGN KEY (follower_id) REFERENCES users (id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Migrate runs the database migrations
