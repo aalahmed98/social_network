@@ -10,7 +10,9 @@ export default function Sidebar() {
     <div className="w-64 shrink-0 h-screen fixed top-0 left-0 bg-white shadow-md border-r border-gray-200">
       <div className="p-6 h-full overflow-y-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold italic mb-6">S-Network</h1>
+          <h1 className="text-2xl font-bold italic mb-6 text-indigo-600">
+            Social Network
+          </h1>
         </div>
         <div className="space-y-4">
           <Link
