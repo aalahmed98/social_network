@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 
 	"s-network/backend/pkg/db/sqlite"
 	"s-network/backend/pkg/handlers"
+	"s-network/backend/pkg/logger"
 	"s-network/backend/pkg/middleware"
 )
 
@@ -81,7 +81,7 @@ func errorMiddleware(next http.Handler) http.Handler {
 
 func init() {
 	startTime := time.Now()
-	log.Println("Starting initialization...")
+	logger.Println("Starting initialization...")
 
 	// Create database directory if it doesn't exist
 	dbDir := "./data"
@@ -94,39 +94,39 @@ func init() {
 	if _, err := os.Stat(uploadsDir); os.IsNotExist(err) {
 		os.MkdirAll(uploadsDir, 0755)
 	}
-	log.Printf("Directory setup completed in %v", time.Since(startTime))
+	logger.Printf("Directory setup completed in %v", time.Since(startTime))
 
 	var err error
 	dbStartTime := time.Now()
-	log.Println("Connecting to database...")
+	logger.Println("Connecting to database...")
 	db, err = sqlite.New("./data/social-network.db")
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatalf("Failed to connect to database: %v", err)
 	}
-	log.Printf("Database connection established in %v", time.Since(dbStartTime))
+	logger.Printf("Database connection established in %v", time.Since(dbStartTime))
 
 	// Run migrations with absolute path
 	// Get the current working directory
 	migrationStartTime := time.Now()
-	log.Println("Starting database migrations...")
+	logger.Println("Starting database migrations...")
 	wd, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Failed to get working directory: %v", err)
+		logger.Fatalf("Failed to get working directory: %v", err)
 	}
 	
 	// Create absolute path and convert to forward slashes for URL
 	migrationPath := filepath.Join(wd, "pkg", "db", "migrations", "sqlite")
 	migrationPath = filepath.ToSlash(migrationPath)
 	
-	log.Printf("Using migration path: %s", migrationPath)
+	logger.Printf("Using migration path: %s", migrationPath)
 	if err := db.Migrate(migrationPath); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Fatalf("Failed to run migrations: %v", err)
 	}
-	log.Printf("Database migrations completed in %v", time.Since(migrationStartTime))
+	logger.Printf("Database migrations completed in %v", time.Since(migrationStartTime))
 
 	// Initialize session store
 	sessionStartTime := time.Now()
-	log.Println("Setting up session store...")
+	logger.Println("Setting up session store...")
 	store = sessions.NewCookieStore(sessionKey)
 	
 	// In development, we don't need SameSite=None and Secure
@@ -144,20 +144,20 @@ func init() {
 	}
 	
 	store.Options = storeOptions
-	log.Printf("Session store setup completed in %v", time.Since(sessionStartTime))
+	logger.Printf("Session store setup completed in %v", time.Since(sessionStartTime))
 	
 	// Initialize auth handlers
 	handlersStartTime := time.Now()
-	log.Println("Setting up handlers...")
+	logger.Println("Setting up handlers...")
 	handlers.SetDependencies(db, store)
-	log.Printf("Handlers setup completed in %v", time.Since(handlersStartTime))
+	logger.Printf("Handlers setup completed in %v", time.Since(handlersStartTime))
 
-	log.Printf("Total initialization completed in %v", time.Since(startTime))
+	logger.Printf("Total initialization completed in %v", time.Since(startTime))
 }
 
 func main() {
 	startTime := time.Now()
-	log.Println("Starting server setup...")
+	logger.Println("Starting server setup...")
 	
 	r := mux.NewRouter()
 
@@ -214,12 +214,12 @@ func main() {
 		})
 	})
 
-	log.Printf("Server setup completed in %v", time.Since(startTime))
+	logger.Printf("Server setup completed in %v", time.Since(startTime))
 	
 	// Start server
 	port := 8080
 	fmt.Printf("Server running on http://localhost:%d\n", port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), r); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		logger.Fatalf("Failed to start server: %v", err)
 	}
 }

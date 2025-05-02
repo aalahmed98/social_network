@@ -2,10 +2,11 @@ package middleware
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"strings"
+
+	"s-network/backend/pkg/logger"
 )
 
 // Protected paths that require authentication
@@ -42,7 +43,7 @@ func RouteProtectionMiddleware(next http.Handler) http.Handler {
 		// Get the session cookie
 		cookie, err := r.Cookie("session")
 		if err != nil || cookie.Value == "" {
-			log.Printf("No session cookie found for path %s, redirecting to login", path)
+			logger.Printf("No session cookie found for path %s, redirecting to login", path)
 			redirectToLogin(w, r)
 			return
 		}
@@ -58,7 +59,7 @@ func RouteProtectionMiddleware(next http.Handler) http.Handler {
 		
 		req, err := http.NewRequest("GET", backendURL+"/api/auth/check", nil)
 		if err != nil {
-			log.Printf("Error creating auth check request: %v", err)
+			logger.Printf("Error creating auth check request: %v", err)
 			redirectToLogin(w, r)
 			return
 		}
@@ -69,7 +70,7 @@ func RouteProtectionMiddleware(next http.Handler) http.Handler {
 		// Send the request
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("Error checking authentication: %v", err)
+			logger.Printf("Error checking authentication: %v", err)
 			redirectToLogin(w, r)
 			return
 		}
@@ -77,7 +78,7 @@ func RouteProtectionMiddleware(next http.Handler) http.Handler {
 
 		// Check the response status
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("Auth check failed with status %d for path %s", resp.StatusCode, path)
+			logger.Printf("Auth check failed with status %d for path %s", resp.StatusCode, path)
 			redirectToLogin(w, r)
 			return
 		}
@@ -106,7 +107,7 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request) {
 			"error": "Unauthorized",
 		})
 		if err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
+			logger.Printf("Error encoding JSON response: %v", err)
 		}
 		return
 	}

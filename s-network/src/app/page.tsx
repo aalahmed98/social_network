@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import Image from "next/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 
 // Basic types
 interface Post {
@@ -319,18 +321,22 @@ export default function Home() {
                             {/* User avatar */}
                             <div className="flex-shrink-0 mr-3">
                               {post.author.avatar ? (
-                                <img
-                                  src={
-                                    post.author.avatar.startsWith("http")
-                                      ? post.author.avatar
-                                      : `${
-                                          process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                          "http://localhost:8080"
-                                        }${post.author.avatar}`
-                                  }
-                                  alt={`${post.author.first_name} ${post.author.last_name}`}
-                                  className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
-                                />
+                                <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-gray-100">
+                                  <Image
+                                    src={getImageUrl(post.author.avatar)}
+                                    alt={`${post.author.first_name} ${post.author.last_name}`}
+                                    width={40}
+                                    height={40}
+                                    className="object-cover"
+                                    onError={(e) =>
+                                      createAvatarFallback(
+                                        e.target as HTMLImageElement,
+                                        post.author.first_name.charAt(0),
+                                        "text-sm"
+                                      )
+                                    }
+                                  />
+                                </div>
                               ) : (
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
                                   {post.author.first_name.charAt(0)}
@@ -459,26 +465,14 @@ export default function Home() {
                               <div
                                 className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
                                 style={{
-                                  backgroundImage: `url(${
-                                    post.image_url.startsWith("http")
-                                      ? post.image_url
-                                      : `${
-                                          process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                          "http://localhost:8080"
-                                        }${post.image_url}`
-                                  })`,
+                                  backgroundImage: `url(${getImageUrl(
+                                    post.image_url
+                                  )})`,
                                 }}
                               ></div>
                               <div className="relative z-10 flex justify-center bg-transparent">
                                 <img
-                                  src={
-                                    post.image_url.startsWith("http")
-                                      ? post.image_url
-                                      : `${
-                                          process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                          "http://localhost:8080"
-                                        }${post.image_url}`
-                                  }
+                                  src={getImageUrl(post.image_url)}
                                   alt="Post image"
                                   className="max-w-full mx-auto max-h-72 object-contain"
                                 />

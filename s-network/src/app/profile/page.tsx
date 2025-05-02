@@ -4,6 +4,7 @@ import React, { useEffect, useState, FormEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import {
   FiEdit3,
   FiCamera,
@@ -568,24 +569,16 @@ export default function Profile() {
                                 user?.first_name || "User"
                               }'s profile picture`}
                               fill
-                              sizes="48px"
+                              sizes="40px"
                               className="object-cover"
                               unoptimized={user.avatar?.startsWith("http")}
-                              onError={(e) => {
-                                // If image fails to load, replace with initial
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = "none";
-                                const parent = target.parentElement;
-                                if (parent) {
-                                  const fallback =
-                                    document.createElement("div");
-                                  fallback.className =
-                                    "h-full w-full flex items-center justify-center bg-indigo-600 text-white font-bold";
-                                  fallback.innerText =
-                                    formData.firstName.charAt(0) || "?";
-                                  parent.appendChild(fallback);
-                                }
-                              }}
+                              onError={(e) =>
+                                createAvatarFallback(
+                                  e.target as HTMLImageElement,
+                                  user?.first_name?.charAt(0) || "?",
+                                  "text-sm"
+                                )
+                              }
                             />
                           </div>
                         ) : (
@@ -840,21 +833,13 @@ export default function Profile() {
                                 sizes="40px"
                                 className="object-cover"
                                 unoptimized={user.avatar?.startsWith("http")}
-                                onError={(e) => {
-                                  // If image fails to load, replace with initial
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = "none";
-                                  const parent = target.parentElement;
-                                  if (parent) {
-                                    const fallback =
-                                      document.createElement("div");
-                                    fallback.className =
-                                      "w-full h-full flex items-center justify-center text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500";
-                                    fallback.innerText =
-                                      user?.first_name?.charAt(0) || "?";
-                                    parent.appendChild(fallback);
-                                  }
-                                }}
+                                onError={(e) =>
+                                  createAvatarFallback(
+                                    e.target as HTMLImageElement,
+                                    user?.first_name?.charAt(0) || "?",
+                                    "text-sm"
+                                  )
+                                }
                               />
                             </div>
                           ) : (

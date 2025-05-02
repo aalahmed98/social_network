@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
+import Image from "next/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 
 // Post type definition
 interface Post {
@@ -465,18 +467,22 @@ export default function PostDetail() {
             {/* Author avatar */}
             <div className="flex-shrink-0 mr-3">
               {post?.author.avatar ? (
-                <img
-                  src={
-                    post.author.avatar.startsWith("http")
-                      ? post.author.avatar
-                      : `${
-                          process.env.NEXT_PUBLIC_BACKEND_URL ||
-                          "http://localhost:8080"
-                        }${post.author.avatar}`
-                  }
-                  alt={`${post.author.first_name} ${post.author.last_name}`}
-                  className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
-                />
+                <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-gray-100">
+                  <Image
+                    src={getImageUrl(post.author.avatar)}
+                    alt={`${post.author.first_name} ${post.author.last_name}`}
+                    width={40}
+                    height={40}
+                    className="object-cover"
+                    onError={(e) =>
+                      createAvatarFallback(
+                        e.target as HTMLImageElement,
+                        post.author.first_name.charAt(0),
+                        "text-sm"
+                      )
+                    }
+                  />
+                </div>
               ) : (
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
                   {post?.author.first_name.charAt(0)}
@@ -651,26 +657,12 @@ export default function PostDetail() {
                   <div
                     className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
                     style={{
-                      backgroundImage: `url(${
-                        post.image_url.startsWith("http")
-                          ? post.image_url
-                          : `${
-                              process.env.NEXT_PUBLIC_BACKEND_URL ||
-                              "http://localhost:8080"
-                            }${post.image_url}`
-                      })`,
+                      backgroundImage: `url(${getImageUrl(post.image_url)})`,
                     }}
                   ></div>
                   <div className="relative z-10 flex justify-center bg-transparent">
                     <img
-                      src={
-                        post.image_url.startsWith("http")
-                          ? post.image_url
-                          : `${
-                              process.env.NEXT_PUBLIC_BACKEND_URL ||
-                              "http://localhost:8080"
-                            }${post.image_url}`
-                      }
+                      src={getImageUrl(post.image_url)}
                       alt="Post image"
                       className="max-h-[28rem] w-auto max-w-full mx-auto object-contain"
                     />
@@ -901,18 +893,22 @@ export default function PostDetail() {
                   <div className="flex">
                     <div className="flex-shrink-0 mr-3">
                       {comment.author.avatar ? (
-                        <img
-                          src={
-                            comment.author.avatar.startsWith("http")
-                              ? comment.author.avatar
-                              : `${
-                                  process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                  "http://localhost:8080"
-                                }${comment.author.avatar}`
-                          }
-                          alt={`${comment.author.first_name} ${comment.author.last_name}`}
-                          className="w-8 h-8 rounded-full border-2 border-gray-100 object-cover"
-                        />
+                        <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-gray-100">
+                          <Image
+                            src={getImageUrl(comment.author.avatar)}
+                            alt={`${comment.author.first_name} ${comment.author.last_name}`}
+                            width={32}
+                            height={32}
+                            className="object-cover"
+                            onError={(e) =>
+                              createAvatarFallback(
+                                e.target as HTMLImageElement,
+                                comment.author.first_name.charAt(0),
+                                "text-xs"
+                              )
+                            }
+                          />
+                        </div>
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold text-white shadow-sm">
                           {comment.author.first_name.charAt(0)}
@@ -973,26 +969,14 @@ export default function PostDetail() {
                           <div
                             className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110 rounded-lg"
                             style={{
-                              backgroundImage: `url(${
-                                comment.image_url.startsWith("http")
-                                  ? comment.image_url
-                                  : `${
-                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                      "http://localhost:8080"
-                                    }${comment.image_url}`
-                              })`,
+                              backgroundImage: `url(${getImageUrl(
+                                comment.image_url
+                              )})`,
                             }}
                           ></div>
                           <div className="relative z-10">
                             <img
-                              src={
-                                comment.image_url.startsWith("http")
-                                  ? comment.image_url
-                                  : `${
-                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                      "http://localhost:8080"
-                                    }${comment.image_url}`
-                              }
+                              src={getImageUrl(comment.image_url)}
                               alt="Comment image"
                               className="max-h-60 max-w-full rounded-lg border border-gray-200 shadow-sm"
                             />

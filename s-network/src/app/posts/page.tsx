@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 
 // Post type definition
 interface Post {
@@ -368,18 +369,22 @@ export default function Posts() {
                           className="flex items-center ml-3 cursor-pointer flex-1 py-1"
                         >
                           {follower.avatar ? (
-                            <img
-                              src={
-                                follower.avatar.startsWith("http")
-                                  ? follower.avatar
-                                  : `${
-                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                      "http://localhost:8080"
-                                    }${follower.avatar}`
-                              }
-                              alt={`${follower.first_name} ${follower.last_name}`}
-                              className="w-8 h-8 rounded-full object-cover border-2 border-gray-100 mr-3"
-                            />
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-gray-100 mr-3">
+                              <Image
+                                src={getImageUrl(follower.avatar)}
+                                alt={`${follower.first_name} ${follower.last_name}`}
+                                width={32}
+                                height={32}
+                                className="object-cover"
+                                onError={(e) =>
+                                  createAvatarFallback(
+                                    e.target as HTMLImageElement,
+                                    follower.first_name.charAt(0),
+                                    "text-xs"
+                                  )
+                                }
+                              />
+                            </div>
                           ) : (
                             <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white mr-3 shadow-sm">
                               {follower.first_name.charAt(0)}

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearch } from "@/context/SearchContext";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 
 // Define the user type for search results
 interface User {
@@ -261,10 +262,19 @@ export default function SearchSidebar() {
                     <div className="w-10 h-10 relative rounded-full bg-gray-200 mr-3 overflow-hidden">
                       {user.avatar ? (
                         <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                          <img
-                            src={user.avatar}
+                          <Image
+                            src={getImageUrl(user.avatar)}
                             alt={user.username}
+                            width={40}
+                            height={40}
                             className="object-cover w-full h-full"
+                            onError={(e) =>
+                              createAvatarFallback(
+                                e.target as HTMLImageElement,
+                                user.firstName.charAt(0),
+                                "text-sm"
+                              )
+                            }
                           />
                         </div>
                       ) : (
