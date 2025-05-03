@@ -293,7 +293,7 @@ export default function SearchSidebar() {
                 <div
                   key={`search-result-${user.id}`}
                   className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
-                  onClick={() => handleNavigation(`/profile/${user.username}`)}
+                  onClick={() => handleNavigation(`/profile/${user.id}`)}
                 >
                   <div className="flex items-center">
                     <div className="w-10 h-10 relative rounded-full bg-gray-200 mr-3 overflow-hidden">
