@@ -41,6 +41,4 @@ yarn-error.log*
 next-env.d.ts
 
 # database
-*.db
-backend/data/social-network.db
-s-network/backend/data/social-network.db
+
