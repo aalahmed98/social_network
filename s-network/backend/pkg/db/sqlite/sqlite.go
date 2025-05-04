@@ -18,6 +18,10 @@ type DB struct {
 	*sql.DB // Embedding a pointer to sql.DB
 }
 
+func (db *DB) GetUserByID(id int) (any, error) {
+	panic("unimplemented")
+}
+
 // New creates a new database connection
 func New(dbPath string) (*DB, error) {
 	// Check if the database directory exists, create it if it doesn't
@@ -37,10 +41,10 @@ func New(dbPath string) (*DB, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
-	
+
 	// Initialize the database struct
 	sqliteDB := &DB{db}
-	
+
 	// Ensure all tables exist
 	if err := sqliteDB.InitializeTables(); err != nil {
 		db.Close()
@@ -216,7 +220,7 @@ func (db *DB) Migrate(migrationPath string) error {
 func (db *DB) CreateUser(email, password, firstName, lastName, dob, avatar, nickname, aboutMe string) (int64, error) {
 	query := `INSERT INTO users (email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	
+
 	result, err := db.Exec(query, email, password, firstName, lastName, dob, avatar, nickname, aboutMe)
 	if err != nil {
 		return 0, err
@@ -234,27 +238,27 @@ func (db *DB) CreateUser(email, password, firstName, lastName, dob, avatar, nick
 func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
 	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public 
 			  FROM users WHERE email = ?`
-	
+
 	row := db.QueryRow(query, email)
-	
+
 	var id int
 	var password, firstName, lastName, dob string
 	var avatar, nickname, aboutMe sql.NullString
 	var isPublic bool
-	
+
 	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &nickname, &aboutMe, &isPublic)
 	if err != nil {
 		return nil, err
 	}
 
 	user := map[string]interface{}{
-		"id":          id,
-		"email":       email,
-		"password":    password,
-		"first_name":  firstName,
-		"last_name":   lastName,
+		"id":            id,
+		"email":         email,
+		"password":      password,
+		"first_name":    firstName,
+		"last_name":     lastName,
 		"date_of_birth": dob,
-		"is_public":   isPublic,
+		"is_public":     isPublic,
 	}
 
 	if avatar.Valid {
@@ -274,26 +278,26 @@ func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
 func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
 	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public 
 			  FROM users WHERE id = ?`
-	
+
 	row := db.QueryRow(query, id)
-	
+
 	var email, password, firstName, lastName, dob string
 	var avatar, nickname, aboutMe sql.NullString
 	var isPublic bool
-	
+
 	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &nickname, &aboutMe, &isPublic)
 	if err != nil {
 		return nil, err
 	}
 
 	user := map[string]interface{}{
-		"id":          id,
-		"email":       email,
-		"password":    password,
-		"first_name":  firstName,
-		"last_name":   lastName,
+		"id":            id,
+		"email":         email,
+		"password":      password,
+		"first_name":    firstName,
+		"last_name":     lastName,
 		"date_of_birth": dob,
-		"is_public":   isPublic,
+		"is_public":     isPublic,
 	}
 
 	if avatar.Valid {
@@ -313,7 +317,7 @@ func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
 func (db *DB) SaveSession(sessionID string, userID int, data string, expiresAt string) error {
 	query := `INSERT INTO sessions (id, user_id, data, expires_at) 
 			  VALUES (?, ?, ?, ?)`
-	
+
 	_, err := db.Exec(query, sessionID, userID, data, expiresAt)
 	return err
 }
@@ -322,13 +326,13 @@ func (db *DB) SaveSession(sessionID string, userID int, data string, expiresAt s
 func (db *DB) GetSession(sessionID string) (map[string]interface{}, error) {
 	query := `SELECT id, user_id, data, created_at, expires_at 
 			  FROM sessions WHERE id = ? AND expires_at > datetime('now')`
-	
+
 	row := db.QueryRow(query, sessionID)
-	
+
 	var id string
 	var userID int
 	var data, createdAt, expiresAt string
-	
+
 	err := row.Scan(&id, &userID, &data, &createdAt, &expiresAt)
 	if err != nil {
 		return nil, err
@@ -348,7 +352,7 @@ func (db *DB) GetSession(sessionID string) (map[string]interface{}, error) {
 // DeleteSession removes a session
 func (db *DB) DeleteSession(sessionID string) error {
 	query := `DELETE FROM sessions WHERE id = ?`
-	
+
 	_, err := db.Exec(query, sessionID)
 	return err
 }
@@ -357,7 +361,7 @@ func (db *DB) DeleteSession(sessionID string) error {
 func (db *DB) CreateAuthToken(tokenID string, userID int, tokenType string, expiresAt string) error {
 	query := `INSERT INTO auth_tokens (id, user_id, token_type, expires_at) 
 			  VALUES (?, ?, ?, ?)`
-	
+
 	_, err := db.Exec(query, tokenID, userID, tokenType, expiresAt)
 	return err
 }
@@ -366,12 +370,12 @@ func (db *DB) CreateAuthToken(tokenID string, userID int, tokenType string, expi
 func (db *DB) GetAuthToken(tokenID string) (map[string]interface{}, error) {
 	query := `SELECT id, user_id, token_type, created_at, expires_at 
 			  FROM auth_tokens WHERE id = ? AND expires_at > datetime('now')`
-	
+
 	row := db.QueryRow(query, tokenID)
-	
+
 	var id, tokenType, createdAt, expiresAt string
 	var userID int
-	
+
 	err := row.Scan(&id, &userID, &tokenType, &createdAt, &expiresAt)
 	if err != nil {
 		return nil, err
@@ -391,7 +395,7 @@ func (db *DB) GetAuthToken(tokenID string) (map[string]interface{}, error) {
 // DeleteAuthToken removes a token
 func (db *DB) DeleteAuthToken(tokenID string) error {
 	query := `DELETE FROM auth_tokens WHERE id = ?`
-	
+
 	_, err := db.Exec(query, tokenID)
 	return err
 }
@@ -400,51 +404,51 @@ func (db *DB) DeleteAuthToken(tokenID string) error {
 func (db *DB) UpdateUser(userID int, data map[string]interface{}) error {
 	// Start building query
 	query := "UPDATE users SET "
-	
+
 	// Prepare query parts and arguments
 	var parts []string
 	var args []interface{}
-	
+
 	// Add each field to be updated
 	if firstName, ok := data["first_name"]; ok {
 		parts = append(parts, "first_name = ?")
 		args = append(args, firstName)
 	}
-	
+
 	if lastName, ok := data["last_name"]; ok {
 		parts = append(parts, "last_name = ?")
 		args = append(args, lastName)
 	}
-	
+
 	if nickname, ok := data["nickname"]; ok {
 		parts = append(parts, "nickname = ?")
 		args = append(args, nickname)
 	}
-	
+
 	if aboutMe, ok := data["about_me"]; ok {
 		parts = append(parts, "about_me = ?")
 		args = append(args, aboutMe)
 	}
-	
+
 	if avatar, ok := data["avatar"]; ok {
 		parts = append(parts, "avatar = ?")
 		args = append(args, avatar)
 	}
-	
+
 	if isPublic, ok := data["is_public"]; ok {
 		parts = append(parts, "is_public = ?")
 		args = append(args, isPublic)
 	}
-	
+
 	// If no fields to update, return
 	if len(parts) == 0 {
 		return nil
 	}
-	
+
 	// Complete the query
 	query += fmt.Sprintf("%s WHERE id = ?", strings.Join(parts, ", "))
 	args = append(args, userID)
-	
+
 	// Execute the query
 	_, err := db.Exec(query, args...)
 	return err
@@ -454,7 +458,7 @@ func (db *DB) UpdateUser(userID int, data map[string]interface{}) error {
 func (db *DB) AddComment(postID, userID int64, content string, imageURL string) (int64, error) {
 	query := `INSERT INTO comments (post_id, user_id, content, image_url) 
 			  VALUES (?, ?, ?, ?)`
-	
+
 	result, err := db.Exec(query, postID, userID, content, imageURL)
 	if err != nil {
 		return 0, err
@@ -479,15 +483,15 @@ func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error
 		WHERE c.post_id = ?
 		ORDER BY c.created_at DESC
 	`
-	
+
 	rows, err := db.Query(query, postID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	comments := []map[string]interface{}{}
-	
+
 	for rows.Next() {
 		var (
 			id        int64
@@ -501,12 +505,12 @@ func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error
 			lastName  string
 			avatar    *string
 		)
-		
+
 		err := rows.Scan(&id, &postID, &userID, &content, &imageURL, &createdAt, &voteCount, &firstName, &lastName, &avatar)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		comment := map[string]interface{}{
 			"id":         id,
 			"post_id":    postID,
@@ -520,18 +524,18 @@ func (db *DB) GetCommentsByPostID(postID int64) ([]map[string]interface{}, error
 				"last_name":  lastName,
 			},
 		}
-		
+
 		if imageURL != nil {
 			comment["image_url"] = *imageURL
 		}
-		
+
 		if avatar != nil {
 			comment["author"].(map[string]interface{})["avatar"] = *avatar
 		}
-		
+
 		comments = append(comments, comment)
 	}
-	
+
 	return comments, nil
 }
 
@@ -551,38 +555,38 @@ func (db *DB) GetUserFollowers(userID int) ([]map[string]interface{}, error) {
 		JOIN users u ON f.follower_id = u.id
 		WHERE f.following_id = ?
 	`
-	
+
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var followers []map[string]interface{}
-	
+
 	for rows.Next() {
 		var id int
 		var firstName, lastName string
 		var avatar sql.NullString
-		
+
 		err := rows.Scan(&id, &firstName, &lastName, &avatar)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		follower := map[string]interface{}{
 			"id":         id,
 			"first_name": firstName,
 			"last_name":  lastName,
 		}
-		
+
 		if avatar.Valid {
 			follower["avatar"] = avatar.String
 		}
-		
+
 		followers = append(followers, follower)
 	}
-	
+
 	return followers, nil
 }
 
@@ -771,7 +775,7 @@ func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int
 	if voteExists {
 		// If vote type is the same, remove the vote (toggle off)
 		if existingVoteType == voteType {
-			_, err = tx.Exec(`DELETE FROM votes WHERE user_id = ? AND content_id = ? AND content_type = ?`, 
+			_, err = tx.Exec(`DELETE FROM votes WHERE user_id = ? AND content_id = ? AND content_type = ?`,
 				userID, contentID, contentType)
 			if err != nil {
 				return err
@@ -792,7 +796,7 @@ func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int
 			}
 		} else {
 			// Change vote type
-			_, err = tx.Exec(`UPDATE votes SET vote_type = ? WHERE user_id = ? AND content_id = ? AND content_type = ?`, 
+			_, err = tx.Exec(`UPDATE votes SET vote_type = ? WHERE user_id = ? AND content_id = ? AND content_type = ?`,
 				voteType, userID, contentID, contentType)
 			if err != nil {
 				return err
@@ -815,7 +819,7 @@ func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int
 		}
 	} else {
 		// Create new vote
-		_, err = tx.Exec(`INSERT INTO votes (user_id, content_id, content_type, vote_type) VALUES (?, ?, ?, ?)`, 
+		_, err = tx.Exec(`INSERT INTO votes (user_id, content_id, content_type, vote_type) VALUES (?, ?, ?, ?)`,
 			userID, contentID, contentType, voteType)
 		if err != nil {
 			return err
@@ -866,21 +870,21 @@ func (db *DB) GetCommentsByPostIDWithUserVotes(postID int64, userID int) ([]map[
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Then get user votes for each comment
 	for i, comment := range comments {
 		commentID, ok := comment["id"].(int64)
 		if !ok {
 			continue
 		}
-		
+
 		// Get user's vote on this comment
 		userVote, err := db.GetUserVote(userID, commentID, "comment")
 		if err == nil {
 			comments[i]["user_vote"] = userVote
 		}
 	}
-	
+
 	return comments, nil
 }
 
@@ -897,10 +901,32 @@ func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
 			LOWER(first_name || ' ' || last_name) LIKE ? OR
 			LOWER(nickname) LIKE ? OR
 			LOWER(email) LIKE ?
-		LIMIT 10
+		ORDER BY
+			CASE 
+				WHEN LOWER(first_name) = LOWER(?) THEN 1
+				WHEN LOWER(last_name) = LOWER(?) THEN 2
+				WHEN LOWER(nickname) = LOWER(?) THEN 3
+				ELSE 4
+			END,
+			first_name ASC,
+			last_name ASC
+		LIMIT 20
 	`
 
-	rows, err := db.Query(query, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
+	// Remove '%' from searchTerm for exact match in ORDER BY clause
+	exactTerm := strings.TrimPrefix(strings.TrimSuffix(searchTerm, "%"), "%")
+
+	rows, err := db.Query(
+		query, 
+		searchTerm, 
+		searchTerm, 
+		searchTerm, 
+		searchTerm, 
+		searchTerm,
+		exactTerm,
+		exactTerm,
+		exactTerm,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -920,15 +946,17 @@ func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
 		}
 
 		user := map[string]interface{}{
-			"id":          id,
-			"email":       email,
-			"first_name":  firstName,
-			"last_name":   lastName,
-			"is_public":   isPublic,
+			"id":         id,
+			"email":      email,
+			"first_name": firstName,
+			"last_name":  lastName,
+			"is_public":  isPublic,
 		}
 
 		if avatar.Valid {
 			user["avatar"] = avatar.String
+		} else {
+			user["avatar"] = "" // Provide default empty string for consistency
 		}
 		if nickname.Valid {
 			user["nickname"] = nickname.String
@@ -943,5 +971,9 @@ func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
 		}
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return users, nil
-} 
+}

@@ -95,8 +95,10 @@ export default function SearchSidebar() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(
-        `http://localhost:8080/api/users/search?q=${encodeURIComponent(query)}`,
+        `${backendUrl}/api/users/search?q=${encodeURIComponent(query.trim())}`,
         {
           method: "GET",
           headers: {
@@ -125,9 +127,23 @@ export default function SearchSidebar() {
       }
 
       // Check if users property exists and is an array, otherwise use empty array
-      const users =
-        data && data.users && Array.isArray(data.users) ? data.users : [];
-      setSearchResults(users);
+      const users = data.users && Array.isArray(data.users) ? data.users : [];
+
+      // Map the API response to match our User interface
+      const mappedUsers = users.map((user) => ({
+        id: user.id,
+        username: user.email?.split("@")[0] || "user",
+        firstName: user.first_name,
+        lastName: user.last_name,
+        nickname: user.nickname || null,
+        verified: Boolean(user.verified), // Ensure boolean type
+        avatar: user.avatar || "",
+        followers: user.followers || 0, // Use followers count from API if available
+        description: user.about_me || "",
+        followedBy: user.followed_by || [],
+      }));
+
+      setSearchResults(mappedUsers);
 
       // Add to recent searches if not already there
       if (query.length > 2 && !recentSearches.includes(query)) {
@@ -159,8 +175,10 @@ export default function SearchSidebar() {
     try {
       setSearchError(null);
 
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(
-        `http://localhost:8080/api/users/search?q=${encodeURIComponent(query)}`,
+        `${backendUrl}/api/users/search?q=${encodeURIComponent(query.trim())}`,
         {
           method: "GET",
           headers: {
@@ -184,9 +202,23 @@ export default function SearchSidebar() {
       }
 
       // Check if users property exists and is an array, otherwise use empty array
-      const users =
-        data && data.users && Array.isArray(data.users) ? data.users : [];
-      setSearchResults(users);
+      const users = data.users && Array.isArray(data.users) ? data.users : [];
+
+      // Map the API response to match our User interface
+      const mappedUsers = users.map((user) => ({
+        id: user.id,
+        username: user.email?.split("@")[0] || "user",
+        firstName: user.first_name,
+        lastName: user.last_name,
+        nickname: user.nickname || null,
+        verified: Boolean(user.verified), // Ensure boolean type
+        avatar: user.avatar || "",
+        followers: user.followers || 0, // Use followers count from API if available
+        description: user.about_me || "",
+        followedBy: user.followed_by || [],
+      }));
+
+      setSearchResults(mappedUsers);
     } catch (error) {
       console.error("Retry search error:", error);
       setSearchError(null);
@@ -293,7 +325,7 @@ export default function SearchSidebar() {
                 <div
                   key={`search-result-${user.id}`}
                   className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
-                  onClick={() => handleNavigation(`/profile/${user.username}`)}
+                  onClick={() => handleNavigation(`/profile/${user.id}`)}
                 >
                   <div className="flex items-center">
                     <div className="w-10 h-10 relative rounded-full bg-gray-200 mr-3 overflow-hidden">

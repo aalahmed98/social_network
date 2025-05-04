@@ -14,6 +14,7 @@ interface SearchResult {
   avatar: string;
   nickname?: string;
   verified: boolean;
+  username: string;
 }
 
 export default function Navbar() {
@@ -73,7 +74,9 @@ export default function Navbar() {
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
         const response = await fetch(
-          `${backendUrl}/api/users/search?q=${encodeURIComponent(value)}`,
+          `${backendUrl}/api/users/search?q=${encodeURIComponent(
+            value.trim()
+          )}`,
           {
             method: "GET",
             credentials: "include",
@@ -86,13 +89,31 @@ export default function Navbar() {
         if (response.ok) {
           const data = await response.json();
           // Safely check if data and data.users exist and are valid
-          if (data && typeof data === "object") {
-            setSearchResults(Array.isArray(data.users) ? data.users : []);
+          if (
+            data &&
+            typeof data === "object" &&
+            data.users &&
+            Array.isArray(data.users)
+          ) {
+            // Map the backend user data to our SearchResult interface
+            const mappedResults = data.users.map((user: any) => ({
+              id: user.id,
+              firstName: user.first_name,
+              lastName: user.last_name,
+              avatar: user.avatar || "",
+              nickname: user.nickname || null,
+              verified: Boolean(user.verified), // Ensure boolean type
+              username: user.email?.split("@")[0] || "", // Extract username for consistency
+            }));
+
+            setSearchResults(mappedResults);
+            setShowSearchResults(mappedResults.length > 0);
           } else {
             setSearchResults([]);
+            setShowSearchResults(false);
           }
-          setShowSearchResults(true);
         } else {
+          console.error("Failed to fetch search results:", response.status);
           setSearchResults([]);
           setShowSearchResults(false);
         }
