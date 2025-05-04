@@ -29,17 +29,17 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Get the origin from the request
 		origin := r.Header.Get("Origin")
-		
+
 		// Check if the origin is from localhost (any port)
-		if strings.HasPrefix(origin, "http://localhost:") || 
-		   strings.HasPrefix(origin, "https://localhost:") ||
-		   origin == "http://localhost" {
+		if strings.HasPrefix(origin, "http://localhost:") ||
+			strings.HasPrefix(origin, "https://localhost:") ||
+			origin == "http://localhost" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		} else {
 			// Default to the Next.js development server
 			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 		}
-		
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -111,7 +111,7 @@ func init() {
 	var err error
 	dbStartTime := time.Now()
 	logger.Println("Connecting to database...")
-	
+
 	// Create the database connection - the database file and tables will be created if they don't exist
 	db, err = sqlite.New("./data/social-network.db")
 	if err != nil {
@@ -125,11 +125,11 @@ func init() {
 	if err != nil {
 		logger.Fatalf("Failed to get working directory: %v", err)
 	}
-	
+
 	// Create absolute path and convert to forward slashes for URL
 	migrationPath := filepath.Join(wd, "pkg", "db", "migrations", "sqlite")
 	migrationPath = filepath.ToSlash(migrationPath)
-	
+
 	// Check if migrations directory exists and has .sql files
 	migrationsExist := false
 	if _, err := os.Stat(migrationPath); err == nil {
@@ -143,7 +143,7 @@ func init() {
 			}
 		}
 	}
-	
+
 	// Only run migrations if SQL files exist
 	if migrationsExist {
 		logger.Printf("Running database migrations from %s", migrationPath)
@@ -160,24 +160,24 @@ func init() {
 	sessionStartTime := time.Now()
 	logger.Println("Setting up session store...")
 	store = sessions.NewCookieStore(sessionKey)
-	
+
 	// In development, we don't need SameSite=None and Secure
 	isDev := true // Set to false in production
-	
+
 	storeOptions := &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
 	}
-	
+
 	if !isDev {
 		storeOptions.SameSite = http.SameSiteNoneMode
 		storeOptions.Secure = true
 	}
-	
+
 	store.Options = storeOptions
 	logger.Printf("Session store setup completed in %v", time.Since(sessionStartTime))
-	
+
 	// Initialize auth handlers
 	handlersStartTime := time.Now()
 	logger.Println("Setting up handlers...")
@@ -190,7 +190,7 @@ func init() {
 func main() {
 	startTime := time.Now()
 	logger.Println("Starting server setup...")
-	
+
 	r := mux.NewRouter()
 
 	// Apply middlewares globally - order matters!
@@ -209,17 +209,20 @@ func main() {
 	r.HandleFunc("/api/register", handlers.RegisterHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/login", handlers.LoginHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/check", handlers.CheckAuth).Methods("GET", "OPTIONS")
-	
+
 	// User search endpoint - available without authentication
-	r.HandleFunc("/api/users/search", handlers.UserSearchHandler).Methods("GET", "OPTIONS")
-	
+	//r.HandleFunc("/api/users/search", handlers.UserSearchHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/users/{id}", handlers.GetUsersProfile).Methods("GET")
+	//r.HandleFunc("/api/posts", handlers.GetPostsByUserHandler).Methods("GET") // filter posts by ?userId=
+	//r.HandleFunc("/api/followers", handlers.GetFollowersHandler).Methods("GET")
+
 	// Private routes (require authentication)
 	authRouter := r.PathPrefix("/api").Subrouter()
 	authRouter.Use(handlers.AuthMiddleware)
 	authRouter.HandleFunc("/profile", handlers.GetProfile).Methods("GET", "OPTIONS")
 	authRouter.HandleFunc("/profile/update", handlers.UpdateProfile).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/logout", handlers.LogoutHandler).Methods("POST", "OPTIONS")
-	
+
 	// Posts routes
 	authRouter.HandleFunc("/posts", handlers.GetPostsHandler).Methods("GET", "OPTIONS")
 	authRouter.HandleFunc("/posts", handlers.CreatePostHandler).Methods("POST", "OPTIONS")
@@ -230,7 +233,7 @@ func main() {
 	authRouter.HandleFunc("/posts/{id}/vote", handlers.VotePostHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/posts/{id}/comments/{commentId}/vote", handlers.VoteCommentHandler).Methods("POST", "OPTIONS")
 	authRouter.HandleFunc("/followers", handlers.GetUserFollowersHandler).Methods("GET", "OPTIONS")
-	
+
 	// User data endpoint
 	authRouter.HandleFunc("/users/me", handlers.GetCurrentUserHandler).Methods("GET", "OPTIONS")
 	// Follow user endpoint
@@ -247,7 +250,7 @@ func main() {
 	})
 
 	logger.Printf("Server setup completed in %v", time.Since(startTime))
-	
+
 	// Start server
 	port := 8080
 	fmt.Printf("Server running on http://localhost:%d\n", port)

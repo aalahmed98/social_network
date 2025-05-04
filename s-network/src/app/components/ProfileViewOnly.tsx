@@ -20,11 +20,6 @@ interface Post {
   privacy: string;
   created_at: string;
   user_id: number;
-  author: {
-    first_name: string;
-    last_name: string;
-    avatar?: string;
-  };
 }
 
 interface User {
@@ -38,66 +33,54 @@ interface User {
   created_at?: string;
 }
 
-// 1) Define your props interface
 interface ProfileViewOnlyProps {
-  username: string;
+  userId: number;
 }
 
-export default function ProfileViewOnly({
-  username,
-}: ProfileViewOnlyProps) {
+export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [followersCount, setFollowersCount] = useState(0);
+  const [followers, setFollowers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadData() {
       try {
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-
-        // 1) load the user by username
-        const uRes = await fetch(
-          `${backendUrl}/api/users/${encodeURIComponent(username)}`,
-          { credentials: "include" }
-        );
+        // 1) Fetch user data
+        const uRes = await fetch(`/api/users/${userId}`, {
+          credentials: "include",
+        });
         if (!uRes.ok) throw new Error("User not found");
         const uData: User = await uRes.json();
         setUser(uData);
 
-        // 2) load all posts, then filter client‐side by user_id
-        const pRes = await fetch(`${backendUrl}/api/posts`, {
+        // 2) Fetch posts by this user
+        const pRes = await fetch(`/api/posts?userId=${userId}`, {
           credentials: "include",
         });
-        if (pRes.ok) {
-          const { posts: allPosts } = await pRes.json();
-          const userPosts = Array.isArray(allPosts)
-            ? allPosts.filter((p: Post) => p.user_id === uData.id)
-            : [];
-          setPosts(userPosts);
-        }
+        if (!pRes.ok) throw new Error("Failed to load posts");
+        const pJson = await pRes.json();
+        setPosts(pJson.posts || []);
 
-        // 3) load followers count
-        const fRes = await fetch(
-          `${backendUrl}/api/followers?userId=${uData.id}`,
-          { credentials: "include" }
-        );
-        if (fRes.ok) {
-          const { followers } = await fRes.json();
-          setFollowersCount(Array.isArray(followers) ? followers.length : 0);
-        }
+        // 3) Fetch followers list
+        const fRes = await fetch(`/api/followers?userId=${userId}`, {
+          credentials: "include",
+        });
+        if (!fRes.ok) throw new Error("Failed to load followers");
+        const fJson = await fRes.json();
+        setFollowers(fJson.followers || []);
       } catch (err: any) {
         console.error(err);
-        setError(err.message || "Failed to load profile");
+        setError(err.message || "Something went wrong");
       } finally {
         setLoading(false);
       }
     }
+
     loadData();
-  }, [username, router]);
+  }, [userId]);
 
   if (loading) return <div className="p-4 text-center">Loading…</div>;
   if (error)
@@ -111,11 +94,55 @@ export default function ProfileViewOnly({
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* … your profile‐header and stats … */}
+        {/* Profile header */}
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="flex items-center space-x-4">
+            {user?.avatar ? (
+              <Image
+                src={getImageUrl(user.avatar)}
+                alt={`${user.first_name} avatar`}
+                width={80}
+                height={80}
+                className="rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-2xl text-white">
+                {user?.first_name.charAt(0)}
+              </div>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold">
+                {user?.first_name} {user?.last_name}
+              </h1>
+              {user?.nickname && <p className="text-gray-500">@{user.nickname}</p>}
+              {user?.created_at && (
+                <p className="text-sm text-gray-400 flex items-center">
+                  <FiCalendar className="mr-1" />
+                  Joined {new Date(user.created_at).toLocaleDateString()}
+                </p>
+              )}
+              {user?.about_me && <p className="mt-2 text-gray-700">{user.about_me}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 text-center mt-6">
+            <div>
+              <div className="text-xl font-bold">{posts.length}</div>
+              <div className="text-gray-500">Posts</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold">{followers.length}</div>
+              <div className="text-gray-500">Followers</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold">—</div>
+              <div className="text-gray-500">Following</div>
+            </div>
+          </div>
+        </div>
 
-        {/* ↓↓↓ Posts Section ↓↓↓ */}
+        {/* Posts Section */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-bold">Posts</h2>
           </div>
 
@@ -180,7 +207,6 @@ export default function ProfileViewOnly({
             </div>
           )}
         </div>
-        {/* ↑↑↑ End Posts Section ↑↑↑ */}
       </div>
     </div>
   );

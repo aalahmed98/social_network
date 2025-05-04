@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	// Create a red color printer
-	redPrinter = color.New(color.FgRed)
+	// Create a green color printer
+	redPrinter = color.New(color.FgGreen)
 )
 
 // Standard logger
