@@ -62,7 +62,11 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
         });
         if (!pRes.ok) throw new Error("Failed to load posts");
         const pJson = await pRes.json();
-        setPosts(pJson.posts || []);
+        // Filter posts to only show the ones for this user
+        const userPosts = pJson.posts
+          ? pJson.posts.filter((post: Post) => post.user_id === userId)
+          : [];
+        setPosts(userPosts);
 
         // 3) Fetch followers list
         const fRes = await fetch(`/api/followers?userId=${userId}`, {

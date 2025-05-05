@@ -63,6 +63,9 @@ export default function Profile() {
   const [showEditForm, setShowEditForm] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
 
+  const [showFollowersPopup, setShowFollowersPopup] = useState(false);
+  const [showFollowingPopup, setShowFollowingPopup] = useState(false);
+
   useEffect(() => {
     // Fetch user data
     const fetchUser = async () => {
@@ -401,26 +404,132 @@ export default function Profile() {
 
             {/* User Stats */}
             <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6">
+              {/* Posts count stays the same */}
               <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
                 <div className="text-xl font-bold text-indigo-600">
                   {posts.length}
                 </div>
                 <div className="text-gray-600 text-sm font-medium">Posts</div>
               </div>
-              <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
+
+              {/* Followers button */}
+              <button
+                onClick={() => setShowFollowersPopup(true)}
+                className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors"
+              >
                 <div className="text-xl font-bold text-indigo-600">
                   {followers.length}
                 </div>
                 <div className="text-gray-600 text-sm font-medium">
                   Followers
                 </div>
-              </div>
-              <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                <div className="text-xl font-bold text-indigo-600">0</div>
+              </button>
+
+              {/* Following button */}
+              <button
+                onClick={() => setShowFollowingPopup(true)}
+                className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <div className="text-xl font-bold text-indigo-600">
+                  {following.length}
+                </div>
                 <div className="text-gray-600 text-sm font-medium">
                   Following
                 </div>
-              </div>
+              </button>
+              {showFollowersPopup && (
+                <div
+                  className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50"
+                  onClick={() => setShowFollowersPopup(false)}
+                >
+                  <div
+                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-lg font-semibold mb-2">Followers</h3>
+                    {followers.length === 0 ? (
+                      <p className="text-gray-500">No followers yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {followers.map((f) => (
+                          <li
+                            key={f.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <img
+                              src={getImageUrl(f.avatar || "")}
+                              className="w-6 h-6 rounded-full"
+                              onError={(e) =>
+                                createAvatarFallback(
+                                  e.currentTarget,
+                                  f.first_name.charAt(0),
+                                  "text-xs"
+                                )
+                              }
+                            />
+                            <span>
+                              {f.first_name} {f.last_name}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                      onClick={() => setShowFollowersPopup(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {showFollowingPopup && (
+                <div
+                  className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50"
+                  onClick={() => setShowFollowingPopup(false)}
+                >
+                  <div
+                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-lg font-semibold mb-2">Following</h3>
+                    {following.length === 0 ? (
+                      <p className="text-gray-500">Not following anyone yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {following.map((f) => (
+                          <li
+                            key={f.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <img
+                              src={getImageUrl(f.avatar || "")}
+                              className="w-6 h-6 rounded-full"
+                              onError={(e) =>
+                                createAvatarFallback(
+                                  e.currentTarget,
+                                  f.first_name.charAt(0),
+                                  "text-xs"
+                                )
+                              }
+                            />
+                            <span>
+                              {f.first_name} {f.last_name}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                      onClick={() => setShowFollowingPopup(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
