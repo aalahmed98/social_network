@@ -1,51 +1,37 @@
-/**
- * Utility functions for handling images in the application
- */
-
-/**
- * Converts a relative or absolute image path to a complete URL
- * @param path - The image path from the API
- * @returns The complete URL to the image
- */
-export const getImageUrl = (path: string | undefined | null): string => {
+export const getImageUrl = (path: string): string => {
   if (!path) return "";
 
-  // If it's already a full URL, return it as is
-  if (path.startsWith("http")) return path;
+  // Normalize slashes (fix Windows-style backslashes)
+  let normalized = path.replace(/\\/g, "/");
 
-  // Get the backend URL from environment or use default
-  const backendUrl =
-    process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+  // Remove duplicated "uploads/" at the beginning if it appears more than once
+  normalized = normalized.replace(/^\/?uploads\/+/, "uploads/");
 
-  // Make sure we don't double up on slashes
-  if (path.startsWith("/")) {
-    return `${backendUrl}${path}`;
+  // Ensure the path does not start with a leading slash
+  if (normalized.startsWith("/")) {
+    normalized = normalized.slice(1);
   }
 
-  return `${backendUrl}/${path}`;
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+  return `${backendUrl}/${normalized}`;
 };
 
-/**
- * Creates a fallback for when an avatar image fails to load
- * @param element - The image element that failed to load
- * @param initial - The initial character to display (usually first letter of name)
- * @param size - Optional CSS class for font size (default: 'text-sm')
- */
 export const createAvatarFallback = (
-  element: HTMLImageElement,
-  initial: string = "?",
-  size: string = "text-sm"
-): void => {
-  // Hide the failed image
-  element.style.display = "none";
+  imgElement: HTMLImageElement,
+  fallbackText: string,
+  textSizeClass: string = "text-base"
+) => {
+  imgElement.onerror = null;
+  imgElement.style.display = "none";
 
-  // Get the parent container
-  const parent = element.parentElement;
-  if (!parent) return;
+  const fallbackDiv = document.createElement("div");
+  fallbackDiv.className = `flex items-center justify-center bg-gray-300 text-white font-bold ${textSizeClass}`;
+  fallbackDiv.style.width = imgElement.width + "px";
+  fallbackDiv.style.height = imgElement.height + "px";
+  fallbackDiv.textContent = fallbackText;
 
-  // Create and append the fallback element
-  const fallback = document.createElement("div");
-  fallback.className = `w-full h-full flex items-center justify-center ${size} font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`;
-  fallback.innerText = initial || "?";
-  parent.appendChild(fallback);
+  const parent = imgElement.parentElement;
+  if (parent) {
+    parent.appendChild(fallbackDiv);
+  }
 };

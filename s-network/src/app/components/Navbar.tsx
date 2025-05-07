@@ -200,9 +200,7 @@ export default function Navbar() {
                         src={
                           result.avatar.startsWith("http")
                             ? result.avatar
-                            : result.avatar.startsWith("/")
-                            ? `http://localhost:8080${result.avatar}`
-                            : `http://localhost:8080/uploads/${result.avatar}`
+                            : `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080"}${result.avatar.startsWith("/") ? result.avatar : `/${result.avatar}`}`
                         }
                         alt={`${result.firstName} ${result.lastName}`}
                         fill

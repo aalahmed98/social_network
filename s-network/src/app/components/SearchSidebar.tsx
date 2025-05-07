@@ -78,103 +78,34 @@ export default function SearchSidebar() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const mapUsers = (users: any[]): User[] => {
+    return users.map((user) => ({
+      id: user.id,
+      username: user.email?.split("@")[0] || "user",
+      firstName: user.first_name,
+      lastName: user.last_name,
+      nickname: user.nickname || null,
+      verified: Boolean(user.verified),
+      avatar: user.avatar?.replace(/\\/g, "/") || "", // Normalize slashes
+      followers: user.followers || 0,
+      description: user.about_me || "",
+      followedBy: user.followed_by || [],
+    }));
+  };
+  
+
   const fetchSearchResults = async (query: string) => {
     if (!query.trim() || query.length < 2) return;
-
-    // Check if we already searched for this exact query
     if (query === lastSearched.current) return;
-
-    // Keep track of last searched query
+  
     lastSearched.current = query;
-
     setIsSearching(true);
     setSearchError(null);
-
+  
     try {
-      // Use the Go backend API with timeout to prevent long waits
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(
-        `${backendUrl}/api/users/search?q=${encodeURIComponent(query.trim())}`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-          credentials: "include", // Include cookies for authenticated requests
-          signal: controller.signal,
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.warn(`Search request failed with status: ${response.status}`);
-        setSearchResults([]);
-        return;
-      }
-
-      const data = await response.json();
-
-      // Handle any response format gracefully
-      if (!data || typeof data !== "object") {
-        console.warn("Empty response received");
-        setSearchResults([]);
-        return;
-      }
-
-      // Check if users property exists and is an array, otherwise use empty array
-      const users = data.users && Array.isArray(data.users) ? data.users : [];
-
-      // Map the API response to match our User interface
-      const mappedUsers = users.map((user) => ({
-        id: user.id,
-        username: user.email?.split("@")[0] || "user",
-        firstName: user.first_name,
-        lastName: user.last_name,
-        nickname: user.nickname || null,
-        verified: Boolean(user.verified), // Ensure boolean type
-        avatar: user.avatar || "",
-        followers: user.followers || 0, // Use followers count from API if available
-        description: user.about_me || "",
-        followedBy: user.followed_by || [],
-      }));
-
-      setSearchResults(mappedUsers);
-
-      // Add to recent searches if not already there
-      if (query.length > 2 && !recentSearches.includes(query)) {
-        setRecentSearches((prev) => [query, ...prev.slice(0, 4)]);
-      }
-    } catch (error) {
-      console.error("Search error:", error);
-      // Don't show error in UI, but set empty results
-      setSearchError(null);
-      setSearchResults([]);
-
-      // No need to retry if it's a network error - will only fail again
-      if (
-        !(error instanceof TypeError && error.message === "Failed to fetch")
-      ) {
-        // Only retry for non-network errors
-        setTimeout(() => {
-          if (query === searchQuery) {
-            retrySearch(query);
-          }
-        }, 2000);
-      }
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const retrySearch = async (query: string) => {
-    try {
-      setSearchError(null);
-
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+  
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(
@@ -185,46 +116,75 @@ export default function SearchSidebar() {
             Accept: "application/json",
           },
           credentials: "include",
+          signal: controller.signal,
         }
       );
-
+  
+      clearTimeout(timeoutId);
+  
       if (!response.ok) {
-        throw new Error(`Retry failed with status: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Handle any response format gracefully
-      if (!data || typeof data !== "object") {
-        console.warn("Empty response received in retry");
+        console.warn(`Search request failed with status: ${response.status}`);
         setSearchResults([]);
         return;
       }
+  
+      const data = await response.json();
+      const users = Array.isArray(data.users) ? data.users : [];
+      setSearchResults(mapUsers(users));
+  
+      if (query.length > 2 && !recentSearches.includes(query)) {
+        setRecentSearches((prev) => [query, ...prev.slice(0, 4)]);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      setSearchError(null);
+      setSearchResults([]);
+  
+      if (
+        !(error instanceof TypeError && error.message === "Failed to fetch")
+      ) {
+        setTimeout(() => {
+          if (query === searchQuery) {
+            retrySearch(query);
+          }
+        }, 2000);
+      }
+    } finally {
+      setIsSearching(false);
+    }
+  };
+  
 
-      // Check if users property exists and is an array, otherwise use empty array
-      const users = data.users && Array.isArray(data.users) ? data.users : [];
-
-      // Map the API response to match our User interface
-      const mappedUsers = users.map((user) => ({
-        id: user.id,
-        username: user.email?.split("@")[0] || "user",
-        firstName: user.first_name,
-        lastName: user.last_name,
-        nickname: user.nickname || null,
-        verified: Boolean(user.verified), // Ensure boolean type
-        avatar: user.avatar || "",
-        followers: user.followers || 0, // Use followers count from API if available
-        description: user.about_me || "",
-        followedBy: user.followed_by || [],
-      }));
-
-      setSearchResults(mappedUsers);
+  const retrySearch = async (query: string) => {
+    try {
+      setSearchError(null);
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+  
+      const response = await fetch(
+        `${backendUrl}/api/users/search?q=${encodeURIComponent(query.trim())}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          credentials: "include",
+        }
+      );
+  
+      if (!response.ok) {
+        throw new Error(`Retry failed with status: ${response.status}`);
+      }
+  
+      const data = await response.json();
+      const users = Array.isArray(data.users) ? data.users : [];
+      setSearchResults(mapUsers(users));
     } catch (error) {
       console.error("Retry search error:", error);
       setSearchError(null);
     }
   };
-
+  
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -337,6 +297,7 @@ export default function SearchSidebar() {
                             alt={user.username}
                             width={40}
                             height={40}
+                            unoptimized
                             className="object-cover w-full h-full"
                             style={{
                               animationPlayState: user.avatar.includes(
