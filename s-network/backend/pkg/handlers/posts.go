@@ -44,10 +44,10 @@ func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get form values
 	title := r.FormValue("title")
-	
+
 	// Content is now optional, no validation needed
 	content := r.FormValue("content")
-	
+
 	privacy := r.FormValue("privacy")
 	if privacy == "" {
 		privacy = "public" // Default to public
@@ -87,7 +87,7 @@ func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 		ext := filepath.Ext(handler.Filename)
 		filename := uuid.New().String() + ext
 		imageURL = "/uploads/posts/" + filename
-		
+
 		// Create the file
 		dst, err := os.Create(filepath.Join(uploadsDir, filename))
 		if err != nil {
@@ -256,7 +256,7 @@ func GetPostHandler(w http.ResponseWriter, r *http.Request) {
 				comments[i]["is_post_author"] = false
 			}
 		}
-		
+
 		post["comments"] = comments
 	}
 
@@ -300,7 +300,7 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Post not found", http.StatusNotFound)
 		return
 	}
-	
+
 	// Get post user ID
 	postUserID, ok := post["user_id"].(int64)
 	if !ok {
@@ -336,7 +336,7 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 		ext := filepath.Ext(handler.Filename)
 		filename := uuid.New().String() + ext
 		imageURL = "/uploads/comments/" + filename
-		
+
 		// Create the file
 		dst, err := os.Create(filepath.Join(uploadsDir, filename))
 		if err != nil {
@@ -374,7 +374,7 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			comments[i]["is_author"] = false
 		}
-		
+
 		// Also set is_post_author flag if the user is the post author
 		if int64(userID) == postUserID {
 			comments[i]["is_post_author"] = true
@@ -419,6 +419,51 @@ func GetUserFollowersHandler(w http.ResponseWriter, r *http.Request) {
 		"followers": followers,
 	})
 }
+
+// //////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GetUserFollowersHandler retrieves followers for the authenticated user
+func GetUserFollowingHandler(w http.ResponseWriter, r *http.Request) {
+	// Try reading userId from query string
+	queryID := r.URL.Query().Get("userId")
+
+	var userID int
+	var err error
+
+	if queryID != "" {
+		userID, err = strconv.Atoi(queryID)
+		if err != nil {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			return
+		}
+	} else {
+		// fallback to session-based authenticated user
+		session, err := store.Get(r, "session")
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var ok bool
+		userID, ok = session.Values["user_id"].(int)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	following, err := db.GetUserFollowing(userID)
+	if err != nil {
+		http.Error(w, "Failed to retrieve following: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"followings": following,
+	})
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // FollowUserHandler allows a user to follow another user
 func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -543,7 +588,7 @@ func DeleteCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get post ID and comment ID from URL
 	vars := mux.Vars(r)
-	
+
 	postIDStr, ok := vars["id"]
 	if !ok {
 		http.Error(w, "Post ID is required", http.StatusBadRequest)
@@ -635,10 +680,11 @@ func DeleteCommentHandler(w http.ResponseWriter, r *http.Request) {
 	// Return success response with updated comments
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Comment deleted successfully",
+		"message":  "Comment deleted successfully",
 		"comments": comments,
 	})
 }
+
 // VotePostHandler handles upvotes and downvotes on posts
 func VotePostHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle CORS preflight request
@@ -733,7 +779,7 @@ func VoteCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get post ID and comment ID from URL
 	vars := mux.Vars(r)
-	
+
 	postIDStr, ok := vars["id"]
 	if !ok {
 		http.Error(w, "Post ID is required", http.StatusBadRequest)
@@ -797,10 +843,10 @@ func VoteCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add vote information to the response
 	response := map[string]interface{}{
-		"comment":   comment,
-		"user_vote": userVote,
+		"comment":    comment,
+		"user_vote":  userVote,
 		"vote_count": comment["vote_count"],
-		"post_id": postID,
+		"post_id":    postID,
 	}
 
 	// Return updated comment data

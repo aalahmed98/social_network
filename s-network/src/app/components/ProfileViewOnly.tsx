@@ -10,7 +10,7 @@ import {
   FiUsers,
   FiLock,
 } from "react-icons/fi";
-import { getImageUrl } from "@/utils/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 
 interface Post {
   id: number;
@@ -44,6 +44,10 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
   const [followers, setFollowers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [following, setFollowing] = useState<any[]>([]);
+  const [showFollowersPopup, setShowFollowersPopup] = useState(false);
+  const [showFollowingPopup, setShowFollowingPopup] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -81,8 +85,20 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
       } finally {
         setLoading(false);
       }
+      //////////////////////////////////////////////////
+
+      // 4) Fetch following list
+      //change fl to something better named
+
+      const flRes = await fetch(`/api/following?userId=${userId}`, {
+        credentials: "include",
+      });
+      if (!flRes.ok) throw new Error("Failed to load following");
+      const flJson = await flRes.json();
+      setFollowing(flJson.followings || []);
     }
 
+    /////////////////////////////////////////////////////////////////
     loadData();
   }, [userId]);
 
@@ -118,28 +134,148 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
               <h1 className="text-2xl font-bold">
                 {user?.first_name} {user?.last_name}
               </h1>
-              {user?.nickname && <p className="text-gray-500">@{user.nickname}</p>}
+              {user?.nickname && (
+                <p className="text-gray-500">@{user.nickname}</p>
+              )}
               {user?.created_at && (
                 <p className="text-sm text-gray-400 flex items-center">
                   <FiCalendar className="mr-1" />
                   Joined {new Date(user.created_at).toLocaleDateString()}
                 </p>
               )}
-              {user?.about_me && <p className="mt-2 text-gray-700">{user.about_me}</p>}
+              {user?.about_me && (
+                <p className="mt-2 text-gray-700">{user.about_me}</p>
+              )}
             </div>
           </div>
-          <div className="grid grid-cols-3 text-center mt-6">
-            <div>
-              <div className="text-xl font-bold">{posts.length}</div>
-              <div className="text-gray-500">Posts</div>
-            </div>
-            <div>
-              <div className="text-xl font-bold">{followers.length}</div>
-              <div className="text-gray-500">Followers</div>
-            </div>
-            <div>
-              <div className="text-xl font-bold">—</div>
-              <div className="text-gray-500">Following</div>
+          <div>
+            <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6">
+              {/* Posts count stays the same */}
+              <div className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                <div className="text-xl font-bold text-indigo-600">
+                  {posts.length}
+                </div>
+                <div className="text-gray-600 text-sm font-medium">Posts</div>
+              </div>
+
+              {/* Followers button */}
+              <button
+                onClick={() => setShowFollowersPopup(true)}
+                className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <div className="text-xl font-bold text-indigo-600">
+                  {followers.length}
+                </div>
+                <div className="text-gray-600 text-sm font-medium">
+                  Followers
+                </div>
+              </button>
+
+              {/* Following button */}
+              <button
+                onClick={() => setShowFollowingPopup(true)}
+                className="text-center p-3 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <div className="text-xl font-bold text-indigo-600">
+                  {following.length}
+                </div>
+                <div className="text-gray-600 text-sm font-medium">
+                  Following
+                </div>
+              </button>
+              {showFollowersPopup && (
+                <div
+                  className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50"
+                  onClick={() => setShowFollowersPopup(false)}
+                >
+                  <div
+                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-lg font-semibold mb-2">Followers</h3>
+                    {followers.length === 0 ? (
+                      <p className="text-gray-500">No followers yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {followers.map((f) => (
+                          <li
+                            key={f.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <img
+                              src={getImageUrl(f.avatar || "")}
+                              className="w-6 h-6 rounded-full"
+                              onError={(e) =>
+                                createAvatarFallback(
+                                  e.currentTarget,
+                                  f.first_name.charAt(0),
+                                  "text-xs"
+                                )
+                              }
+                            />
+                            <span>
+                              {f.first_name} {f.last_name}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                      onClick={() => setShowFollowersPopup(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {showFollowingPopup && (
+                <div
+                  className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50"
+                  onClick={() => setShowFollowingPopup(false)}
+                >
+                  <div
+                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-lg font-semibold mb-2">Following</h3>
+                    {following.length === 0 ? (
+                      <p className="text-gray-500">Not following anyone yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {following.map((f) => (
+                          <li
+                            key={f.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <img
+                              src={getImageUrl(f.avatar || "")}
+                              className="w-6 h-6 rounded-full"
+                              onError={(e) =>
+                                createAvatarFallback(
+                                  e.currentTarget,
+                                  f.first_name.charAt(0),
+                                  "text-xs"
+                                )
+                              }
+                            />
+                            <span>
+                              {f.first_name} {f.last_name}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                      onClick={() => setShowFollowingPopup(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -590,6 +590,62 @@ func (db *DB) GetUserFollowers(userID int) ([]map[string]interface{}, error) {
 	return followers, nil
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// GetUserFollowers returns the list of followers for a user
+func (db *DB) GetUserFollowing(userID int) ([]map[string]interface{}, error) {
+	// Check if followers table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName) //name=followers is for the table name
+	if err != nil {
+		// If followers table doesn't exist, return empty array instead of error
+		return []map[string]interface{}{}, nil
+	}
+
+	query := `
+		SELECT u.id, u.first_name, u.last_name, u.avatar
+		FROM followers f
+		JOIN users u ON f.following_id = u.id
+		WHERE f.follower_id = ?
+	`
+
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var following []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var firstName, lastName string
+		var avatar sql.NullString
+
+		err := rows.Scan(&id, &firstName, &lastName, &avatar)
+		if err != nil {
+			return nil, err
+		}
+
+		follower := map[string]interface{}{
+			"id":         id,
+			"first_name": firstName,
+			"last_name":  lastName,
+		}
+
+		if avatar.Valid {
+			follower["avatar"] = avatar.String
+		}
+
+		following = append(following, follower) //appended follower even though its following (maybe wrong)
+	}
+
+	return following, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // FollowUser adds a follower relationship between two users
 func (db *DB) FollowUser(followerID, followingID int) error {
 	// Check if the following user exists

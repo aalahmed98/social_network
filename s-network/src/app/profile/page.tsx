@@ -134,7 +134,7 @@ export default function Profile() {
             (post: Post) => post.user_id === userData.id
           );
           setPosts(userPosts);
-        }
+        }     
       } catch (error) {
         console.error("Profile error:", error);
         // Delay the redirect to prevent flashing
@@ -149,6 +149,30 @@ export default function Profile() {
     fetchUser();
   }, [router]);
 
+  useEffect(() => {
+    if (!user?.id) return; // Wait until user data is loaded
+  
+    async function loadData() {
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+  
+        const flRes = await fetch(`${backendUrl}/api/following?userId=${user.id}`, {
+          credentials: "include",
+        });
+  
+        if (!flRes.ok) throw new Error("Failed to load following");
+  
+        const flJson = await flRes.json();
+        setFollowing(flJson.followings || []);
+      } catch (error) {
+        console.error("Error fetching following:", error);
+      }
+    }
+  
+    loadData();
+  }, [user?.id]);
+  
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
