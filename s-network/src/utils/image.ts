@@ -1,5 +1,5 @@
-export const getImageUrl = (path: string): string => {
-  if (!path) return "";
+export const getImageUrl = (path: string): string | null => {
+  if (!path) return null;
 
   // Normalize slashes (fix Windows-style backslashes)
   let normalized = path.replace(/\\/g, "/");

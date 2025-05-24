@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"s-network/backend/pkg/db/sqlite"
 	"s-network/backend/pkg/handlers"
 	"s-network/backend/pkg/logger"
-	"s-network/backend/pkg/middleware"
 )
 
 var (
@@ -84,10 +82,50 @@ func (e *ErrorResponseWriter) WriteHeader(statusCode int) {
 	}
 }
 
-// Error middleware to ensure all errors are proper JSON responses
-func errorMiddleware(next http.Handler) http.Handler {
+// WebSocketMiddleware skips error handling for WebSocket connections
+func webSocketMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip error middleware for WebSocket connections
+		if strings.Contains(r.URL.Path, "/ws/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		
+		// Apply error middleware for all other requests
 		next.ServeHTTP(&ErrorResponseWriter{ResponseWriter: w}, r)
+	})
+}
+
+// LoggingMiddleware logs requests
+func LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// You could add logging here if needed
+		next.ServeHTTP(w, r)
+	})
+}
+
+// AuthMiddleware checks if the user is authenticated
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, err := store.Get(r, handlers.SessionCookieName)
+		if err != nil {
+			http.Error(w, "Session error", http.StatusUnauthorized)
+			return
+		}
+
+		// Check if user is authenticated
+		auth, ok := session.Values["authenticated"].(bool)
+		if !ok || !auth {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Unauthorized",
+			})
+			return
+		}
+
+		// User is authenticated, proceed
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -196,66 +234,47 @@ func main() {
 	// Apply middlewares globally - order matters!
 	// CORS middleware first
 	r.Use(corsMiddleware)
-	// Error handling middleware next
-	r.Use(errorMiddleware)
-	// Apply cookie configuration middleware
-	r.Use(middleware.CookieConfigMiddleware)
+	// Use custom WebSocket middleware instead of error middleware
+	r.Use(webSocketMiddleware)
 
-	// Serve static files from the uploads directory
-	fs := http.FileServer(http.Dir("./uploads"))
-	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", fs))
-
-	// Public routes
-	r.HandleFunc("/api/register", handlers.RegisterHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/login", handlers.LoginHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/auth/check", handlers.CheckAuth).Methods("GET", "OPTIONS")
-
-	// User search endpoint - available without authentication
-	r.HandleFunc("/api/users/search", handlers.UserSearchHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/users/{id}", handlers.GetUsersProfile).Methods("GET")
-	//r.HandleFunc("/api/posts", handlers.GetPostsByUserHandler).Methods("GET") // filter posts by ?userId=
-	//r.HandleFunc("/api/followers", handlers.GetFollowersHandler).Methods("GET")
-
-	// Private routes (require authentication)
-	authRouter := r.PathPrefix("/api").Subrouter()
-	authRouter.Use(handlers.AuthMiddleware)
-	authRouter.HandleFunc("/profile", handlers.GetProfile).Methods("GET", "OPTIONS")
-	authRouter.HandleFunc("/profile/update", handlers.UpdateProfile).Methods("POST", "OPTIONS")
-	authRouter.HandleFunc("/logout", handlers.LogoutHandler).Methods("POST", "OPTIONS")
-
-	// Posts routes
-	authRouter.HandleFunc("/posts", handlers.GetPostsHandler).Methods("GET", "OPTIONS")
-	authRouter.HandleFunc("/posts", handlers.CreatePostHandler).Methods("POST", "OPTIONS")
-	authRouter.HandleFunc("/posts/{id}", handlers.GetPostHandler).Methods("GET", "OPTIONS")
-	authRouter.HandleFunc("/posts/{id}", handlers.DeletePostHandler).Methods("DELETE", "OPTIONS")
-	authRouter.HandleFunc("/posts/{id}/comments", handlers.AddCommentHandler).Methods("POST", "OPTIONS")
-	authRouter.HandleFunc("/posts/{id}/comments/{commentId}", handlers.DeleteCommentHandler).Methods("DELETE", "OPTIONS")
-	authRouter.HandleFunc("/posts/{id}/vote", handlers.VotePostHandler).Methods("POST", "OPTIONS")
-	authRouter.HandleFunc("/posts/{id}/comments/{commentId}/vote", handlers.VoteCommentHandler).Methods("POST", "OPTIONS")
-	authRouter.HandleFunc("/followers", handlers.GetUserFollowersHandler).Methods("GET", "OPTIONS")
-	authRouter.HandleFunc("/following", handlers.GetUserFollowingHandler).Methods("GET", "OPTIONS") //added code
-
-	// User data endpoint
-	authRouter.HandleFunc("/users/me", handlers.GetCurrentUserHandler).Methods("GET", "OPTIONS")
-	// Follow user endpoint
-	authRouter.HandleFunc("/follow/{id}", handlers.FollowUserHandler).Methods("POST", "OPTIONS")
-
-	// 404 Handler for undefined routes
-	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error":   "Not Found",
-			"message": "The requested endpoint does not exist",
-		})
+	// Create auth subrouter and apply middleware
+	authRouter := r.PathPrefix("/api/auth").Subrouter()
+	authRouter.Use(LoggingMiddleware)
+	
+	// Register auth routes
+	handlers.RegisterAuthRoutes(authRouter)
+	
+	// Create API subrouter for authenticated endpoints
+	apiRouter := r.PathPrefix("/api").Subrouter()
+	apiRouter.Use(LoggingMiddleware)
+	apiRouter.Use(AuthMiddleware)
+	
+	// Register other API routes
+	handlers.RegisterPostRoutes(apiRouter)
+	handlers.RegisterProfileRoutes(apiRouter)
+	handlers.RegisterNotificationRoutes(apiRouter)
+	
+	// Register follow routes
+	handlers.RegisterFollowRoutes(apiRouter)
+	
+	// Register chat routes including WebSocket endpoint
+	handlers.RegisterChatRoutes(r)
+	
+	// Serve uploaded files
+	uploadsFS := http.FileServer(http.Dir("./uploads"))
+	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", uploadsFS))
+	
+	// Add a health check endpoint
+	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 
-	logger.Printf("Server setup completed in %v", time.Since(startTime))
-
-	// Start server
-	port := 8080
-	fmt.Printf("Server running on http://localhost:%d\n", port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), r); err != nil {
-		logger.Fatalf("Failed to start server: %v", err)
+	port := "8080"
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		port = envPort
 	}
+	
+	logger.Printf("Server setup completed in %v", time.Since(startTime))
+	logger.Printf("Starting server on port %s...", port)
+	logger.Fatal(http.ListenAndServe(":"+port, r))
 }

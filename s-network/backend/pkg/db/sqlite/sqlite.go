@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -190,6 +191,25 @@ func (db *DB) InitializeTables() error {
 		return err
 	}
 
+	// Create notifications table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS notifications (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			receiver_id INTEGER NOT NULL,
+			sender_id INTEGER,
+			type TEXT NOT NULL,
+			content TEXT NOT NULL,
+			reference_id INTEGER,
+			is_read BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE SET NULL
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -218,10 +238,13 @@ func (db *DB) Migrate(migrationPath string) error {
 
 // CreateUser adds a new user to the database
 func (db *DB) CreateUser(email, password, firstName, lastName, dob, avatar, nickname, aboutMe string) (int64, error) {
-	query := `INSERT INTO users (email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO users (email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	result, err := db.Exec(query, email, password, firstName, lastName, dob, avatar, nickname, aboutMe)
+	// Set is_public to true (1) by default for all new users
+	isPublic := true
+
+	result, err := db.Exec(query, email, password, firstName, lastName, dob, avatar, nickname, aboutMe, isPublic)
 	if err != nil {
 		return 0, err
 	}
@@ -695,6 +718,250 @@ func (db *DB) FollowUser(followerID, followingID int) error {
 	return nil
 }
 
+// IsFollowing checks if a user is following another user
+func (db *DB) IsFollowing(followerID, followingID int) (bool, error) {
+	// Check if followers table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName)
+	if err != nil {
+		// If table doesn't exist, user can't be following anyone
+		return false, nil
+	}
+
+	// Check if following relationship exists
+	query := `SELECT 1 FROM followers WHERE follower_id = ? AND following_id = ?`
+	row := db.QueryRow(query, followerID, followingID)
+	var exists int
+	err = row.Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+// UnfollowUser removes a follower relationship between two users
+func (db *DB) UnfollowUser(followerID, followingID int) error {
+	// Check if followers table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='followers'").Scan(&tableName)
+	if err != nil {
+		return fmt.Errorf("not following this user")
+	}
+
+	// Delete the follow relationship
+	query := `DELETE FROM followers WHERE follower_id = ? AND following_id = ?`
+	result, err := db.Exec(query, followerID, followingID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("not following this user")
+	}
+
+	return nil
+}
+
+// FollowRequest represents a follow request
+type FollowRequest struct {
+	ID          int64
+	FollowerID  int64
+	FollowingID int64
+	CreatedAt   time.Time
+}
+
+// CreateFollowRequest creates a new follow request
+func (db *DB) CreateFollowRequest(followerID, followingID int64) (int64, error) {
+	// Check if follow_requests table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		// Create follow_requests table if it doesn't exist
+		_, err = db.Exec(`
+			CREATE TABLE IF NOT EXISTS follow_requests (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				follower_id INTEGER NOT NULL,
+				following_id INTEGER NOT NULL,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(follower_id, following_id),
+				FOREIGN KEY (follower_id) REFERENCES users (id) ON DELETE CASCADE,
+				FOREIGN KEY (following_id) REFERENCES users (id) ON DELETE CASCADE
+			)
+		`)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create follow_requests table: %w", err)
+		}
+	}
+
+	// Insert the follow request
+	query := `INSERT INTO follow_requests (follower_id, following_id) VALUES (?, ?)`
+	result, err := db.Exec(query, followerID, followingID)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.LastInsertId()
+}
+
+// CheckFollowRequestExists checks if a follow request already exists
+func (db *DB) CheckFollowRequestExists(followerID, followingID int64) (bool, error) {
+	// Check if follow_requests table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		// If table doesn't exist, no request can exist
+		return false, nil
+	}
+
+	// Check if request exists
+	query := `SELECT 1 FROM follow_requests WHERE follower_id = ? AND following_id = ?`
+	row := db.QueryRow(query, followerID, followingID)
+	var exists int
+	err = row.Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+// GetFollowRequest retrieves a follow request by ID
+func (db *DB) GetFollowRequest(requestID int64) (*FollowRequest, error) {
+	// Check if follow_requests table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		return nil, fmt.Errorf("follow request not found")
+	}
+
+	// Get the follow request
+	query := `SELECT id, follower_id, following_id, created_at FROM follow_requests WHERE id = ?`
+	row := db.QueryRow(query, requestID)
+	
+	var request FollowRequest
+	err = row.Scan(&request.ID, &request.FollowerID, &request.FollowingID, &request.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("follow request not found")
+		}
+		return nil, err
+	}
+
+	return &request, nil
+}
+
+// GetUserFollowRequests gets all follow requests for a user
+func (db *DB) GetUserFollowRequests(userID int64) ([]*FollowRequest, error) {
+	// Check if follow_requests table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		// If table doesn't exist, return empty list
+		return []*FollowRequest{}, nil
+	}
+
+	// Get all follow requests for the user
+	query := `SELECT id, follower_id, following_id, created_at FROM follow_requests WHERE following_id = ?`
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []*FollowRequest
+	for rows.Next() {
+		var request FollowRequest
+		err = rows.Scan(&request.ID, &request.FollowerID, &request.FollowingID, &request.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, &request)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return requests, nil
+}
+
+// AcceptFollowRequest accepts a follow request and creates a follow relationship
+func (db *DB) AcceptFollowRequest(requestID int64) error {
+	// Start a transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Get the follow request
+	query := `SELECT follower_id, following_id FROM follow_requests WHERE id = ?`
+	row := tx.QueryRow(query, requestID)
+	
+	var followerID, followingID int64
+	err = row.Scan(&followerID, &followingID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("follow request not found")
+		}
+		return err
+	}
+
+	// Create the follow relationship
+	query = `INSERT INTO followers (follower_id, following_id) VALUES (?, ?)`
+	_, err = tx.Exec(query, followerID, followingID)
+	if err != nil {
+		return err
+	}
+
+	// Delete the follow request
+	query = `DELETE FROM follow_requests WHERE id = ?`
+	_, err = tx.Exec(query, requestID)
+	if err != nil {
+		return err
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RejectFollowRequest rejects and deletes a follow request
+func (db *DB) RejectFollowRequest(requestID int64) error {
+	// Delete the follow request
+	query := `DELETE FROM follow_requests WHERE id = ?`
+	result, err := db.Exec(query, requestID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("follow request not found")
+	}
+
+	return nil
+}
+
 // DeletePost removes a post and its associated comments from the database
 func (db *DB) DeletePost(postID int64) error {
 	// Start a transaction to ensure data consistency
@@ -1021,10 +1288,8 @@ func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
 			user["about_me"] = aboutMe.String
 		}
 
-		// Only add public profiles to search results
-		if isPublic {
-			users = append(users, user)
-		}
+		// Include all users in search results, regardless of privacy setting
+		users = append(users, user)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -1032,4 +1297,57 @@ func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
 	}
 
 	return users, nil
+}
+
+// CancelFollowRequest cancels a follow request created by the follower
+func (db *DB) CancelFollowRequest(followerID, followingID int64) error {
+	// Check if follow_requests table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		return fmt.Errorf("follow request not found")
+	}
+
+	// Delete the follow request
+	query := `DELETE FROM follow_requests WHERE follower_id = ? AND following_id = ?`
+	result, err := db.Exec(query, followerID, followingID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("follow request not found")
+	}
+
+	return nil
+}
+
+// CheckFollowRequestExistsById checks if a follow request exists by its ID
+func (db *DB) CheckFollowRequestExistsById(requestID int64) (bool, error) {
+	// Check if follow_requests table exists
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		// If table doesn't exist, no request can exist
+		return false, nil
+	}
+
+	// Check if request exists by ID
+	query := `SELECT 1 FROM follow_requests WHERE id = ?`
+	row := db.QueryRow(query, requestID)
+	var exists int
+	err = row.Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
 }

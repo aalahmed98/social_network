@@ -6,10 +6,11 @@ import { IoSend, IoInformationCircle, IoAddCircle } from "react-icons/io5";
 import { FaSmile, FaUsers, FaCalendarAlt, FaTimes } from "react-icons/fa";
 import { createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useAuth } from "@/context/AuthContext";
 
 interface Message {
   id: string;
-  senderId: string;
+  senderId: string | number;
   senderName: string;
   senderAvatar?: string;
   content: string;
@@ -19,9 +20,14 @@ interface Message {
 
 interface ChatWindowProps {
   chat: Chat;
+  onConversationUpdated: () => Promise<void>;
 }
 
-export default function ChatWindow({ chat }: ChatWindowProps) {
+export default function ChatWindow({
+  chat,
+  onConversationUpdated,
+}: ChatWindowProps) {
+  const { user } = useAuth();
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [showInfo, setShowInfo] = useState(false);
@@ -32,90 +38,314 @@ export default function ChatWindow({ chat }: ChatWindowProps) {
     date: "",
     time: "",
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [socket, setSocket] = useState<WebSocket | null>(null);
 
-  // Load mock messages
+  // WebSocket connection
   useEffect(() => {
-    // This would normally come from an API or websocket
-    const mockMessages: Message[] = [
-      {
-        id: "1",
-        senderId: "user1",
-        senderName: chat.isGroup ? "Alice" : chat.name,
-        senderAvatar: "/uploads/avatars/default.png",
-        content: "Hey there! How's it going?",
-        timestamp: "10:30 AM",
-        isMe: false,
-      },
-      {
-        id: "2",
-        senderId: "currentUser",
-        senderName: "You",
-        content:
-          "I'm doing well, thanks for asking! Just working on that project we discussed.",
-        timestamp: "10:32 AM",
-        isMe: true,
-      },
-      {
-        id: "3",
-        senderId: "user1",
-        senderName: chat.isGroup ? "Alice" : chat.name,
-        senderAvatar: "/uploads/avatars/default.png",
-        content: "That's great! Let me know if you need any help with it.",
-        timestamp: "10:33 AM",
-        isMe: false,
-      },
-    ];
-
-    if (chat.isGroup) {
-      // Add more messages for group chats
-      mockMessages.push(
-        {
-          id: "4",
-          senderId: "user2",
-          senderName: "Bob",
-          senderAvatar: "/uploads/avatars/default.png",
-          content: "I'm available to help as well if needed!",
-          timestamp: "10:35 AM",
-          isMe: false,
-        },
-        {
-          id: "5",
-          senderId: "user3",
-          senderName: "Charlie",
-          senderAvatar: "/uploads/avatars/default.png",
-          content: "We should schedule a meeting to discuss progress.",
-          timestamp: "10:40 AM",
-          isMe: false,
-        }
-      );
+    // Close any existing socket connection
+    if (socket) {
+      socket.close();
     }
 
-    setMessages(mockMessages);
-  }, [chat.id]);
+    // Don't attempt to connect if not authenticated
+    if (!user) return;
+
+    let wsConnected = false;
+    const backendUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${backendUrl.replace(
+      /^https?:\/\//,
+      ""
+    )}/ws/chat`;
+
+    const newSocket = new WebSocket(wsUrl);
+
+    newSocket.onopen = () => {
+      console.log("WebSocket connection established");
+      wsConnected = true;
+      setError(null);
+      // Register for this conversation
+      if (newSocket.readyState === WebSocket.OPEN) {
+        newSocket.send(
+          JSON.stringify({
+            type: "register",
+            conversation_id: parseInt(chat.id),
+          })
+        );
+      }
+    };
+
+    newSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (
+          data.type === "chat_message" &&
+          data.conversation_id.toString() === chat.id
+        ) {
+          // Format incoming message
+          const newMessage: Message = {
+            id: data.id || Date.now().toString(),
+            senderId: data.sender_id,
+            senderName: data.sender_name || "Unknown",
+            senderAvatar: data.sender_avatar,
+            content: data.content,
+            timestamp: formatTimestamp(
+              data.timestamp || new Date().toISOString()
+            ),
+            isMe: data.sender_id === user?.id,
+          };
+
+          setMessages((prev) => [...prev, newMessage]);
+
+          // Notify parent component that there's a new message (updates conversation list)
+          onConversationUpdated();
+        }
+      } catch (error) {
+        console.error("Error parsing WebSocket message:", error);
+      }
+    };
+
+    newSocket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setError(
+        "Could not establish WebSocket connection. Falling back to polling."
+      );
+      wsConnected = false;
+    };
+
+    newSocket.onclose = () => {
+      console.log("WebSocket connection closed");
+      wsConnected = false;
+    };
+
+    setSocket(newSocket);
+
+    // Polling fallback if WebSocket fails
+    let pollingInterval: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      // Only start polling if WebSocket is not connected
+      if (!wsConnected) {
+        console.log("Starting polling fallback");
+        // Poll every 3 seconds
+        pollingInterval = setInterval(fetchLatestMessages, 3000);
+      }
+    };
+
+    // Give WebSocket 2 seconds to connect, then start polling if needed
+    const pollingTimeout = setTimeout(() => {
+      if (!wsConnected) {
+        startPolling();
+      }
+    }, 2000);
+
+    // Cleanup function
+    return () => {
+      if (newSocket && newSocket.readyState === WebSocket.OPEN) {
+        newSocket.close();
+      }
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+      clearTimeout(pollingTimeout);
+    };
+  }, [chat.id, user]);
+
+  // Function to fetch the latest messages
+  const fetchLatestMessages = async () => {
+    if (!chat.id || !user) return;
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${backendUrl}/api/conversations/${chat.id}/messages?limit=20`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch messages: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.messages && Array.isArray(data.messages)) {
+        const formattedMessages: Message[] = data.messages.map((msg: any) => ({
+          id: msg.id.toString(),
+          senderId: msg.sender.id,
+          senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
+          senderAvatar: msg.sender.avatar,
+          content: msg.content,
+          timestamp: formatTimestamp(msg.timestamp),
+          isMe: msg.sender.id === user?.id,
+        }));
+
+        // Check if we have new messages by comparing IDs
+        const currentMessageIds = new Set(messages.map((m) => m.id));
+        const newMessages = formattedMessages.filter(
+          (msg) => !currentMessageIds.has(msg.id)
+        );
+
+        if (newMessages.length > 0) {
+          setMessages((prev) => [...prev, ...newMessages]);
+          onConversationUpdated();
+        }
+      }
+    } catch (error) {
+      console.error("Error polling messages:", error);
+    }
+  };
+
+  // Load messages for the current conversation
+  useEffect(() => {
+    const fetchMessages = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const response = await fetch(
+          `${backendUrl}/api/conversations/${chat.id}/messages`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch messages: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.messages && Array.isArray(data.messages)) {
+          const formattedMessages: Message[] = data.messages.map(
+            (msg: any) => ({
+              id: msg.id.toString(),
+              senderId: msg.sender.id,
+              senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
+              senderAvatar: msg.sender.avatar,
+              content: msg.content,
+              timestamp: formatTimestamp(msg.timestamp),
+              isMe: msg.sender.id === user?.id,
+            })
+          );
+
+          setMessages(formattedMessages);
+        }
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+        setError("Failed to load messages. Please try again later.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (chat.id) {
+      fetchMessages();
+    }
+  }, [chat.id, user]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (!message.trim()) return;
+  const formatTimestamp = (timestamp: string): string => {
+    const date = new Date(timestamp);
+    const now = new Date();
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: "currentUser",
-      senderName: "You",
-      content: message.trim(),
-      timestamp: new Date().toLocaleTimeString([], {
+    if (date.toDateString() === now.toDateString()) {
+      // Today - show time
+      return date.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
-      }),
-      isMe: true,
-    };
+      });
+    } else {
+      // Not today - show date and time
+      return (
+        date.toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        }) +
+        " " +
+        date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      );
+    }
+  };
 
-    setMessages([...messages, newMessage]);
+  const handleSendMessage = async () => {
+    if (!message.trim()) return;
+
+    const messageContent = message.trim();
     setMessage("");
+
+    // Try to send via WebSocket first
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const messageData = {
+        type: "chat_message",
+        conversation_id: parseInt(chat.id),
+        content: messageContent,
+      };
+
+      socket.send(JSON.stringify(messageData));
+    } else {
+      // Fallback to REST API
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const response = await fetch(
+          `${backendUrl}/api/conversations/${chat.id}/messages`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              content: messageContent,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to send message: ${response.status}`);
+        }
+
+        // Manually add the message to the UI to show it immediately
+        const tempMessage: Message = {
+          id: `temp-${Date.now()}`,
+          senderId: user?.id || 0,
+          senderName:
+            user?.firstName && user?.lastName
+              ? `${user.firstName} ${user.lastName}`
+              : "You",
+          content: messageContent,
+          timestamp: formatTimestamp(new Date().toISOString()),
+          isMe: true,
+        };
+
+        setMessages((prev) => [...prev, tempMessage]);
+
+        // Fetch latest messages to get the properly stored message
+        setTimeout(fetchLatestMessages, 500);
+      } catch (error) {
+        console.error("Error sending message via API:", error);
+        setError("Failed to send message. Please try again.");
+      }
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -147,7 +377,14 @@ export default function ChatWindow({ chat }: ChatWindowProps) {
                 </div>
               ) : chat.avatar ? (
                 <img
-                  src={chat.avatar}
+                  src={
+                    chat.avatar.startsWith("http")
+                      ? chat.avatar
+                      : `${
+                          process.env.NEXT_PUBLIC_BACKEND_URL ||
+                          "http://localhost:8080"
+                        }${chat.avatar}`
+                  }
                   alt={chat.name}
                   className="h-full w-full object-cover"
                 />
@@ -188,62 +425,83 @@ export default function ChatWindow({ chat }: ChatWindowProps) {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-          <div className="space-y-4">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.isMe ? "justify-end" : "justify-start"}`}
-              >
+          {error ? (
+            <div className="text-center py-8 text-red-500">{error}</div>
+          ) : isLoading ? (
+            <div className="flex justify-center items-center h-full">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No messages yet. Start the conversation!
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.map((msg) => (
                 <div
-                  className={`flex max-w-[75%] ${
-                    msg.isMe ? "flex-row-reverse" : ""
+                  key={msg.id}
+                  className={`flex ${
+                    msg.isMe ? "justify-end" : "justify-start"
                   }`}
                 >
-                  {!msg.isMe && (
-                    <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-2">
-                      {msg.senderAvatar ? (
-                        <img
-                          src={msg.senderAvatar}
-                          alt={msg.senderName}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        createAvatarFallback(msg.senderName)
-                      )}
-                    </div>
-                  )}
-                  <div className="flex flex-col">
-                    {chat.isGroup && !msg.isMe && (
-                      <span className="text-xs text-gray-500 mb-1 ml-1">
-                        {msg.senderName}
-                      </span>
+                  <div
+                    className={`flex max-w-[75%] ${
+                      msg.isMe ? "flex-row-reverse" : ""
+                    }`}
+                  >
+                    {!msg.isMe && (
+                      <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-2">
+                        {msg.senderAvatar ? (
+                          <img
+                            src={
+                              msg.senderAvatar.startsWith("http")
+                                ? msg.senderAvatar
+                                : `${
+                                    process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                    "http://localhost:8080"
+                                  }${msg.senderAvatar}`
+                            }
+                            alt={msg.senderName}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          createAvatarFallback(msg.senderName)
+                        )}
+                      </div>
                     )}
-                    <div
-                      className={`rounded-lg px-4 py-2 inline-block ${
-                        msg.isMe
-                          ? "bg-blue-600 text-white rounded-tr-none"
-                          : "bg-white text-gray-800 rounded-tl-none shadow-sm"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap break-words">
-                        {msg.content}
-                      </p>
+                    <div className="flex flex-col">
+                      {chat.isGroup && !msg.isMe && (
+                        <span className="text-xs text-gray-500 mb-1 ml-1">
+                          {msg.senderName}
+                        </span>
+                      )}
+                      <div
+                        className={`rounded-lg px-4 py-2 inline-block ${
+                          msg.isMe
+                            ? "bg-blue-600 text-white rounded-tr-none"
+                            : "bg-white text-gray-800 rounded-tl-none shadow-sm"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap break-words">
+                          {msg.content}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs mt-1 ${
+                          msg.isMe
+                            ? "text-gray-500 text-right"
+                            : "text-gray-500 ml-1"
+                        }`}
+                      >
+                        {msg.timestamp}
+                      </span>
                     </div>
-                    <span
-                      className={`text-xs mt-1 ${
-                        msg.isMe
-                          ? "text-gray-500 text-right"
-                          : "text-gray-500 ml-1"
-                      }`}
-                    >
-                      {msg.timestamp}
-                    </span>
                   </div>
                 </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
 
         {/* Message input */}
@@ -310,7 +568,14 @@ export default function ChatWindow({ chat }: ChatWindowProps) {
                   </div>
                 ) : chat.avatar ? (
                   <img
-                    src={chat.avatar}
+                    src={
+                      chat.avatar.startsWith("http")
+                        ? chat.avatar
+                        : `${
+                            process.env.NEXT_PUBLIC_BACKEND_URL ||
+                            "http://localhost:8080"
+                          }${chat.avatar}`
+                    }
                     alt={chat.name}
                     className="h-full w-full object-cover"
                   />
@@ -351,7 +616,14 @@ export default function ChatWindow({ chat }: ChatWindowProps) {
                         <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-3 flex items-center justify-center">
                           {member.avatar ? (
                             <img
-                              src={member.avatar}
+                              src={
+                                member.avatar.startsWith("http")
+                                  ? member.avatar
+                                  : `${
+                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                      "http://localhost:8080"
+                                    }${member.avatar}`
+                              }
                               alt={member.name}
                               className="h-full w-full object-cover"
                             />

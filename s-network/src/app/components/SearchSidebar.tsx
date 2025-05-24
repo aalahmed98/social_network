@@ -293,7 +293,7 @@ export default function SearchSidebar() {
                       user.avatar !== "/uploads/avatars/default.jpg" ? (
                         <div className="w-full h-full flex items-center justify-center bg-gray-200">
                           <Image
-                            src={getImageUrl(user.avatar)}
+                            src={getImageUrl(user.avatar) || "/assets/default-avatar.png"}
                             alt={user.username}
                             width={40}
                             height={40}

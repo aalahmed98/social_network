@@ -30,69 +30,197 @@ export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [groupChats, setGroupChats] = useState<Chat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [followers, setFollowers] = useState<any[]>([]);
+  const [following, setFollowing] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // If not logged in, redirect to login
     if (!loading && !isLoggedIn) {
       router.push("/login");
     } else if (isLoggedIn) {
-      // Fetch chats
+      // Fetch chats, followers, and following
       fetchChats();
+      fetchFollowRelationships();
     }
   }, [isLoggedIn, loading, router]);
 
+  const fetchFollowRelationships = async () => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      // Fetch followers
+      const followersResponse = await fetch(`${backendUrl}/api/followers`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (followersResponse.ok) {
+        const followersData = await followersResponse.json();
+        setFollowers(followersData.followers || []);
+      }
+
+      // Fetch following
+      const followingResponse = await fetch(`${backendUrl}/api/following`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (followingResponse.ok) {
+        const followingData = await followingResponse.json();
+        setFollowing(followingData.followings || []);
+      }
+    } catch (error) {
+      console.error("Error fetching follow relationships:", error);
+      setError("Failed to load contacts. Please try again later.");
+    }
+  };
+
   const fetchChats = async () => {
     setIsLoading(true);
-    // This is just mock data for now - will be replaced with actual API calls
-    setTimeout(() => {
-      // Mock direct message chats
-      setChats([
-        {
-          id: "1",
-          name: "John Doe",
-          lastMessage: "Hey, how are you?",
-          lastMessageTime: "10:30 AM",
-          unreadCount: 2,
-          avatar: "/uploads/avatars/default.png",
-        },
-        {
-          id: "2",
-          name: "Jane Smith",
-          lastMessage: "Did you see the new post?",
-          lastMessageTime: "Yesterday",
-          avatar: "/uploads/avatars/default.png",
-        },
-      ]);
 
-      // Mock group chats
-      setGroupChats([
-        {
-          id: "g1",
-          name: "Web Development",
-          lastMessage: "Alice: Let's meet tomorrow",
-          lastMessageTime: "2:45 PM",
-          unreadCount: 5,
-          isGroup: true,
-          members: [
-            { id: 1, name: "Alice", avatar: "/uploads/avatars/default.png" },
-            { id: 2, name: "Bob", avatar: "/uploads/avatars/default.png" },
-            { id: 3, name: "Charlie", avatar: "/uploads/avatars/default.png" },
-          ],
-        },
-        {
-          id: "g2",
-          name: "Weekend Hiking",
-          lastMessage: "Bob: I'll bring snacks",
-          lastMessageTime: "Yesterday",
-          isGroup: true,
-          members: [
-            { id: 1, name: "Alice", avatar: "/uploads/avatars/default.png" },
-            { id: 2, name: "Bob", avatar: "/uploads/avatars/default.png" },
-          ],
-        },
-      ]);
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/conversations`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch conversations: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Process conversations from the API
+      const directChats: Chat[] = [];
+      const groups: Chat[] = [];
+
+      if (data.conversations && Array.isArray(data.conversations)) {
+        data.conversations.forEach((conv: any) => {
+          const chat: Chat = {
+            id: conv.id.toString(),
+            name: conv.name,
+            avatar: conv.avatar,
+            isGroup: conv.is_group,
+            unreadCount: conv.unread_count,
+          };
+
+          // Add last message if available
+          if (conv.last_message) {
+            chat.lastMessage = conv.last_message.content;
+            // Format timestamp
+            const messageDate = new Date(conv.last_message.timestamp);
+            const now = new Date();
+
+            if (messageDate.toDateString() === now.toDateString()) {
+              // Today - show time
+              chat.lastMessageTime = messageDate.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+            } else {
+              // Not today - show date
+              chat.lastMessageTime = messageDate.toLocaleDateString([], {
+                month: "short",
+                day: "numeric",
+              });
+            }
+          }
+
+          if (conv.is_group) {
+            if (conv.participants) {
+              chat.members = conv.participants.map((p: any) => ({
+                id: p.id,
+                name: `${p.first_name} ${p.last_name}`,
+                avatar: p.avatar,
+              }));
+            }
+            groups.push(chat);
+          } else {
+            directChats.push(chat);
+          }
+        });
+      }
+
+      setChats(directChats);
+      setGroupChats(groups);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      setError("Failed to load conversations. Please try again later.");
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
+  };
+
+  // Function to create a new conversation with a user
+  const createConversation = async (userId: number) => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/conversations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          is_group: false,
+          participants: [userId],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create conversation: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Refresh conversations list
+      fetchChats();
+
+      // Return the new conversation ID
+      return data.id;
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      setError("Failed to start conversation. Please try again later.");
+      return null;
+    }
+  };
+
+  // Get list of available contacts (users who follow you or you follow)
+  const getAvailableContacts = () => {
+    // Create a map of all users in follow relationships
+    const contactsMap = new Map();
+
+    // Add followers
+    followers.forEach((follower) => {
+      contactsMap.set(follower.id, {
+        id: follower.id,
+        name: `${follower.first_name} ${follower.last_name}`,
+        avatar: follower.avatar,
+        relationship: "follower",
+      });
+    });
+
+    // Add following
+    following.forEach((followed) => {
+      const existing = contactsMap.get(followed.id);
+      if (existing) {
+        existing.relationship = "mutual";
+      } else {
+        contactsMap.set(followed.id, {
+          id: followed.id,
+          name: `${followed.first_name} ${followed.last_name}`,
+          avatar: followed.avatar,
+          relationship: "following",
+        });
+      }
+    });
+
+    return Array.from(contactsMap.values());
   };
 
   return (
@@ -136,6 +264,9 @@ export default function ChatPage() {
               selectedChatId={selectedChat?.id}
               onSelectChat={setSelectedChat}
               isLoading={isLoading}
+              error={error}
+              contacts={getAvailableContacts()}
+              onStartNewChat={createConversation}
             />
           </Tabs.Content>
 
@@ -148,6 +279,7 @@ export default function ChatPage() {
               selectedChatId={selectedChat?.id}
               onSelectChat={setSelectedChat}
               isLoading={isLoading}
+              error={error}
             />
           </Tabs.Content>
         </div>
@@ -155,11 +287,14 @@ export default function ChatPage() {
         {/* Chat window */}
         <div className="flex-1 flex flex-col h-full">
           {selectedChat ? (
-            <ChatWindow chat={selectedChat} />
+            <ChatWindow
+              chat={selectedChat}
+              onConversationUpdated={fetchChats}
+            />
           ) : (
             <EmptyState
               title="Select a conversation"
-              description="Choose a chat from the sidebar to start messaging"
+              description="Choose a chat from the sidebar or start a new conversation"
             />
           )}
         </div>

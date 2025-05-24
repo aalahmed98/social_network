@@ -12,6 +12,7 @@ interface GroupChatListProps {
   selectedChatId: string | undefined;
   onSelectChat: (chat: Chat) => void;
   isLoading: boolean;
+  error: string | null;
 }
 
 export default function GroupChatList({
@@ -19,6 +20,7 @@ export default function GroupChatList({
   selectedChatId,
   onSelectChat,
   isLoading,
+  error,
 }: GroupChatListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -71,9 +73,11 @@ export default function GroupChatList({
 
       {/* Group list */}
       <div className="overflow-y-auto flex-1">
-        {isLoading ? (
+        {error ? (
+          <div className="text-center py-8 text-red-500 px-4">{error}</div>
+        ) : isLoading ? (
           <div className="flex justify-center items-center h-32">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
           </div>
         ) : filteredChats.length > 0 ? (
           filteredChats.map((chat) => (
@@ -88,12 +92,30 @@ export default function GroupChatList({
                 <div className="h-10 w-10 rounded-full bg-indigo-100 overflow-hidden flex items-center justify-center text-indigo-700">
                   {chat.avatar ? (
                     <img
-                      src={chat.avatar}
+                      src={
+                        chat.avatar.startsWith("http")
+                          ? chat.avatar
+                          : `${
+                              process.env.NEXT_PUBLIC_BACKEND_URL ||
+                              "http://localhost:8080"
+                            }${chat.avatar}`
+                      }
                       alt={chat.name}
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <FaUsers size={18} />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                   )}
                 </div>
                 {chat.unreadCount && chat.unreadCount > 0 && (
@@ -120,18 +142,23 @@ export default function GroupChatList({
                     chat.members.slice(0, 3).map((member, index) => (
                       <div
                         key={index}
-                        className="inline-block h-5 w-5 rounded-full ring-2 ring-white overflow-hidden"
+                        className="inline-block h-5 w-5 rounded-full ring-2 ring-white overflow-hidden bg-gray-200"
                       >
                         {member.avatar ? (
                           <img
-                            src={member.avatar}
+                            src={
+                              member.avatar.startsWith("http")
+                                ? member.avatar
+                                : `${
+                                    process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                    "http://localhost:8080"
+                                  }${member.avatar}`
+                            }
                             alt={member.name}
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="h-full w-full bg-gray-200 flex items-center justify-center text-xs text-gray-600">
-                            {createAvatarFallback(member.name)}
-                          </div>
+                          createAvatarFallback(member.name)
                         )}
                       </div>
                     ))}

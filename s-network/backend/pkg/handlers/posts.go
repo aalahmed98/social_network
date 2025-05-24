@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"s-network/backend/pkg/db/sqlite"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -23,7 +25,7 @@ type CreatePostRequest struct {
 // CreatePostHandler creates a new post
 func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -125,7 +127,7 @@ func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 // GetPostsHandler retrieves posts for the authenticated user
 func GetPostsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -186,7 +188,7 @@ func GetPostsHandler(w http.ResponseWriter, r *http.Request) {
 // GetPostHandler retrieves a specific post by ID
 func GetPostHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -268,7 +270,7 @@ func GetPostHandler(w http.ResponseWriter, r *http.Request) {
 // AddCommentHandler adds a comment to a post
 func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -394,7 +396,7 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 // GetUserFollowersHandler retrieves followers for the authenticated user
 func GetUserFollowersHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -437,7 +439,7 @@ func GetUserFollowingHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// fallback to session-based authenticated user
-		session, err := store.Get(r, "session")
+		session, err := store.Get(r, SessionCookieName)
 		if err != nil {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -468,7 +470,7 @@ func GetUserFollowingHandler(w http.ResponseWriter, r *http.Request) {
 // FollowUserHandler allows a user to follow another user
 func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -500,24 +502,353 @@ func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add follow relationship in the database
-	err = db.FollowUser(followerID, followingID)
+	// Get user to check if account is public or private
+	userToFollow, err := db.GetUserById(followingID)
 	if err != nil {
-		http.Error(w, "Failed to follow user: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
-	// Return success response
+	isPublic, ok := userToFollow["is_public"].(bool)
+	if !ok {
+		isPublic = true // Default to public if field is missing
+	}
+
+	if isPublic {
+		// Direct follow for public accounts
+		err = db.FollowUser(followerID, followingID)
+		if err != nil {
+			http.Error(w, "Failed to follow user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Create notification for the user being followed
+		followerUser, err := db.GetUserById(followerID)
+		if err == nil {
+			followerName := followerUser["first_name"].(string) + " " + followerUser["last_name"].(string)
+			db.CreateNotification(&sqlite.Notification{
+				ReceiverID:  int64(followingID),
+				SenderID:    int64(followerID),
+				Type:        "follow",
+				Content:     followerName + " started following you",
+				ReferenceID: int64(followerID),
+				IsRead:      false,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "User followed successfully",
+			"status": "followed",
+		})
+	} else {
+		// Create follow request for private accounts
+		exists, err := db.CheckFollowRequestExists(int64(followerID), int64(followingID))
+		if err != nil {
+			http.Error(w, "Failed to check follow request: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if exists {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": "Follow request already sent",
+				"status": "request_sent",
+			})
+			return
+		}
+
+		requestID, err := db.CreateFollowRequest(int64(followerID), int64(followingID))
+		if err != nil {
+			http.Error(w, "Failed to create follow request: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Create notification for the follow request
+		followerUser, err := db.GetUserById(followerID)
+		if err == nil {
+			followerName := followerUser["first_name"].(string) + " " + followerUser["last_name"].(string)
+			db.CreateNotification(&sqlite.Notification{
+				ReceiverID:  int64(followingID),
+				SenderID:    int64(followerID),
+				Type:        "follow_request",
+				Content:     followerName + " wants to follow you",
+				ReferenceID: requestID,
+				IsRead:      false,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Follow request sent successfully",
+			"status": "request_sent",
+			"requestId": requestID,
+		})
+	}
+}
+
+// GetFollowStatusHandler checks if a user is following another user or has a pending follow request
+func GetFollowStatusHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	followerID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user ID to check from request
+	vars := mux.Vars(r)
+	userIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	followingID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Check if the user is following
+	isFollowing, err := db.IsFollowing(followerID, followingID)
+	if err != nil {
+		http.Error(w, "Failed to check follow status: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if a follow request exists
+	followRequestSent, err := db.CheckFollowRequestExists(int64(followerID), int64(followingID))
+	if err != nil {
+		http.Error(w, "Failed to check follow request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "User followed successfully",
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"isFollowing": isFollowing,
+		"followRequestSent": followRequestSent,
+	})
+}
+
+// UnfollowUserHandler allows a user to unfollow another user
+func UnfollowUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	followerID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user ID to unfollow from request
+	vars := mux.Vars(r)
+	userIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	followingID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Remove follow relationship
+	err = db.UnfollowUser(followerID, followingID)
+	if err != nil {
+		http.Error(w, "Failed to unfollow user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "User unfollowed successfully",
+	})
+}
+
+// AcceptFollowRequestHandler allows a user to accept a follow request
+func AcceptFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get request ID from URL
+	vars := mux.Vars(r)
+	requestIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "Request ID is required", http.StatusBadRequest)
+		return
+	}
+
+	requestID, err := strconv.ParseInt(requestIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid request ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get follow request to verify it's for this user
+	request, err := db.GetFollowRequest(requestID)
+	if err != nil {
+		http.Error(w, "Follow request not found", http.StatusNotFound)
+		return
+	}
+
+	if request.FollowingID != int64(userID) {
+		http.Error(w, "Unauthorized to accept this request", http.StatusForbidden)
+		return
+	}
+
+	// Accept the follow request
+	err = db.AcceptFollowRequest(requestID)
+	if err != nil {
+		http.Error(w, "Failed to accept follow request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Create notification for accepted request
+	// Get follower user info for the notification
+	followingUser, err := db.GetUserById(userID)
+	if err == nil {
+		followerID := request.FollowerID
+		followingName := followingUser["first_name"].(string) + " " + followingUser["last_name"].(string)
+		db.CreateNotification(&sqlite.Notification{
+			ReceiverID:  followerID,
+			SenderID:    int64(userID),
+			Type:        "follow_accepted",
+			Content:     followingName + " accepted your follow request",
+			ReferenceID: int64(userID),
+			IsRead:      false,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Follow request accepted successfully",
+	})
+}
+
+// RejectFollowRequestHandler allows a user to reject a follow request
+func RejectFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get request ID from URL
+	vars := mux.Vars(r)
+	requestIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "Request ID is required", http.StatusBadRequest)
+		return
+	}
+
+	requestID, err := strconv.ParseInt(requestIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid request ID", http.StatusBadRequest)
+		return
+	}
+
+	// Check if the follow request still exists
+	exists, err := db.CheckFollowRequestExistsById(requestID)
+	if err != nil {
+		fmt.Printf("Error checking if follow request exists: %v\n", err)
+		// Continue to try get the request
+	} else if !exists {
+		// The request doesn't exist anymore, it might have been deleted by another operation
+		fmt.Printf("Follow request %d doesn't exist in the database\n", requestID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Follow request already processed",
+		})
+		return
+	}
+
+	// Get follow request to verify it's for this user
+	request, err := db.GetFollowRequest(requestID)
+	if err != nil {
+		if err.Error() == "follow request not found" {
+			// Special case: request not found but might have been deleted by a race condition
+			fmt.Printf("Follow request %d not found\n", requestID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": "Follow request already processed",
+			})
+			return
+		}
+		http.Error(w, "Failed to get follow request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if request == nil {
+		fmt.Printf("Follow request %d is nil\n", requestID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Follow request already processed",
+		})
+		return
+	}
+
+	if request.FollowingID != int64(userID) {
+		http.Error(w, "Unauthorized to reject this request", http.StatusForbidden)
+		return
+	}
+
+	// Reject the follow request
+	err = db.RejectFollowRequest(requestID)
+	if err != nil {
+		if err.Error() == "follow request not found" {
+			// Special case: request not found but might have been deleted by a race condition
+			fmt.Printf("Follow request %d not found during rejection\n", requestID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": "Follow request already processed",
+			})
+			return
+		}
+		http.Error(w, "Failed to reject follow request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Follow request rejected successfully",
 	})
 }
 
 // DeletePostHandler removes a post by ID
 func DeletePostHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -574,7 +905,7 @@ func DeletePostHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteCommentHandler removes a comment by ID
 func DeleteCommentHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -694,7 +1025,7 @@ func VotePostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -765,7 +1096,7 @@ func VoteCommentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user ID from session
-	session, err := store.Get(r, "session")
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -852,4 +1183,56 @@ func VoteCommentHandler(w http.ResponseWriter, r *http.Request) {
 	// Return updated comment data
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// CancelFollowRequestHandler allows a user to cancel their follow request
+func CancelFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	followerID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user ID to unfollow from request
+	vars := mux.Vars(r)
+	userIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	followingID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Cancel the follow request
+	err = db.CancelFollowRequest(int64(followerID), int64(followingID))
+	if err != nil {
+		http.Error(w, "Failed to cancel follow request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Follow request canceled successfully",
+	})
+}
+
+// RegisterFollowRoutes registers follow-related routes
+func RegisterFollowRoutes(router *mux.Router) {
+	router.HandleFunc("/follow/status/{id}", GetFollowStatusHandler).Methods("GET", "OPTIONS")
+	router.HandleFunc("/follow/{id}", FollowUserHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/follow/{id}", UnfollowUserHandler).Methods("DELETE", "OPTIONS")
+	router.HandleFunc("/follow/request/{id}/accept", AcceptFollowRequestHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/follow/request/{id}/reject", RejectFollowRequestHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/follow/request/{id}/cancel", CancelFollowRequestHandler).Methods("POST", "OPTIONS")
 }

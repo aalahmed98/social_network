@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { FiSearch, FiUser, FiX } from "react-icons/fi";
+import { FiSearch, FiUser, FiX, FiBell } from "react-icons/fi";
 import Image from "next/image";
+import { useNotifications } from "@/context/NotificationContext";
 
 interface SearchResult {
   id: number;
@@ -17,10 +18,15 @@ interface SearchResult {
   username: string;
 }
 
-export default function Navbar() {
+interface NavbarProps {
+  onNotificationClick?: () => void;
+}
+
+export default function Navbar({ onNotificationClick }: NavbarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { isLoggedIn, loading, logout } = useAuth();
+  const { unreadCount, toggleNotificationSidebar } = useNotifications();
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -47,15 +53,21 @@ export default function Navbar() {
     };
   }, []);
 
-  const handleLogout = async () => {
-    await logout();
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.preventDefault();
 
-    // If already on home page, refresh the page
-    if (pathname === "/") {
-      window.location.reload();
-    } else {
-      // If on other pages, redirect to home page
+    try {
+      await logout();
+
+      // Use the router for all navigation to prevent full page reloads
       router.push("/");
+
+      // If we're already on the home page, refresh the page state without a full reload
+      if (pathname === "/") {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Logout failed:", error);
     }
   };
 
@@ -200,7 +212,14 @@ export default function Navbar() {
                         src={
                           result.avatar.startsWith("http")
                             ? result.avatar
-                            : `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080"}${result.avatar.startsWith("/") ? result.avatar : `/${result.avatar}`}`
+                            : `${
+                                process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                "http://localhost:8080"
+                              }${
+                                result.avatar.startsWith("/")
+                                  ? result.avatar
+                                  : `/${result.avatar}`
+                              }`
                         }
                         alt={`${result.firstName} ${result.lastName}`}
                         fill
@@ -257,36 +276,68 @@ export default function Navbar() {
         </div>
       )}
 
-      {isLoggedIn ? (
-        <button
-          onClick={handleLogout}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 
-            hover:bg-gray-100 transition-all duration-200 shadow-sm hover:shadow-md
-            transform hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm"
-        >
-          Logout
-        </button>
-      ) : (
-        pathname !== "/login" &&
-        pathname !== "/register" && (
-          <div className="flex gap-2">
+      <div className="flex items-center space-x-4">
+        {isLoggedIn ? (
+          <>
+            <button
+              onClick={toggleNotificationSidebar}
+              className="relative p-2 text-gray-600 hover:text-indigo-600 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label="Notifications"
+            >
+              <FiBell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+
+            <div className="relative group">
+              <button className="flex items-center space-x-1 text-gray-600 hover:text-indigo-600">
+                <FiUser size={20} />
+                <span className="hidden sm:inline text-sm font-medium">
+                  Account
+                </span>
+              </button>
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 hidden group-hover:block">
+                <Link
+                  href="/profile"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                >
+                  Your Profile
+                </Link>
+                <Link
+                  href="/settings"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                >
+                  Settings
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
             <Link
               href="/login"
-              className="px-4 py-2 rounded-lg text-sm font-medium text-indigo-600 border border-gray-300 
-                hover:bg-gray-50 transition-all duration-200 transform hover:-translate-y-0.5"
+              className="text-gray-800 hover:text-indigo-600 text-sm font-medium"
             >
-              Login
+              Sign in
             </Link>
             <Link
               href="/register"
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 
-                hover:bg-indigo-700 transition-all duration-200 transform hover:-translate-y-0.5 shadow-sm hover:shadow-md"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
             >
-              Register
+              Sign up
             </Link>
-          </div>
-        )
-      )}
+          </>
+        )}
+      </div>
     </nav>
   );
 }

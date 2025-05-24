@@ -134,7 +134,7 @@ export default function Profile() {
             (post: Post) => post.user_id === userData.id
           );
           setPosts(userPosts);
-        }     
+        }
       } catch (error) {
         console.error("Profile error:", error);
         // Delay the redirect to prevent flashing
@@ -151,28 +151,31 @@ export default function Profile() {
 
   useEffect(() => {
     if (!user?.id) return; // Wait until user data is loaded
-  
+
     async function loadData() {
       try {
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-  
-        const flRes = await fetch(`${backendUrl}/api/following?userId=${user.id}`, {
-          credentials: "include",
-        });
-  
+
+        const flRes = await fetch(
+          `${backendUrl}/api/following?userId=${user.id}`,
+          {
+            credentials: "include",
+          }
+        );
+
         if (!flRes.ok) throw new Error("Failed to load following");
-  
+
         const flJson = await flRes.json();
         setFollowing(flJson.followings || []);
       } catch (error) {
         console.error("Error fetching following:", error);
       }
     }
-  
+
     loadData();
   }, [user?.id]);
-  
+
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -372,9 +375,14 @@ export default function Profile() {
                   <h2 className="text-2xl font-bold text-gray-800">
                     {user?.first_name} {user?.last_name}
                   </h2>
-                  {user?.is_public && (
+                  {user?.is_public === false && (
                     <div className="ml-2 text-gray-500" title="Private profile">
                       <FiLock size={16} />
+                    </div>
+                  )}
+                  {user?.is_public === true && (
+                    <div className="ml-2 text-green-500" title="Public profile">
+                      <FiGlobe size={16} />
                     </div>
                   )}
                   {/* Verification badge (decorative) */}
@@ -480,17 +488,23 @@ export default function Profile() {
                             key={f.id}
                             className="flex items-center space-x-2"
                           >
-                            <img
-                              src={getImageUrl(f.avatar || "")}
-                              className="w-6 h-6 rounded-full"
-                              onError={(e) =>
-                                createAvatarFallback(
-                                  e.currentTarget,
-                                  f.first_name.charAt(0),
-                                  "text-xs"
-                                )
-                              }
-                            />
+                            {getImageUrl(f.avatar || "") ? (
+                              <img
+                                src={getImageUrl(f.avatar || "")!}
+                                className="w-6 h-6 rounded-full"
+                                onError={(e) =>
+                                  createAvatarFallback(
+                                    e.currentTarget,
+                                    f.first_name.charAt(0),
+                                    "text-xs"
+                                  )
+                                }
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs text-white">
+                                {f.first_name.charAt(0)}
+                              </div>
+                            )}
                             <span>
                               {f.first_name} {f.last_name}
                             </span>
@@ -527,17 +541,23 @@ export default function Profile() {
                             key={f.id}
                             className="flex items-center space-x-2"
                           >
-                            <img
-                              src={getImageUrl(f.avatar || "")}
-                              className="w-6 h-6 rounded-full"
-                              onError={(e) =>
-                                createAvatarFallback(
-                                  e.currentTarget,
-                                  f.first_name.charAt(0),
-                                  "text-xs"
-                                )
-                              }
-                            />
+                            {getImageUrl(f.avatar || "") ? (
+                              <img
+                                src={getImageUrl(f.avatar || "")!}
+                                className="w-6 h-6 rounded-full"
+                                onError={(e) =>
+                                  createAvatarFallback(
+                                    e.currentTarget,
+                                    f.first_name.charAt(0),
+                                    "text-xs"
+                                  )
+                                }
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs text-white">
+                                {f.first_name.charAt(0)}
+                              </div>
+                            )}
                             <span>
                               {f.first_name} {f.last_name}
                             </span>
@@ -749,7 +769,7 @@ export default function Profile() {
                           Profile Privacy
                         </span>
                         <p className="text-xs text-gray-500 mt-1">
-                          {!formData.isPublic
+                          {formData.isPublic
                             ? "Your profile is public and visible to everyone"
                             : "Your profile is private and only visible to your followers"}
                         </p>
@@ -758,14 +778,14 @@ export default function Profile() {
                         <div className="flex flex-col items-end mr-3">
                           <span
                             className={`text-xs font-medium ${
-                              !formData.isPublic
-                                ? "text-gray-500"
+                              formData.isPublic
+                                ? "text-green-600"
                                 : "text-indigo-600"
                             }`}
                           >
-                            {!formData.isPublic ? "Public" : "Private"}
+                            {formData.isPublic ? "Public" : "Private"}
                           </span>
-                          {!formData.isPublic && (
+                          {formData.isPublic && (
                             <span className="text-[10px] text-gray-500">
                               default
                             </span>
@@ -805,14 +825,14 @@ export default function Profile() {
                               formData.isPublic ? "opacity-100" : "opacity-0"
                             }`}
                           >
-                            <FiLock size={12} />
+                            <FiGlobe size={12} />
                           </span>
                           <span
-                            className={`absolute left-1.5 text-xs font-bold text-white ${
+                            className={`absolute left-1.5 text-xs font-bold text-gray-500 ${
                               !formData.isPublic ? "opacity-100" : "opacity-0"
                             }`}
                           >
-                            <FiGlobe size={12} />
+                            <FiLock size={12} />
                           </span>
                         </div>
                       </div>

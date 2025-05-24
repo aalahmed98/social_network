@@ -7,6 +7,11 @@ import Navbar from "@/app/components/Navbar";
 import Sidebar from "@/app/components/Sidebar";
 import MinimalSidebar from "@/app/components/MinimalSidebar";
 import SearchSidebar from "@/app/components/SearchSidebar";
+import NotificationSidebar from "@/app/components/NotificationSidebar";
+import {
+  NotificationProvider,
+  useNotifications,
+} from "@/context/NotificationContext";
 import { usePathname, useRouter } from "next/navigation";
 import PageTransition from "@/components/ui/PageTransition";
 import ErrorNotification from "@/components/ui/ErrorNotification";
@@ -18,15 +23,19 @@ interface AppLayoutProps {
 // Wrapper component that includes the SearchProvider
 export default function AppLayout({ children }: AppLayoutProps) {
   return (
-    <SearchProvider>
-      <AppLayoutInner>{children}</AppLayoutInner>
-    </SearchProvider>
+    <NotificationProvider>
+      <SearchProvider>
+        <AppLayoutInner>{children}</AppLayoutInner>
+      </SearchProvider>
+    </NotificationProvider>
   );
 }
 
 function AppLayoutInner({ children }: AppLayoutProps) {
   const { isLoggedIn, loading } = useAuth();
   const { isSearchExpanded, collapseSearch } = useSearch();
+  const { isNotificationSidebarOpen, closeNotificationSidebar } =
+    useNotifications();
   const pathname = usePathname();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
@@ -100,6 +109,14 @@ function AppLayoutInner({ children }: AppLayoutProps) {
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
+
+      {/* Notification Sidebar */}
+      {isLoggedIn && (
+        <NotificationSidebar
+          isOpen={isNotificationSidebarOpen}
+          onClose={closeNotificationSidebar}
+        />
+      )}
 
       {/* Error Notification */}
       <ErrorNotification />

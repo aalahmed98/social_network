@@ -63,7 +63,7 @@ export default function Register() {
       if (formData.aboutMe) data.append("aboutMe", formData.aboutMe);
       if (formData.avatar) data.append("avatar", formData.avatar);
 
-      const response = await fetch(`/api/register`, {
+      const response = await fetch(`/api/auth/register`, {
         method: "POST",
         body: data,
         credentials: "include",

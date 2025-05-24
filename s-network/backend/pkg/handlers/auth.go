@@ -24,10 +24,35 @@ var (
 	store *sessions.CookieStore
 )
 
+// SessionCookieName is the name of the session cookie
+const SessionCookieName = "social-network-session"
+
 // SetDependencies initializes the handlers package with the database and session store
 func SetDependencies(database *sqlite.DB, sessionStore *sessions.CookieStore) {
 	db = database
 	store = sessionStore
+}
+
+// getSession retrieves and validates the user session
+func getSession(r *http.Request) (map[string]interface{}, error) {
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %v", err)
+	}
+
+	// Check if session is authenticated
+	auth, ok := session.Values["authenticated"].(bool)
+	if !ok || !auth {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	// Get user data from session
+	userData := make(map[string]interface{})
+	for key, value := range session.Values {
+		userData[key.(string)] = value
+	}
+
+	return userData, nil
 }
 
 // RegisterRequest represents the data needed for user registration
@@ -59,7 +84,7 @@ func generateSessionID() (string, error) {
 }
 
 // RegisterHandler handles user registration
-func RegisterHandler(w http.ResponseWriter, r *http.Request) {
+func Register(w http.ResponseWriter, r *http.Request) {
 	// Handle preflight OPTIONS request
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
@@ -170,7 +195,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LoginHandler handles user login
-func LoginHandler(w http.ResponseWriter, r *http.Request) {
+func Login(w http.ResponseWriter, r *http.Request) {
 	// Handle preflight OPTIONS request
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
@@ -281,9 +306,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session cookie
-	session, _ := store.Get(r, "session")
+	session, _ := store.Get(r, SessionCookieName)
 	session.Values["session_id"] = sessionID
 	session.Values["user_id"] = user["id"].(int)
+	session.Values["authenticated"] = true
 	session.Options.MaxAge = 60 * 60 * 24 * 7 // 7 days
 	session.Options.HttpOnly = true
 	session.Options.Path = "/"
@@ -320,14 +346,14 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LogoutHandler handles user logout
-func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func Logout(w http.ResponseWriter, r *http.Request) {
 	// Handle preflight OPTIONS request
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	
-	session, _ := store.Get(r, "session")
+	session, _ := store.Get(r, SessionCookieName)
 	
 	// Get session ID from cookie
 	sessionID, ok := session.Values["session_id"].(string)
@@ -355,7 +381,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	session, _ := store.Get(r, "session")
+	session, _ := store.Get(r, SessionCookieName)
 	sessionID, ok := session.Values["session_id"].(string)
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
@@ -402,7 +428,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 // AuthMiddleware checks if the user is authenticated
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := store.Get(r, "session")
+		session, _ := store.Get(r, SessionCookieName)
 		sessionID, ok := session.Values["session_id"].(string)
 		if !ok {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -428,7 +454,7 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	session, _ := store.Get(r, "session")
+	session, _ := store.Get(r, SessionCookieName)
 	sessionID, ok := session.Values["session_id"].(string)
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
@@ -477,7 +503,7 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check authentication
-	session, _ := store.Get(r, "session")
+	session, _ := store.Get(r, SessionCookieName)
 	sessionID, ok := session.Values["session_id"].(string)
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
@@ -614,30 +640,35 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetCurrentUserHandler returns the current user's data
-func GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from session
-	session, err := store.Get(r, "session")
+// GetCurrentUser returns the currently logged-in user's information
+func GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	// Get session
+	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	// Check if user is authenticated
+	auth, ok := session.Values["authenticated"].(bool)
+	if !ok || !auth {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user ID from session
 	userID, ok := session.Values["user_id"].(int)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "Invalid session data", http.StatusInternalServerError)
 		return
 	}
 
-	// Get user from database
+	// Get user data from database
 	user, err := db.GetUserById(userID)
 	if err != nil {
-		http.Error(w, "Failed to retrieve user: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to get user data", http.StatusInternalServerError)
 		return
 	}
-
-	// Remove password from response
-	delete(user, "password")
 
 	// Return user data
 	w.Header().Set("Content-Type", "application/json")

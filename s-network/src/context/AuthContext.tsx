@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
-      await fetch(`${backendUrl}/api/logout`, {
+      await fetch(`${backendUrl}/api/auth/logout`, {
         method: "POST",
         credentials: "include", // Include cookies in the request
         headers: {

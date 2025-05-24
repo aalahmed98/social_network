@@ -1,14 +1,15 @@
-// app/users/[id]/page.tsx
-"use client";
-
-import React from "react";
-import ProfileViewOnly from "@/app/components/ProfileViewOnly";
+// Server Component wrapper
+import { Suspense } from "react";
+import ProfileClientPage from "./client";
 
 export default function UserProfilePage({
   params,
 }: {
   params: { id: string };
 }) {
-  // No need to unwrap params in client components
-  return <ProfileViewOnly userId={Number(params.id)} />;
+  return (
+    <Suspense fallback={<div>Loading profile...</div>}>
+      <ProfileClientPage id={params.id} />
+    </Suspense>
+  );
 }
