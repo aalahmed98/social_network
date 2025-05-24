@@ -9,8 +9,6 @@ export default function UserProfilePage({
 }: {
   params: { id: string };
 }) {
-  // Unwrap the params Promise using React.use()
-  const unwrappedParams = React.use(params);
-
-  return <ProfileViewOnly userId={Number(unwrappedParams.id)} />;
+  // No need to unwrap params in client components
+  return <ProfileViewOnly userId={Number(params.id)} />;
 }
