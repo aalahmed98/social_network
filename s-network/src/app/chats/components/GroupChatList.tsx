@@ -118,11 +118,6 @@ export default function GroupChatList({
                     </svg>
                   )}
                 </div>
-                {chat.unreadCount && chat.unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {chat.unreadCount}
-                  </span>
-                )}
               </div>
 
               <div className="ml-3 flex-1 overflow-hidden">
@@ -137,37 +132,6 @@ export default function GroupChatList({
                 <p className="text-sm text-gray-500 truncate">
                   {chat.lastMessage || "No messages yet"}
                 </p>
-                <div className="mt-1 flex -space-x-2 overflow-hidden">
-                  {chat.members &&
-                    chat.members.slice(0, 3).map((member, index) => (
-                      <div
-                        key={index}
-                        className="inline-block h-5 w-5 rounded-full ring-2 ring-white overflow-hidden bg-gray-200"
-                      >
-                        {member.avatar ? (
-                          <img
-                            src={
-                              member.avatar.startsWith("http")
-                                ? member.avatar
-                                : `${
-                                    process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                    "http://localhost:8080"
-                                  }${member.avatar}`
-                            }
-                            alt={member.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          createAvatarFallback(member.name)
-                        )}
-                      </div>
-                    ))}
-                  {chat.members && chat.members.length > 3 && (
-                    <div className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-xs text-gray-500 ring-2 ring-white">
-                      +{chat.members.length - 3}
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           ))
