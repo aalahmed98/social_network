@@ -257,8 +257,11 @@ func main() {
 	// Register follow routes
 	handlers.RegisterFollowRoutes(apiRouter)
 	
-	// Register chat routes including WebSocket endpoint
-	handlers.RegisterChatRoutes(r)
+	// Register chat routes (moved to authenticated router)
+	handlers.RegisterChatRoutes(apiRouter)
+	
+	// Register WebSocket routes on main router (no auth middleware)
+	handlers.RegisterChatWebSocketRoutes(r)
 	
 	// Serve uploaded files
 	uploadsFS := http.FileServer(http.Dir("./uploads"))

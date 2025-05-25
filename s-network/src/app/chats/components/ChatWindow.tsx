@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Chat } from "../page";
 import { IoSend, IoInformationCircle, IoAddCircle } from "react-icons/io5";
 import { FaSmile, FaUsers, FaCalendarAlt, FaTimes } from "react-icons/fa";
-import { createAvatarFallback } from "@/utils/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@/context/AuthContext";
 
@@ -15,6 +15,7 @@ interface Message {
   senderAvatar?: string;
   content: string;
   timestamp: string;
+  timestampRaw?: string;
   isMe: boolean;
 }
 
@@ -27,7 +28,9 @@ export default function ChatWindow({
   chat,
   onConversationUpdated,
 }: ChatWindowProps) {
-  const { user } = useAuth();
+  const { isLoggedIn } = useAuth();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [showInfo, setShowInfo] = useState(false);
@@ -42,6 +45,33 @@ export default function ChatWindow({
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // Fetch current user information
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      if (!isLoggedIn) return;
+
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const response = await fetch(`${backendUrl}/api/auth/me`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setCurrentUser(userData);
+          console.log("Current user fetched:", userData);
+        }
+      } catch (error) {
+        console.error("Error fetching current user:", error);
+      }
+    };
+
+    fetchCurrentUser();
+  }, [isLoggedIn]);
 
   // WebSocket connection
   useEffect(() => {
@@ -51,7 +81,7 @@ export default function ChatWindow({
     }
 
     // Don't attempt to connect if not authenticated
-    if (!user) return;
+    if (!currentUser) return;
 
     let wsConnected = false;
     const backendUrl =
@@ -83,7 +113,12 @@ export default function ChatWindow({
       try {
         const data = JSON.parse(event.data);
 
-        if (
+        // Handle different message types
+        if (data.type === "registered") {
+          console.log("Successfully registered for conversation:", data.conversation_id);
+        } else if (data.type === "connected") {
+          console.log("WebSocket connected:", data.status);
+        } else if (
           data.type === "chat_message" &&
           data.conversation_id.toString() === chat.id
         ) {
@@ -97,10 +132,38 @@ export default function ChatWindow({
             timestamp: formatTimestamp(
               data.timestamp || new Date().toISOString()
             ),
-            isMe: data.sender_id === user?.id,
+            timestampRaw: data.timestamp,
+            isMe:
+              String(data.sender_id) === String(currentUser?.id) ||
+              Number(data.sender_id) === Number(currentUser?.id),
           };
 
-          setMessages((prev) => [...prev, newMessage]);
+          setMessages((prev) => {
+            // Check for duplicates by ID and content+timestamp combination
+            const isDuplicate = prev.some(
+              (existingMsg) =>
+                existingMsg.id === newMessage.id ||
+                (existingMsg.senderId === newMessage.senderId &&
+                  existingMsg.content === newMessage.content &&
+                  Math.abs(
+                    new Date(existingMsg.timestampRaw || existingMsg.timestamp).getTime() -
+                    new Date(newMessage.timestampRaw || newMessage.timestamp).getTime()
+                  ) < 5000) // Within 5 seconds
+            );
+
+            if (isDuplicate) {
+              return prev; // Don't add duplicate
+            }
+
+            // Add new message and sort all messages by timestamp
+            const allMessages = [...prev, newMessage];
+            allMessages.sort((a, b) => {
+              const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+              const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+              return timeA - timeB;
+            });
+            return allMessages;
+          });
 
           // Notify parent component that there's a new message (updates conversation list)
           onConversationUpdated();
@@ -154,11 +217,11 @@ export default function ChatWindow({
       }
       clearTimeout(pollingTimeout);
     };
-  }, [chat.id, user]);
+  }, [chat.id, currentUser]);
 
   // Function to fetch the latest messages
   const fetchLatestMessages = async () => {
-    if (!chat.id || !user) return;
+    if (!chat.id || !currentUser) return;
 
     try {
       const backendUrl =
@@ -178,15 +241,29 @@ export default function ChatWindow({
       const data = await response.json();
 
       if (data.messages && Array.isArray(data.messages)) {
-        const formattedMessages: Message[] = data.messages.map((msg: any) => ({
-          id: msg.id.toString(),
-          senderId: msg.sender.id,
-          senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
-          senderAvatar: msg.sender.avatar,
-          content: msg.content,
-          timestamp: formatTimestamp(msg.timestamp),
-          isMe: msg.sender.id === user?.id,
-        }));
+        const formattedMessages: Message[] = data.messages.map((msg: any) => {
+          const isCurrentUser =
+            String(msg.sender.id) === String(currentUser?.id) ||
+            Number(msg.sender.id) === Number(currentUser?.id);
+
+          return {
+            id: msg.id.toString(),
+            senderId: msg.sender.id,
+            senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
+            senderAvatar: msg.sender.avatar,
+            content: msg.content,
+            timestamp: formatTimestamp(msg.created_at),
+            timestampRaw: msg.created_at,
+            isMe: isCurrentUser,
+          };
+        });
+
+        // Sort messages by timestamp (oldest first)
+        formattedMessages.sort((a, b) => {
+          const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+          const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+          return timeA - timeB;
+        });
 
         // Check if we have new messages by comparing IDs
         const currentMessageIds = new Set(messages.map((m) => m.id));
@@ -195,7 +272,16 @@ export default function ChatWindow({
         );
 
         if (newMessages.length > 0) {
-          setMessages((prev) => [...prev, ...newMessages]);
+          setMessages((prev) => {
+            // Combine previous messages with new ones and sort by timestamp
+            const allMessages = [...prev, ...newMessages];
+            allMessages.sort((a, b) => {
+              const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+              const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+              return timeA - timeB;
+            });
+            return allMessages;
+          });
           onConversationUpdated();
         }
       }
@@ -228,17 +314,29 @@ export default function ChatWindow({
         const data = await response.json();
 
         if (data.messages && Array.isArray(data.messages)) {
-          const formattedMessages: Message[] = data.messages.map(
-            (msg: any) => ({
+          const formattedMessages: Message[] = data.messages.map((msg: any) => {
+            const isCurrentUser =
+              String(msg.sender.id) === String(currentUser?.id) ||
+              Number(msg.sender.id) === Number(currentUser?.id);
+
+            return {
               id: msg.id.toString(),
               senderId: msg.sender.id,
               senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
               senderAvatar: msg.sender.avatar,
               content: msg.content,
-              timestamp: formatTimestamp(msg.timestamp),
-              isMe: msg.sender.id === user?.id,
-            })
-          );
+              timestamp: formatTimestamp(msg.created_at),
+              timestampRaw: msg.created_at,
+              isMe: isCurrentUser,
+            };
+          });
+
+          // Sort messages by timestamp (oldest first)
+          formattedMessages.sort((a, b) => {
+            const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+            const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+            return timeA - timeB;
+          });
 
           setMessages(formattedMessages);
         }
@@ -253,7 +351,7 @@ export default function ChatWindow({
     if (chat.id) {
       fetchMessages();
     }
-  }, [chat.id, user]);
+  }, [chat.id, currentUser]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -261,34 +359,50 @@ export default function ChatWindow({
   }, [messages]);
 
   const formatTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    const now = new Date();
+    try {
+      const date = new Date(timestamp);
 
-    if (date.toDateString() === now.toDateString()) {
-      // Today - show time
-      return date.toLocaleTimeString([], {
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      const now = new Date();
+
+      if (date.toDateString() === now.toDateString()) {
+        // Today - show time
+        return date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } else {
+        // Not today - show date and time
+        return (
+          date.toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+          }) +
+          " " +
+          date.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        );
+      }
+    } catch (error) {
+      // Fallback to current time if parsing fails
+      return new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       });
-    } else {
-      // Not today - show date and time
-      return (
-        date.toLocaleDateString([], {
-          month: "short",
-          day: "numeric",
-        }) +
-        " " +
-        date.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      );
     }
   };
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
-
     const messageContent = message.trim();
     setMessage("");
 
@@ -299,52 +413,58 @@ export default function ChatWindow({
         conversation_id: parseInt(chat.id),
         content: messageContent,
       };
-
       socket.send(JSON.stringify(messageData));
-    } else {
-      // Fallback to REST API
-      try {
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        const response = await fetch(
-          `${backendUrl}/api/conversations/${chat.id}/messages`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              content: messageContent,
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to send message: ${response.status}`);
+      // Don't add optimistic message for WebSocket - wait for server response
+      return;
+    }
+    
+    // Fallback to REST API
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${backendUrl}/api/conversations/${chat.id}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            content: messageContent,
+          }),
         }
-
-        // Manually add the message to the UI to show it immediately
-        const tempMessage: Message = {
-          id: `temp-${Date.now()}`,
-          senderId: user?.id || 0,
-          senderName:
-            user?.firstName && user?.lastName
-              ? `${user.firstName} ${user.lastName}`
-              : "You",
-          content: messageContent,
-          timestamp: formatTimestamp(new Date().toISOString()),
-          isMe: true,
-        };
-
-        setMessages((prev) => [...prev, tempMessage]);
-
-        // Fetch latest messages to get the properly stored message
-        setTimeout(fetchLatestMessages, 500);
-      } catch (error) {
-        console.error("Error sending message via API:", error);
-        setError("Failed to send message. Please try again.");
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to send message: ${response.status}`);
       }
+      // For REST API, add optimistic message and refresh
+      const tempMessage = {
+        id: `temp-${Date.now()}`,
+        senderId: currentUser?.id || 0,
+        senderName:
+          currentUser?.firstName && currentUser?.lastName
+            ? `${currentUser.firstName} ${currentUser.lastName}`
+            : "You",
+        content: messageContent,
+        timestamp: formatTimestamp(new Date().toISOString()),
+        timestampRaw: new Date().toISOString(),
+        isMe: true,
+      };
+      setMessages((prev) => {
+        // Add new message and sort all messages by timestamp
+        const allMessages = [...prev, tempMessage];
+        allMessages.sort((a, b) => {
+          const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+          const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+          return timeA - timeB;
+        });
+        return allMessages;
+      });
+      setTimeout(fetchLatestMessages, 500);
+    } catch (error) {
+      console.error("Error sending message via API:", error);
+      setError("Failed to send message. Please try again.");
     }
   };
 
@@ -364,6 +484,21 @@ export default function ChatWindow({
     setNewEvent({ title: "", description: "", date: "", time: "" });
   };
 
+  // Emoji picker handler (native for now)
+  const handleEmojiClick = () => {
+    // Use the native emoji picker (works in most modern browsers)
+    // This will open the OS emoji picker
+    if (navigator.userAgent.includes("Windows")) {
+      // Windows: Win + .
+      alert("Press Win + . (dot) to open the emoji picker.");
+    } else if (navigator.userAgent.includes("Mac")) {
+      // Mac: Cmd + Ctrl + Space
+      alert("Press Cmd + Ctrl + Space to open the emoji picker.");
+    } else {
+      alert("Use your system's emoji picker shortcut.");
+    }
+  };
+
   return (
     <div className="flex h-full">
       <div className="flex-1 flex flex-col">
@@ -375,21 +510,32 @@ export default function ChatWindow({
                 <div className="bg-indigo-100 h-full w-full flex items-center justify-center text-indigo-700">
                   <FaUsers size={18} />
                 </div>
-              ) : chat.avatar ? (
+              ) : chat.avatar &&
+                chat.avatar !== "/uploads/avatars/default.jpg" ? (
                 <img
-                  src={
-                    chat.avatar.startsWith("http")
-                      ? chat.avatar
-                      : `${
-                          process.env.NEXT_PUBLIC_BACKEND_URL ||
-                          "http://localhost:8080"
-                        }${chat.avatar}`
-                  }
+                  src={getImageUrl(chat.avatar)}
                   alt={chat.name}
                   className="h-full w-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
                 />
               ) : (
-                createAvatarFallback(chat.name)
+                <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-6 h-6"
+                  >
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                </div>
               )}
             </div>
             <div className="ml-3">
@@ -445,57 +591,80 @@ export default function ChatWindow({
                   }`}
                 >
                   <div
-                    className={`flex max-w-[75%] ${
-                      msg.isMe ? "flex-row-reverse" : ""
+                    className={`flex items-end max-w-[85%] ${
+                      msg.isMe ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
                     {!msg.isMe && (
-                      <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-2">
-                        {msg.senderAvatar ? (
+                      <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-3 mb-1">
+                        {msg.senderAvatar &&
+                        msg.senderAvatar !== "/uploads/avatars/default.jpg" ? (
                           <img
-                            src={
-                              msg.senderAvatar.startsWith("http")
-                                ? msg.senderAvatar
-                                : `${
-                                    process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                    "http://localhost:8080"
-                                  }${msg.senderAvatar}`
-                            }
+                            src={getImageUrl(msg.senderAvatar)}
                             alt={msg.senderName}
                             className="h-full w-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display =
+                                "none";
+                            }}
                           />
                         ) : (
-                          createAvatarFallback(msg.senderName)
+                          <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="w-4 h-4"
+                            >
+                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                              <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                          </div>
                         )}
                       </div>
                     )}
-                    <div className="flex flex-col">
+
+                    <div
+                      className={`flex flex-col ${
+                        msg.isMe ? "items-end" : "items-start"
+                      }`}
+                    >
                       {chat.isGroup && !msg.isMe && (
-                        <span className="text-xs text-gray-500 mb-1 ml-1">
+                        <span className="text-xs text-gray-500 mb-1 px-2">
                           {msg.senderName}
                         </span>
                       )}
+
                       <div
-                        className={`rounded-lg px-4 py-2 inline-block ${
+                        className={`relative px-4 py-2 rounded-2xl max-w-sm break-words ${
                           msg.isMe
-                            ? "bg-blue-600 text-white rounded-tr-none"
-                            : "bg-white text-gray-800 rounded-tl-none shadow-sm"
+                            ? "bg-blue-600 text-white rounded-br-md"
+                            : "bg-gray-300 text-gray-900 rounded-bl-md"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
                           {msg.content}
                         </p>
+
+                        <div
+                          className={`text-xs mt-1 ${
+                            msg.isMe ? "text-blue-100" : "text-gray-700"
+                          }`}
+                        >
+                          {msg.timestamp}
+                        </div>
                       </div>
-                      <span
-                        className={`text-xs mt-1 ${
-                          msg.isMe
-                            ? "text-gray-500 text-right"
-                            : "text-gray-500 ml-1"
-                        }`}
-                      >
-                        {msg.timestamp}
-                      </span>
                     </div>
+
+                    {msg.isMe && (
+                      <div className="flex-shrink-0 h-8 w-8 ml-3 mb-1">
+                        {/* Spacer for alignment */}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -505,44 +674,33 @@ export default function ChatWindow({
         </div>
 
         {/* Message input */}
-        <div className="p-3 border-t bg-white">
-          <div className="flex items-end gap-2">
-            <button
-              className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
-              title="Add attachment"
-            >
-              <IoAddCircle size={20} />
-            </button>
-            <div className="flex-1 relative">
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type a message..."
-                className="w-full p-3 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                rows={1}
-                style={{ maxHeight: "120px", minHeight: "44px" }}
-              />
-              <button
-                className="absolute right-2 bottom-2 p-1.5 text-gray-500 hover:text-blue-600 rounded-full"
-                title="Add emoji"
-              >
-                <FaSmile size={18} />
-              </button>
-            </div>
-            <button
-              onClick={handleSendMessage}
-              disabled={!message.trim()}
-              className={`p-3 rounded-full ${
-                message.trim()
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
-              }`}
-              title="Send message"
-            >
-              <IoSend size={18} />
-            </button>
-          </div>
+        <div className="flex items-center gap-2 p-4 border-t bg-white">
+          <button
+            type="button"
+            className="p-2 rounded-full hover:bg-gray-100 text-gray-600"
+            title="Add emoji"
+            onClick={handleEmojiClick}
+          >
+            <FaSmile size={20} />
+          </button>
+          <textarea
+            className="flex-1 resize-none border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={1}
+            placeholder="Type your message..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            style={{ minHeight: 36 }}
+          />
+          <button
+            type="button"
+            className="ml-2 p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            onClick={handleSendMessage}
+            disabled={!message.trim()}
+            title="Send"
+          >
+            <IoSend size={20} />
+          </button>
         </div>
       </div>
 
@@ -566,21 +724,32 @@ export default function ChatWindow({
                   <div className="bg-indigo-100 h-full w-full flex items-center justify-center text-indigo-700">
                     <FaUsers size={36} />
                   </div>
-                ) : chat.avatar ? (
+                ) : chat.avatar &&
+                  chat.avatar !== "/uploads/avatars/default.jpg" ? (
                   <img
-                    src={
-                      chat.avatar.startsWith("http")
-                        ? chat.avatar
-                        : `${
-                            process.env.NEXT_PUBLIC_BACKEND_URL ||
-                            "http://localhost:8080"
-                          }${chat.avatar}`
-                    }
+                    src={getImageUrl(chat.avatar)}
                     alt={chat.name}
                     className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
                   />
                 ) : (
-                  createAvatarFallback(chat.name)
+                  <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-6 h-6"
+                    >
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                  </div>
                 )}
               </div>
               <h2 className="font-medium text-xl text-center">{chat.name}</h2>
@@ -614,21 +783,33 @@ export default function ChatWindow({
                         className="flex items-center p-2 hover:bg-gray-50 rounded-lg"
                       >
                         <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-3 flex items-center justify-center">
-                          {member.avatar ? (
+                          {member.avatar &&
+                          member.avatar !== "/uploads/avatars/default.jpg" ? (
                             <img
-                              src={
-                                member.avatar.startsWith("http")
-                                  ? member.avatar
-                                  : `${
-                                      process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                      "http://localhost:8080"
-                                    }${member.avatar}`
-                              }
+                              src={getImageUrl(member.avatar)}
                               alt={member.name}
                               className="h-full w-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display =
+                                  "none";
+                              }}
                             />
                           ) : (
-                            createAvatarFallback(member.name)
+                            <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="white"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="w-5 h-5"
+                              >
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                              </svg>
+                            </div>
                           )}
                         </div>
                         <div>

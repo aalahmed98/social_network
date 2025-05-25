@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Chat } from "../page";
 import { IoSearch } from "react-icons/io5";
 import { FaPlus, FaUser } from "react-icons/fa";
-import { createAvatarFallback } from "@/utils/image";
+import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 
 interface Contact {
@@ -12,6 +12,7 @@ interface Contact {
   name: string;
   avatar?: string;
   relationship: "follower" | "following" | "mutual";
+  verified?: boolean;
 }
 
 interface ChatListProps {
@@ -105,28 +106,34 @@ export default function ChatList({
             >
               <div className="relative">
                 <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center text-gray-700 font-semibold text-lg">
-                  {chat.avatar ? (
+                  {chat.avatar &&
+                  chat.avatar !== "/uploads/avatars/default.jpg" ? (
                     <img
-                      src={
-                        chat.avatar.startsWith("http")
-                          ? chat.avatar
-                          : `${
-                              process.env.NEXT_PUBLIC_BACKEND_URL ||
-                              "http://localhost:8080"
-                            }${chat.avatar}`
-                      }
+                      src={getImageUrl(chat.avatar)}
                       alt={chat.name}
                       className="h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
                     />
                   ) : (
-                    createAvatarFallback(chat.name)
+                    <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-6 h-6"
+                      >
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                      </svg>
+                    </div>
                   )}
                 </div>
-                {chat.unreadCount && chat.unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {chat.unreadCount}
-                  </span>
-                )}
               </div>
 
               <div className="ml-3 flex-1 overflow-hidden">
@@ -196,22 +203,34 @@ export default function ChatList({
                     className="flex items-center p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
                     onClick={() => !isCreatingChat && handleStartChat(contact)}
                   >
-                    <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center text-gray-700 font-semibold text-lg">
-                      {contact.avatar ? (
+                    <div className="w-10 h-10 relative rounded-full bg-gray-200 mr-3 overflow-hidden flex items-center justify-center">
+                      {contact.avatar &&
+                      contact.avatar !== "/uploads/avatars/default.jpg" ? (
                         <img
-                          src={
-                            contact.avatar.startsWith("http")
-                              ? contact.avatar
-                              : `${
-                                  process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                  "http://localhost:8080"
-                                }${contact.avatar}`
-                          }
+                          src={getImageUrl(contact.avatar)}
                           alt={contact.name}
-                          className="h-full w-full object-cover"
+                          className="object-cover w-full h-full"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
                         />
                       ) : (
-                        createAvatarFallback(contact.name)
+                        <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="white"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="w-6 h-6"
+                          >
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                          </svg>
+                        </div>
                       )}
                     </div>
                     <div className="ml-3 flex-1">

@@ -31,8 +31,10 @@ export default function Navbar({ onNotificationClick }: NavbarProps) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const searchResultsRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const accountDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -44,6 +46,14 @@ export default function Navbar({ onNotificationClick }: NavbarProps) {
         !searchInputRef.current.contains(event.target as Node)
       ) {
         setShowSearchResults(false);
+      }
+      
+      // Close account dropdown when clicking outside
+      if (
+        accountDropdownRef.current &&
+        !accountDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowAccountDropdown(false);
       }
     }
 
@@ -292,33 +302,49 @@ export default function Navbar({ onNotificationClick }: NavbarProps) {
               )}
             </button>
 
-            <div className="relative group">
-              <button className="flex items-center space-x-1 text-gray-600 hover:text-indigo-600">
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  setShowAccountDropdown(!showAccountDropdown);
+                }}
+                className="flex items-center space-x-1 text-gray-600 hover:text-indigo-600"
+              >
                 <FiUser size={20} />
                 <span className="hidden sm:inline text-sm font-medium">
                   Account
                 </span>
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 hidden group-hover:block">
-                <Link
-                  href="/profile"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+              {showAccountDropdown && (
+                <div
+                  ref={accountDropdownRef}
+                  className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10"
                 >
-                  Your Profile
-                </Link>
-                <Link
-                  href="/settings"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
-                >
-                  Settings
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
-                >
-                  Sign out
-                </button>
-              </div>
+                  <Link
+                    href="/profile"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                    onClick={() => setShowAccountDropdown(false)}
+                  >
+                    Your Profile
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                    onClick={() => setShowAccountDropdown(false)}
+                  >
+                    Settings
+                  </Link>
+                  <button
+                    onClick={(e) => {
+                      setShowAccountDropdown(false);
+                      handleLogout(e);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
