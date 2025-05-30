@@ -1154,6 +1154,18 @@ func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int
 				} else {
 					_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes - 1 WHERE id = ?`, contentID)
 				}
+			} else if contentType == "group_post" {
+				if voteType == 1 {
+					_, err = tx.Exec(`UPDATE group_posts SET upvotes = upvotes - 1 WHERE id = ?`, contentID)
+				} else {
+					_, err = tx.Exec(`UPDATE group_posts SET downvotes = downvotes - 1 WHERE id = ?`, contentID)
+				}
+			} else if contentType == "group_post_comment" {
+				if voteType == 1 {
+					_, err = tx.Exec(`UPDATE group_post_comments SET upvotes = upvotes - 1, vote_count = vote_count - 1 WHERE id = ?`, contentID)
+				} else {
+					_, err = tx.Exec(`UPDATE group_post_comments SET downvotes = downvotes - 1, vote_count = vote_count + 1 WHERE id = ?`, contentID)
+				}
 			} else if contentType == "comment" {
 				_, err = tx.Exec(`UPDATE comments SET vote_count = vote_count - ? WHERE id = ?`, voteType, contentID)
 			}
@@ -1175,8 +1187,19 @@ func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int
 				} else {
 					_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes - 1, downvotes = downvotes + 1 WHERE id = ?`, contentID)
 				}
+			} else if contentType == "group_post" {
+				if voteType == 1 {
+					_, err = tx.Exec(`UPDATE group_posts SET upvotes = upvotes + 1, downvotes = downvotes - 1 WHERE id = ?`, contentID)
+				} else {
+					_, err = tx.Exec(`UPDATE group_posts SET upvotes = upvotes - 1, downvotes = downvotes + 1 WHERE id = ?`, contentID)
+				}
+			} else if contentType == "group_post_comment" {
+				if voteType == 1 {
+					_, err = tx.Exec(`UPDATE group_post_comments SET upvotes = upvotes + 1, downvotes = downvotes - 1, vote_count = vote_count + 2 WHERE id = ?`, contentID)
+				} else {
+					_, err = tx.Exec(`UPDATE group_post_comments SET upvotes = upvotes - 1, downvotes = downvotes + 1, vote_count = vote_count - 2 WHERE id = ?`, contentID)
+				}
 			} else if contentType == "comment" {
-				// For comment, update vote count by twice the vote type (flip from -1 to 1 adds 2, flip from 1 to -1 subtracts 2)
 				_, err = tx.Exec(`UPDATE comments SET vote_count = vote_count + ? WHERE id = ?`, voteType*2, contentID)
 			}
 			if err != nil {
@@ -1197,6 +1220,18 @@ func (db *DB) Vote(userID int, contentID int64, contentType string, voteType int
 				_, err = tx.Exec(`UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?`, contentID)
 			} else {
 				_, err = tx.Exec(`UPDATE posts SET downvotes = downvotes + 1 WHERE id = ?`, contentID)
+			}
+		} else if contentType == "group_post" {
+			if voteType == 1 {
+				_, err = tx.Exec(`UPDATE group_posts SET upvotes = upvotes + 1 WHERE id = ?`, contentID)
+			} else {
+				_, err = tx.Exec(`UPDATE group_posts SET downvotes = downvotes + 1 WHERE id = ?`, contentID)
+			}
+		} else if contentType == "group_post_comment" {
+			if voteType == 1 {
+				_, err = tx.Exec(`UPDATE group_post_comments SET upvotes = upvotes + 1, vote_count = vote_count + 1 WHERE id = ?`, contentID)
+			} else {
+				_, err = tx.Exec(`UPDATE group_post_comments SET downvotes = downvotes + 1, vote_count = vote_count - 1 WHERE id = ?`, contentID)
 			}
 		} else if contentType == "comment" {
 			_, err = tx.Exec(`UPDATE comments SET vote_count = vote_count + ? WHERE id = ?`, voteType, contentID)

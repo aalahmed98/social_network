@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  # Backend Service (Development)
+  backend-dev:
+    build:
+      context: ./s-network/backend
+      dockerfile: Dockerfile
+    container_name: social-network-backend-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DATABASE_URL=sqlite:///data/social-network.db
+      - JWT_SECRET=dev-secret-key-not-for-production
+      - CORS_ORIGIN=http://localhost:3000
+      - GO_ENV=development
+    volumes:
+      - ./s-network/backend:/app:ro
+      - backend_data_dev:/app/data
+      - backend_uploads_dev:/app/uploads
+    restart: unless-stopped
+    networks:
+      - social-network-dev
+    command: ["go", "run", "server.go"]
+
+  # Frontend Service (Development)
+  frontend-dev:
+    build:
+      context: ./s-network
+      dockerfile: Dockerfile.dev
+    container_name: social-network-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./s-network:/app:ro
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend-dev
+    restart: unless-stopped
+    networks:
+      - social-network-dev
+    command: ["npm", "run", "dev"]
+
+volumes:
+  backend_data_dev:
+    driver: local
+  backend_uploads_dev:
+    driver: local
+
+networks:
+  social-network-dev:
+    driver: bridge

@@ -14,6 +14,7 @@ import {
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@/context/AuthContext";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 interface Message {
   id: string;
@@ -24,6 +25,24 @@ interface Message {
   timestamp: string;
   timestampRaw?: string;
   isMe: boolean;
+  type?: "message" | "post" | "event"; // Add message types
+  postData?: {
+    imagePath?: string;
+    likesCount?: number;
+    commentsCount?: number;
+    isLiked?: boolean;
+    upvotes?: number;
+    downvotes?: number;
+    userVote?: number;
+  };
+  eventData?: {
+    title?: string;
+    description?: string;
+    eventDate?: string;
+    goingCount?: number;
+    notGoingCount?: number;
+    userResponse?: string;
+  };
 }
 
 interface ChatWindowProps {
@@ -43,7 +62,7 @@ export default function ChatWindow({
   const [showInfo, setShowInfo] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
-  const [showEventsPanel, setShowEventsPanel] = useState(false);
+  const [showEventsPanel, setShowEventsPanel] = useState(chat.isGroup || false);
   const [newEvent, setNewEvent] = useState({
     title: "",
     description: "",
@@ -71,6 +90,16 @@ export default function ChatWindow({
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
   const [isLoadingFollowing, setIsLoadingFollowing] = useState(false);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+
+  // Group post interactions
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const [postComments, setPostComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   // Fetch current user information
   useEffect(() => {
@@ -316,69 +345,118 @@ export default function ChatWindow({
     if (!chat.id || !currentUser) return;
 
     try {
+      // Use the same combined function for consistency
+      await fetchMessagesWithPosts();
+    } catch (error) {
+      console.error("Error polling messages:", error);
+    }
+  };
+
+  // Function to fetch and combine messages with posts for group chats
+  const fetchMessagesWithPosts = async () => {
+    if (!chat.id || !currentUser) return;
+
+    try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(
-        `${backendUrl}/api/conversations/${chat.id}/messages?limit=20`,
+
+      // Fetch regular messages
+      const messagesResponse = await fetch(
+        `${backendUrl}/api/conversations/${chat.id}/messages`,
         {
           method: "GET",
           credentials: "include",
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch messages: ${response.status}`);
-      }
+      let allMessages: Message[] = [];
 
-      const data = await response.json();
+      if (messagesResponse.ok) {
+        const messagesData = await messagesResponse.json();
 
-      if (data.messages && Array.isArray(data.messages)) {
-        const formattedMessages: Message[] = data.messages.map((msg: any) => {
-          const isCurrentUser =
-            String(msg.sender.id) === String(currentUser?.id) ||
-            Number(msg.sender.id) === Number(currentUser?.id);
+        if (messagesData.messages && Array.isArray(messagesData.messages)) {
+          const formattedMessages: Message[] = messagesData.messages.map(
+            (msg: any) => {
+              const isCurrentUser =
+                String(msg.sender.id) === String(currentUser?.id) ||
+                Number(msg.sender.id) === Number(currentUser?.id);
 
-          return {
-            id: msg.id.toString(),
-            senderId: msg.sender.id,
-            senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
-            senderAvatar: msg.sender.avatar,
-            content: msg.content,
-            timestamp: formatTimestamp(msg.created_at),
-            timestampRaw: msg.created_at,
-            isMe: isCurrentUser,
-          };
-        });
+              return {
+                id: `msg-${msg.id}`,
+                senderId: msg.sender.id,
+                senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
+                senderAvatar: msg.sender.avatar,
+                content: msg.content,
+                timestamp: formatTimestamp(msg.created_at),
+                timestampRaw: msg.created_at,
+                isMe: isCurrentUser,
+                type: "message" as const,
+              };
+            }
+          );
 
-        // Sort messages by timestamp (oldest first)
-        formattedMessages.sort((a, b) => {
-          const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
-          const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
-          return timeA - timeB;
-        });
-
-        // Check if we have new messages by comparing IDs
-        const currentMessageIds = new Set(messages.map((m) => m.id));
-        const newMessages = formattedMessages.filter(
-          (msg) => !currentMessageIds.has(msg.id)
-        );
-
-        if (newMessages.length > 0) {
-          setMessages((prev) => {
-            // Combine previous messages with new ones and sort by timestamp
-            const allMessages = [...prev, ...newMessages];
-            allMessages.sort((a, b) => {
-              const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
-              const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
-              return timeA - timeB;
-            });
-            return allMessages;
-          });
-          onConversationUpdated();
+          allMessages = [...formattedMessages];
         }
       }
+
+      // If it's a group chat, also fetch posts
+      if (chat.isGroup && chat.groupId) {
+        const postsResponse = await fetch(
+          `${backendUrl}/api/groups/${chat.groupId}/posts`,
+          {
+            credentials: "include",
+          }
+        );
+
+        if (postsResponse.ok) {
+          const postsData = await postsResponse.json();
+
+          if (postsData.posts && Array.isArray(postsData.posts)) {
+            const formattedPosts: Message[] = postsData.posts.map(
+              (post: any) => {
+                const isCurrentUser =
+                  String(post.author_id) === String(currentUser?.id) ||
+                  Number(post.author_id) === Number(currentUser?.id);
+
+                return {
+                  id: `post-${post.id}`,
+                  senderId: post.author_id,
+                  senderName: post.author_name,
+                  senderAvatar: post.author_avatar,
+                  content: post.content,
+                  timestamp: formatTimestamp(post.created_at),
+                  timestampRaw: post.created_at,
+                  isMe: isCurrentUser,
+                  type: "post" as const,
+                  postData: {
+                    imagePath: post.image_path,
+                    likesCount: post.likes_count || 0,
+                    commentsCount: post.comments_count || 0,
+                    isLiked: post.is_liked || false,
+                    upvotes: post.upvotes || 0,
+                    downvotes: post.downvotes || 0,
+                    userVote: post.user_vote || 0,
+                  },
+                };
+              }
+            );
+
+            allMessages = [...allMessages, ...formattedPosts];
+          }
+        }
+      }
+
+      // Sort all messages by timestamp (oldest first)
+      allMessages.sort((a, b) => {
+        const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+        const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+        return timeA - timeB;
+      });
+
+      setMessages(allMessages);
     } catch (error) {
-      console.error("Error polling messages:", error);
+      console.error("Error fetching messages with posts:", error);
+      setError("Failed to load messages. Please try again later.");
     }
   };
 
@@ -389,49 +467,8 @@ export default function ChatWindow({
       setError(null);
 
       try {
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        const response = await fetch(
-          `${backendUrl}/api/conversations/${chat.id}/messages`,
-          {
-            method: "GET",
-            credentials: "include",
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch messages: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.messages && Array.isArray(data.messages)) {
-          const formattedMessages: Message[] = data.messages.map((msg: any) => {
-            const isCurrentUser =
-              String(msg.sender.id) === String(currentUser?.id) ||
-              Number(msg.sender.id) === Number(currentUser?.id);
-
-            return {
-              id: msg.id.toString(),
-              senderId: msg.sender.id,
-              senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
-              senderAvatar: msg.sender.avatar,
-              content: msg.content,
-              timestamp: formatTimestamp(msg.created_at),
-              timestampRaw: msg.created_at,
-              isMe: isCurrentUser,
-            };
-          });
-
-          // Sort messages by timestamp (oldest first)
-          formattedMessages.sort((a, b) => {
-            const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
-            const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
-            return timeA - timeB;
-          });
-
-          setMessages(formattedMessages);
-        }
+        // Use the new function that combines messages and posts for group chats
+        await fetchMessagesWithPosts();
       } catch (error) {
         console.error("Error fetching messages:", error);
         setError("Failed to load messages. Please try again later.");
@@ -581,56 +618,94 @@ export default function ChatWindow({
   const handleCreateEvent = async () => {
     if (!newEvent.title.trim() || !newEvent.date || !newEvent.time) return;
 
+    // Debug logging
+    console.log("=== CREATE EVENT DEBUG ===");
+    console.log("chat object:", JSON.stringify(chat, null, 2));
+    console.log("chat.groupId:", chat.groupId);
+    console.log("chat.isGroup:", chat.isGroup);
+    console.log("typeof chat.groupId:", typeof chat.groupId);
+    console.log("========================");
+
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const dateTime = `${newEvent.date} ${newEvent.time}`;
 
       // Use group ID for API call
       const groupIdForEvent = chat.groupId;
       if (!groupIdForEvent) {
         console.error("No group ID available for creating event");
+        console.error("Full chat object:", chat);
         alert(
           "Error: Cannot create event. Please refresh the page and try again."
         );
         return;
       }
 
+      const requestData = {
+        title: newEvent.title.trim(),
+        description: newEvent.description.trim(),
+        date: newEvent.date,
+        time: newEvent.time,
+      };
+
+      console.log(
+        "Request URL:",
+        `${backendUrl}/api/groups/${groupIdForEvent}/events`
+      );
+      console.log("Request data:", requestData);
+
       const response = await fetch(
         `${backendUrl}/api/groups/${groupIdForEvent}/events`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: newEvent.title.trim(),
-            description: newEvent.description.trim(),
-            date_time: dateTime,
-          }),
+          body: JSON.stringify(requestData),
           credentials: "include",
         }
       );
 
+      console.log("Response status:", response.status);
+      console.log("Response headers:", [...response.headers.entries()]);
+
       if (response.ok) {
         setShowEventModal(false);
         setNewEvent({ title: "", description: "", date: "", time: "" });
+        // Reload events to show the new one
+        loadGroupEvents();
 
         // Send event creation notification to chat
         if (socket && socket.readyState === WebSocket.OPEN) {
           socket.send(
             JSON.stringify({
-              type: "send_message",
+              type: "chat_message",
               conversation_id: parseInt(chat.id),
               content: `📅 Event created: "${newEvent.title}" on ${newEvent.date} at ${newEvent.time}`,
             })
           );
         }
       } else {
-        console.error("Failed to create event");
-        alert("Failed to create event. Please try again.");
+        const errorText = await response.text();
+        console.error("Failed to create event - Status:", response.status);
+        console.error("Error response:", errorText);
+
+        let errorMessage = "Failed to create event. Please try again.";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If not JSON, use the raw text
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
+
+        alert(`Error creating event: ${errorMessage}`);
       }
     } catch (error) {
       console.error("Error creating event:", error);
-      alert("Error creating event. Please try again.");
+      alert(
+        "Network error creating event. Please check your connection and try again."
+      );
     }
   };
 
@@ -671,6 +746,11 @@ export default function ChatWindow({
   const loadGroupPosts = async () => {
     if (!chat.isGroup) return;
 
+    console.log("=== LOAD GROUP POSTS DEBUG ===");
+    console.log("chat.isGroup:", chat.isGroup);
+    console.log("chat.groupId:", chat.groupId);
+    console.log("================================");
+
     setIsLoadingPosts(true);
     try {
       const backendUrl =
@@ -684,6 +764,12 @@ export default function ChatWindow({
         return;
       }
 
+      console.log("Loading posts for group ID:", groupIdForPosts);
+      console.log(
+        "API URL:",
+        `${backendUrl}/api/groups/${groupIdForPosts}/posts`
+      );
+
       const response = await fetch(
         `${backendUrl}/api/groups/${groupIdForPosts}/posts`,
         {
@@ -691,19 +777,43 @@ export default function ChatWindow({
         }
       );
 
+      console.log("Posts API response status:", response.status);
+      console.log("Posts API response ok:", response.ok);
+
       if (response.ok) {
         const data = await response.json();
+        console.log("Posts API response data:", data);
+        console.log("Posts count:", data.posts ? data.posts.length : 0);
+        console.log("Posts data:", data.posts);
+
         setGroupPosts(data.posts || []);
+        console.log(
+          "Group posts state updated with:",
+          data.posts?.length || 0,
+          "posts"
+        );
+      } else {
+        const errorText = await response.text();
+        console.error("Failed to load posts:", response.status, errorText);
       }
     } catch (error) {
       console.error("Error loading group posts:", error);
     } finally {
       setIsLoadingPosts(false);
+      console.log("=== LOAD GROUP POSTS END ===");
     }
   };
 
   const handleCreatePost = async () => {
     if (!newPost.content.trim()) return;
+
+    // Debug logging
+    console.log("=== CREATE POST DEBUG ===");
+    console.log("chat object:", JSON.stringify(chat, null, 2));
+    console.log("chat.groupId:", chat.groupId);
+    console.log("chat.isGroup:", chat.isGroup);
+    console.log("typeof chat.groupId:", typeof chat.groupId);
+    console.log("=========================");
 
     try {
       const backendUrl =
@@ -718,10 +828,25 @@ export default function ChatWindow({
       const groupIdForPost = chat.groupId;
       if (!groupIdForPost) {
         console.error("No group ID available for creating post");
+        console.error("Full chat object:", chat);
         alert(
           "Error: Cannot create post. Please refresh the page and try again."
         );
         return;
+      }
+
+      console.log(
+        "Request URL:",
+        `${backendUrl}/api/groups/${groupIdForPost}/posts`
+      );
+      console.log("Request data - content:", newPost.content.trim());
+      console.log("Request data - has image:", !!newPost.image);
+      if (newPost.image) {
+        console.log("Image file details:", {
+          name: newPost.image.name,
+          size: newPost.image.size,
+          type: newPost.image.type,
+        });
       }
 
       const response = await fetch(
@@ -733,16 +858,27 @@ export default function ChatWindow({
         }
       );
 
+      console.log("Response status:", response.status);
+      console.log("Response headers:", [...response.headers.entries()]);
+
       if (response.ok) {
         setShowPostModal(false);
         setNewPost({ content: "", image: null });
+
+        // Show success message
+        alert("Post created successfully! 🎉");
+
+        // Reload posts to show the new one in the sidebar
         loadGroupPosts();
+
+        // Reload messages with posts to show the new post in the chat
+        await fetchMessagesWithPosts();
 
         // Send post creation notification to chat
         if (socket && socket.readyState === WebSocket.OPEN) {
           socket.send(
             JSON.stringify({
-              type: "send_message",
+              type: "chat_message",
               conversation_id: parseInt(chat.id),
               content: `📝 New group post: "${newPost.content.substring(
                 0,
@@ -752,12 +888,28 @@ export default function ChatWindow({
           );
         }
       } else {
-        console.error("Failed to create post");
-        alert("Failed to create post. Please try again.");
+        const errorText = await response.text();
+        console.error("Failed to create post - Status:", response.status);
+        console.error("Error response:", errorText);
+
+        let errorMessage = "Failed to create post. Please try again.";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If not JSON, use the raw text
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
+
+        alert(`Error creating post: ${errorMessage}`);
       }
     } catch (error) {
       console.error("Error creating post:", error);
-      alert("Error creating post. Please try again.");
+      alert(
+        "Network error creating post. Please check your connection and try again."
+      );
     }
   };
 
@@ -1148,18 +1300,264 @@ export default function ChatWindow({
     }
   };
 
-  // Emoji picker handler (native for now)
+  // Emoji picker handler
   const handleEmojiClick = () => {
-    // Use the native emoji picker (works in most modern browsers)
-    // This will open the OS emoji picker
-    if (navigator.userAgent.includes("Windows")) {
-      // Windows: Win + .
-      alert("Press Win + . (dot) to open the emoji picker.");
-    } else if (navigator.userAgent.includes("Mac")) {
-      // Mac: Cmd + Ctrl + Space
-      alert("Press Cmd + Ctrl + Space to open the emoji picker.");
-    } else {
-      alert("Use your system's emoji picker shortcut.");
+    setShowEmojiPicker(!showEmojiPicker);
+  };
+
+  const handleEmojiSelect = (emojiData: EmojiClickData) => {
+    setMessage((prevMessage) => prevMessage + emojiData.emoji);
+    setShowEmojiPicker(false);
+  };
+
+  // Handle clicking outside emoji picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showEmojiPicker]);
+
+  // Group post interaction functions
+  const handleVoteGroupPost = async (postId: number, voteType: number) => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${postId}/vote`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vote_type: voteType }),
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // Update the message state to reflect the vote change
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === `post-${postId}` && msg.postData) {
+              return {
+                ...msg,
+                postData: {
+                  ...msg.postData,
+                  upvotes: data.upvotes,
+                  downvotes: data.downvotes,
+                  userVote: data.user_vote,
+                },
+              };
+            }
+            return msg;
+          })
+        );
+
+        // Also update the group posts in the sidebar
+        loadGroupPosts();
+      } else {
+        console.error("Failed to vote on post");
+      }
+    } catch (error) {
+      console.error("Error voting on post:", error);
+    }
+  };
+
+  const handleLikeGroupPost = async (postId: number) => {
+    // For backward compatibility, treat like as upvote
+    await handleVoteGroupPost(postId, 1);
+  };
+
+  const loadPostComments = async (postId: number) => {
+    setIsLoadingComments(true);
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${postId}/comments`,
+        {
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setPostComments(data.comments || []);
+      }
+    } catch (error) {
+      console.error("Error loading comments:", error);
+    } finally {
+      setIsLoadingComments(false);
+    }
+  };
+
+  const handleShowComments = (postId: number) => {
+    setSelectedPostId(postId);
+    setShowCommentsModal(true);
+    loadPostComments(postId);
+  };
+
+  const handleSubmitComment = async () => {
+    if (!newComment.trim() || !selectedPostId) return;
+
+    setIsSubmittingComment(true);
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${selectedPostId}/comments`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: newComment.trim() }),
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        setNewComment("");
+        // Reload comments
+        await loadPostComments(selectedPostId);
+
+        // Update comment count in messages
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === `post-${selectedPostId}` && msg.postData) {
+              return {
+                ...msg,
+                postData: {
+                  ...msg.postData,
+                  commentsCount: (msg.postData.commentsCount || 0) + 1,
+                },
+              };
+            }
+            return msg;
+          })
+        );
+
+        // Also update the group posts in the sidebar
+        loadGroupPosts();
+      } else {
+        console.error("Failed to submit comment");
+        alert("Failed to submit comment. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error submitting comment:", error);
+      alert("Error submitting comment. Please check your connection.");
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  // Add function to delete comments
+  const handleDeleteComment = async (commentId: number) => {
+    if (!selectedPostId) return;
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${selectedPostId}/comments/${commentId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        // Reload comments
+        await loadPostComments(selectedPostId);
+
+        // Update comment count in messages
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === `post-${selectedPostId}` && msg.postData) {
+              return {
+                ...msg,
+                postData: {
+                  ...msg.postData,
+                  commentsCount: Math.max(
+                    0,
+                    (msg.postData.commentsCount || 0) - 1
+                  ),
+                },
+              };
+            }
+            return msg;
+          })
+        );
+
+        // Also update the group posts in the sidebar
+        loadGroupPosts();
+      } else {
+        const errorData = await response.text();
+        alert(`Failed to delete comment: ${errorData}`);
+      }
+    } catch (error) {
+      console.error("Error deleting comment:", error);
+      alert("Error deleting comment. Please check your connection.");
+    }
+  };
+
+  // Add function to vote on comments
+  const handleVoteComment = async (commentId: number, voteType: number) => {
+    if (!selectedPostId) return;
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${selectedPostId}/comments/${commentId}/vote`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vote_type: voteType }),
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // Update the specific comment in the postComments state with the new vote data
+        setPostComments((prevComments) =>
+          prevComments.map((comment) => {
+            if (comment.id === commentId) {
+              return {
+                ...comment,
+                upvotes: data.upvotes,
+                downvotes: data.downvotes,
+                user_vote: data.user_vote,
+              };
+            }
+            return comment;
+          })
+        );
+      } else {
+        console.error("Failed to vote on comment");
+        const errorText = await response.text();
+        console.error("Vote error response:", errorText);
+      }
+    } catch (error) {
+      console.error("Error voting on comment:", error);
     }
   };
 
@@ -1388,43 +1786,176 @@ export default function ChatWindow({
                           </span>
                         )}
 
-                        {/* Message Bubble */}
-                        <div
-                          className={`relative px-4 py-3 rounded-2xl shadow-md max-w-sm break-words ${
-                            msg.isMe
-                              ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-br-md"
-                              : "bg-white text-slate-800 rounded-bl-md border border-slate-200"
-                          }`}
-                        >
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                            {msg.content}
-                          </p>
-
+                        {/* Message or Post Content */}
+                        {msg.type === "post" ? (
+                          // Post message with special styling
                           <div
-                            className={`text-xs mt-2 font-medium ${
-                              msg.isMe ? "text-blue-100" : "text-slate-500"
-                            }`}
-                          >
-                            {msg.timestamp}
-                          </div>
-
-                          {/* Message Tail */}
-                          <div
-                            className={`absolute top-3 ${
+                            className={`relative rounded-2xl shadow-lg max-w-lg ${
                               msg.isMe
-                                ? "right-0 transform translate-x-full"
-                                : "left-0 transform -translate-x-full"
+                                ? "bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200"
+                                : "bg-gradient-to-br from-slate-50 to-gray-50 border-2 border-slate-200"
                             }`}
                           >
+                            {/* Post Header */}
+                            <div className="p-4 border-b border-slate-200">
+                              <div className="flex items-center gap-2 mb-2">
+                                <div
+                                  className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                    msg.isMe
+                                      ? "bg-blue-500 text-white"
+                                      : "bg-slate-500 text-white"
+                                  }`}
+                                >
+                                  📝 Group Post
+                                </div>
+                                <span className="text-xs text-slate-500 font-medium">
+                                  {msg.timestamp}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-800 leading-relaxed font-medium">
+                                {msg.content}
+                              </p>
+                            </div>
+
+                            {/* Post Image */}
+                            {msg.postData?.imagePath && (
+                              <div className="px-4 pt-3">
+                                <img
+                                  src={`${
+                                    process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                    "http://localhost:8080"
+                                  }${msg.postData.imagePath}`}
+                                  alt="Post image"
+                                  className="w-full h-48 object-cover rounded-xl border border-slate-200"
+                                />
+                              </div>
+                            )}
+
+                            {/* Post Engagement */}
+                            <div className="p-4 bg-white/80 rounded-b-2xl">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-6 text-xs">
+                                  {/* Horizontal voting layout */}
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() =>
+                                        handleVoteGroupPost(
+                                          parseInt(msg.id.replace("post-", "")),
+                                          1
+                                        )
+                                      }
+                                      className={`flex items-center justify-center w-8 h-6 rounded-lg transition-all duration-200 hover:scale-110 ${
+                                        msg.postData?.userVote === 1
+                                          ? "bg-green-100 text-green-600"
+                                          : "text-gray-400 hover:bg-green-50 hover:text-green-500"
+                                      }`}
+                                    >
+                                      <span className="text-sm">👍</span>
+                                    </button>
+                                    <span
+                                      className={`font-bold text-sm min-w-[2rem] text-center ${
+                                        msg.postData?.userVote === 1
+                                          ? "text-green-600"
+                                          : msg.postData?.userVote === -1
+                                          ? "text-red-600"
+                                          : "text-gray-600"
+                                      }`}
+                                    >
+                                      {(msg.postData?.upvotes || 0) -
+                                        (msg.postData?.downvotes || 0)}
+                                    </span>
+                                    <button
+                                      onClick={() =>
+                                        handleVoteGroupPost(
+                                          parseInt(msg.id.replace("post-", "")),
+                                          -1
+                                        )
+                                      }
+                                      className={`flex items-center justify-center w-8 h-6 rounded-lg transition-all duration-200 hover:scale-110 ${
+                                        msg.postData?.userVote === -1
+                                          ? "bg-red-100 text-red-600"
+                                          : "text-gray-400 hover:bg-red-50 hover:text-red-500"
+                                      }`}
+                                    >
+                                      <span className="text-sm">👎</span>
+                                    </button>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      handleShowComments(
+                                        parseInt(msg.id.replace("post-", ""))
+                                      )
+                                    }
+                                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-cyan-600 hover:bg-cyan-50 transition-all duration-200 hover:scale-105"
+                                  >
+                                    <div className="h-1.5 w-1.5 bg-cyan-500 rounded-full"></div>
+                                    <span className="font-semibold">
+                                      💬 {msg.postData?.commentsCount || 0}
+                                    </span>
+                                  </button>
+                                </div>
+                                <div className="text-xs text-slate-500 font-medium">
+                                  Posted by {msg.senderName}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Post Tail */}
                             <div
-                              className={`w-0 h-0 ${
+                              className={`absolute top-6 ${
                                 msg.isMe
-                                  ? "border-l-8 border-l-blue-500 border-t-8 border-t-transparent border-b-8 border-b-transparent"
-                                  : "border-r-8 border-r-white border-t-8 border-t-transparent border-b-8 border-b-transparent"
+                                  ? "right-0 transform translate-x-full"
+                                  : "left-0 transform -translate-x-full"
                               }`}
-                            />
+                            >
+                              <div
+                                className={`w-0 h-0 ${
+                                  msg.isMe
+                                    ? "border-l-8 border-l-blue-200 border-t-8 border-t-transparent border-b-8 border-b-transparent"
+                                    : "border-r-8 border-r-slate-200 border-t-8 border-t-transparent border-b-8 border-b-transparent"
+                                }`}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          // Regular message bubble
+                          <div
+                            className={`relative px-4 py-3 rounded-2xl shadow-md max-w-sm break-words ${
+                              msg.isMe
+                                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-br-md"
+                                : "bg-white text-slate-800 rounded-bl-md border border-slate-200"
+                            }`}
+                          >
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                              {msg.content}
+                            </p>
+
+                            <div
+                              className={`text-xs mt-2 font-medium ${
+                                msg.isMe ? "text-blue-100" : "text-slate-500"
+                              }`}
+                            >
+                              {msg.timestamp}
+                            </div>
+
+                            {/* Message Tail */}
+                            <div
+                              className={`absolute top-3 ${
+                                msg.isMe
+                                  ? "right-0 transform translate-x-full"
+                                  : "left-0 transform -translate-x-full"
+                              }`}
+                            >
+                              <div
+                                className={`w-0 h-0 ${
+                                  msg.isMe
+                                    ? "border-l-8 border-l-blue-500 border-t-8 border-t-transparent border-b-8 border-b-transparent"
+                                    : "border-r-8 border-r-white border-t-8 border-t-transparent border-b-8 border-b-transparent"
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {msg.isMe && (
@@ -2071,6 +2602,15 @@ export default function ChatWindow({
                 Posts ({groupPosts.length})
               </h4>
 
+              {(() => {
+                console.log("=== POSTS RENDER DEBUG ===");
+                console.log("isLoadingPosts:", isLoadingPosts);
+                console.log("groupPosts.length:", groupPosts.length);
+                console.log("groupPosts:", groupPosts);
+                console.log("==========================");
+                return null;
+              })()}
+
               {isLoadingPosts ? (
                 <div className="flex justify-center py-8">
                   <div className="text-center">
@@ -2082,51 +2622,85 @@ export default function ChatWindow({
                 </div>
               ) : groupPosts.length > 0 ? (
                 <div className="space-y-4">
-                  {groupPosts.map((post) => (
-                    <div
-                      key={post.id}
-                      className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-4 shadow-md hover:shadow-lg transition-all duration-200"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <span className="font-bold text-slate-800">
-                          {post.author_name}
-                        </span>
-                        <div className="flex items-center gap-1 text-xs text-slate-500">
-                          <div className="h-1.5 w-1.5 bg-slate-400 rounded-full"></div>
-                          <span className="font-medium">
-                            {new Date(post.created_at).toLocaleDateString()}
+                  {groupPosts.map((post) => {
+                    console.log("Rendering post:", post);
+                    return (
+                      <div
+                        key={post.id}
+                        className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-4 shadow-md hover:shadow-lg transition-all duration-200"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <span className="font-bold text-slate-800">
+                            {post.author_name}
                           </span>
+                          <div className="flex items-center gap-1 text-xs text-slate-500">
+                            <div className="h-1.5 w-1.5 bg-slate-400 rounded-full"></div>
+                            <span className="font-medium">
+                              {new Date(post.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-700 mb-3 leading-relaxed">
+                          {post.content}
+                        </p>
+                        {post.image_path && (
+                          <img
+                            src={`${
+                              process.env.NEXT_PUBLIC_BACKEND_URL ||
+                              "http://localhost:8080"
+                            }${post.image_path}`}
+                            alt="Post image"
+                            className="w-full h-32 object-cover rounded-xl mb-3 border border-slate-200"
+                          />
+                        )}
+                        <div className="flex items-center gap-4 text-xs">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleVoteGroupPost(post.id, 1)}
+                              className={`flex items-center justify-center w-7 h-6 rounded-lg transition-all duration-200 hover:scale-110 ${
+                                post.user_vote === 1
+                                  ? "bg-green-100 text-green-600"
+                                  : "text-gray-400 hover:bg-green-50 hover:text-green-500"
+                              }`}
+                            >
+                              <span className="text-sm">👍</span>
+                            </button>
+                            <span
+                              className={`font-bold text-sm min-w-[2rem] text-center ${
+                                post.user_vote === 1
+                                  ? "text-green-600"
+                                  : post.user_vote === -1
+                                  ? "text-red-600"
+                                  : "text-gray-600"
+                              }`}
+                            >
+                              {(post.upvotes || 0) - (post.downvotes || 0)}
+                            </span>
+                            <button
+                              onClick={() => handleVoteGroupPost(post.id, -1)}
+                              className={`flex items-center justify-center w-7 h-6 rounded-lg transition-all duration-200 hover:scale-110 ${
+                                post.user_vote === -1
+                                  ? "bg-red-100 text-red-600"
+                                  : "text-gray-400 hover:bg-red-50 hover:text-red-500"
+                              }`}
+                            >
+                              <span className="text-sm">👎</span>
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => handleShowComments(post.id)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-cyan-600 hover:bg-cyan-50 transition-all duration-200 hover:scale-105"
+                          >
+                            <div className="h-1.5 w-1.5 bg-cyan-500 rounded-full"></div>
+                            <span className="font-medium">
+                              💬 {post.comments_count || 0} comment
+                              {(post.comments_count || 0) !== 1 ? "s" : ""}
+                            </span>
+                          </button>
                         </div>
                       </div>
-                      <p className="text-sm text-slate-700 mb-3 leading-relaxed">
-                        {post.content}
-                      </p>
-                      {post.image_path && (
-                        <img
-                          src={`${
-                            process.env.NEXT_PUBLIC_BACKEND_URL ||
-                            "http://localhost:8080"
-                          }${post.image_path}`}
-                          alt="Post image"
-                          className="w-full h-32 object-cover rounded-xl mb-3 border border-slate-200"
-                        />
-                      )}
-                      <div className="flex items-center gap-4 text-xs">
-                        <div className="flex items-center gap-1 text-slate-600">
-                          <div className="h-1.5 w-1.5 bg-pink-500 rounded-full"></div>
-                          <span className="font-medium">
-                            {post.likes_count || 0} likes
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-slate-600">
-                          <div className="h-1.5 w-1.5 bg-cyan-500 rounded-full"></div>
-                          <span className="font-medium">
-                            {post.comments_count || 0} comments
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -2368,6 +2942,201 @@ export default function ChatWindow({
                 )}
               </button>
             </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Emoji Picker */}
+      {showEmojiPicker && (
+        <div ref={emojiPickerRef} className="absolute bottom-20 left-4 z-50">
+          <EmojiPicker
+            onEmojiClick={handleEmojiSelect}
+            width={300}
+            height={400}
+          />
+        </div>
+      )}
+
+      {/* Comments Modal */}
+      <Dialog.Root open={showCommentsModal} onOpenChange={setShowCommentsModal}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl p-6 w-full max-w-md z-50 max-h-[80vh] flex flex-col">
+            <Dialog.Title className="text-xl font-bold mb-4 text-slate-800 flex items-center gap-2">
+              💬 Post Comments
+              <div className="ml-auto text-sm font-normal text-slate-500">
+                {postComments.length} comment
+                {postComments.length !== 1 ? "s" : ""}
+              </div>
+            </Dialog.Title>
+
+            {/* Comments List */}
+            <div className="flex-1 overflow-y-auto mb-4 min-h-0">
+              {isLoadingComments ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              ) : postComments.length > 0 ? (
+                <div className="space-y-3">
+                  {postComments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="bg-slate-50 rounded-lg p-3 border border-slate-200"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
+                          {comment.author_avatar &&
+                          comment.author_avatar !==
+                            "/uploads/avatars/default.jpg" ? (
+                            <img
+                              src={getImageUrl(comment.author_avatar)}
+                              alt={comment.author_name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="white"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="w-4 h-4"
+                              >
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-slate-800">
+                                {comment.author_name}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {new Date(
+                                  comment.created_at
+                                ).toLocaleDateString()}
+                              </span>
+                            </div>
+                            {/* Delete button - shown if user is comment author or post owner */}
+                            {(comment.author_id === currentUser?.id ||
+                              messages.find(
+                                (msg) => msg.id === `post-${selectedPostId}`
+                              )?.senderId === currentUser?.id) && (
+                              <button
+                                onClick={() => handleDeleteComment(comment.id)}
+                                className="p-1 rounded text-red-500 hover:bg-red-50 transition-colors"
+                                title="Delete comment"
+                              >
+                                <FaTimes size={12} />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-700 leading-relaxed mb-2">
+                            {comment.content}
+                          </p>
+
+                          {/* Comment voting buttons */}
+                          <div className="flex items-center gap-4 text-xs">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleVoteComment(comment.id, 1)}
+                                className={`flex items-center justify-center w-6 h-5 rounded-lg transition-all duration-200 hover:scale-110 ${
+                                  comment.user_vote === 1
+                                    ? "bg-green-100 text-green-600"
+                                    : "text-gray-400 hover:bg-green-50 hover:text-green-500"
+                                }`}
+                              >
+                                <span className="text-xs">👍</span>
+                              </button>
+                              <span
+                                className={`font-bold text-xs min-w-[1.5rem] text-center ${
+                                  comment.user_vote === 1
+                                    ? "text-green-600"
+                                    : comment.user_vote === -1
+                                    ? "text-red-600"
+                                    : "text-gray-600"
+                                }`}
+                              >
+                                {(comment.upvotes || 0) -
+                                  (comment.downvotes || 0)}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  handleVoteComment(comment.id, -1)
+                                }
+                                className={`flex items-center justify-center w-6 h-5 rounded-lg transition-all duration-200 hover:scale-110 ${
+                                  comment.user_vote === -1
+                                    ? "bg-red-100 text-red-600"
+                                    : "text-gray-400 hover:bg-red-50 hover:text-red-500"
+                                }`}
+                              >
+                                <span className="text-xs">👎</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-slate-500">
+                  <div className="text-4xl mb-2">💬</div>
+                  <p className="text-sm">No comments yet</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Be the first to comment!
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Add Comment Form */}
+            <div className="border-t border-slate-200 pt-4">
+              <div className="flex gap-3">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Write a comment..."
+                  rows={2}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  disabled={isSubmittingComment}
+                />
+                <button
+                  onClick={handleSubmitComment}
+                  disabled={!newComment.trim() || isSubmittingComment}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    newComment.trim() && !isSubmittingComment
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  {isSubmittingComment ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    "Post"
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => {
+                setShowCommentsModal(false);
+                setSelectedPostId(null);
+                setPostComments([]);
+                setNewComment("");
+              }}
+              className="absolute top-4 right-4 p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200"
+            >
+              <FaTimes size={14} />
+            </button>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
