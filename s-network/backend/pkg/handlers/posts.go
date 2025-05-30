@@ -1236,3 +1236,32 @@ func RegisterFollowRoutes(router *mux.Router) {
 	router.HandleFunc("/follow/request/{id}/reject", RejectFollowRequestHandler).Methods("POST", "OPTIONS")
 	router.HandleFunc("/follow/request/{id}/cancel", CancelFollowRequestHandler).Methods("POST", "OPTIONS")
 }
+
+// GetUserFollowingByIDHandler retrieves following list for a specific user
+func GetUserFollowingByIDHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from URL path
+	vars := mux.Vars(r)
+	userIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get following list
+	following, err := db.GetUserFollowing(userID)
+	if err != nil {
+		http.Error(w, "Failed to retrieve following: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"following": following,
+	})
+}

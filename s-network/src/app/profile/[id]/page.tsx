@@ -2,14 +2,16 @@
 import { Suspense } from "react";
 import ProfileClientPage from "./client";
 
-export default function UserProfilePage({
+export default async function UserProfilePage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
+
   return (
     <Suspense fallback={<div>Loading profile...</div>}>
-      <ProfileClientPage id={params.id} />
+      <ProfileClientPage id={id} />
     </Suspense>
   );
 }

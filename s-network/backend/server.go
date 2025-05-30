@@ -222,6 +222,35 @@ func init() {
 	handlers.SetDependencies(db, store)
 	logger.Printf("Handlers setup completed in %v", time.Since(handlersStartTime))
 
+	// Clean up expired sessions and tokens on startup
+	cleanupStartTime := time.Now()
+	logger.Println("Cleaning up expired sessions and auth tokens...")
+	err = db.CleanupExpiredSessions()
+	if err != nil {
+		logger.Printf("Warning: Failed to cleanup expired sessions on startup: %v", err)
+	} else {
+		logger.Printf("🧹 Expired sessions and auth tokens cleaned up on startup")
+	}
+	logger.Printf("Cleanup completed in %v", time.Since(cleanupStartTime))
+
+	// Start background cleanup routine for expired sessions and tokens
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour) // Clean up every hour
+		defer ticker.Stop()
+		
+		for {
+			select {
+			case <-ticker.C:
+				err := db.CleanupExpiredSessions()
+				if err != nil {
+					logger.Printf("Warning: Failed to cleanup expired sessions: %v", err)
+				} else {
+					logger.Printf("🧹 Expired sessions and auth tokens cleaned up")
+				}
+			}
+		}
+	}()
+
 	logger.Printf("Total initialization completed in %v", time.Since(startTime))
 }
 
@@ -256,6 +285,9 @@ func main() {
 	
 	// Register follow routes
 	handlers.RegisterFollowRoutes(apiRouter)
+	
+	// Register group routes
+	handlers.RegisterGroupRoutes(apiRouter)
 	
 	// Register chat routes (moved to authenticated router)
 	handlers.RegisterChatRoutes(apiRouter)

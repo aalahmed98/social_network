@@ -19,6 +19,7 @@ export interface Chat {
   unreadCount?: number;
   avatar?: string;
   isGroup?: boolean;
+  groupId?: number;
   members?: { id: number; name: string; avatar?: string }[];
 }
 
@@ -99,14 +100,31 @@ export default function ChatPage() {
       const groups: Chat[] = [];
 
       if (data.conversations && Array.isArray(data.conversations)) {
+        console.log("=== CONVERSATION API DEBUG ===");
+        console.log(
+          "Raw conversations from API:",
+          JSON.stringify(data.conversations, null, 2)
+        );
+
         data.conversations.forEach((conv: any) => {
+          console.log(`Processing conversation ${conv.id}:`);
+          console.log(`  - is_group: ${conv.is_group}`);
+          console.log(`  - group_id: ${conv.group_id}`);
+          console.log(`  - name: ${conv.name}`);
+
           const chat: Chat = {
             id: conv.id.toString(),
             name: conv.name,
             avatar: conv.avatar,
             isGroup: conv.is_group,
+            groupId: conv.group_id,
             unreadCount: conv.unread_count,
           };
+
+          console.log(
+            `  - Created chat object:`,
+            JSON.stringify(chat, null, 2)
+          );
 
           // Add last message if available
           if (conv.last_message) {
@@ -138,11 +156,16 @@ export default function ChatPage() {
                 avatar: p.avatar,
               }));
             }
+            console.log(`  - Adding to groups with groupId: ${chat.groupId}`);
             groups.push(chat);
           } else {
             directChats.push(chat);
           }
         });
+
+        console.log("=== FINAL GROUPS ARRAY ===");
+        console.log("Groups:", JSON.stringify(groups, null, 2));
+        console.log("==============================");
       }
 
       setChats(directChats);
@@ -224,34 +247,34 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-70px)] bg-gray-50">
-      {/* Sidebar navigation */}
+    <div className="flex h-[calc(100vh-70px)] bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* Modern Sidebar Navigation */}
       <Tabs.Root
         value={activeTab}
         onValueChange={setActiveTab}
         className="flex flex-col md:flex-row w-full h-full"
       >
-        <div className="w-full md:w-80 bg-white border-r shadow-sm">
-          <Tabs.List className="flex w-full border-b">
+        <div className="w-full md:w-80 bg-white/90 backdrop-blur-sm border-r border-slate-200/60 shadow-xl">
+          <Tabs.List className="flex w-full bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-slate-200/60">
             <Tabs.Trigger
               value="direct"
-              className={`flex-1 py-4 font-medium text-sm transition-colors border-b-2 focus:outline-none ${
+              className={`flex-1 py-4 font-semibold text-sm transition-all duration-200 border-b-2 focus:outline-none ${
                 activeTab === "direct"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "border-blue-500 text-blue-600 bg-white/80 shadow-sm"
+                  : "border-transparent text-slate-600 hover:text-slate-800 hover:bg-white/50"
               }`}
             >
-              Direct Messages
+              💬 Direct Messages
             </Tabs.Trigger>
             <Tabs.Trigger
               value="groups"
-              className={`flex-1 py-4 font-medium text-sm transition-colors border-b-2 focus:outline-none ${
+              className={`flex-1 py-4 font-semibold text-sm transition-all duration-200 border-b-2 focus:outline-none ${
                 activeTab === "groups"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "border-blue-500 text-blue-600 bg-white/80 shadow-sm"
+                  : "border-transparent text-slate-600 hover:text-slate-800 hover:bg-white/50"
               }`}
             >
-              Group Chats
+              👥 Group Chats
             </Tabs.Trigger>
           </Tabs.List>
 
@@ -280,6 +303,7 @@ export default function ChatPage() {
               onSelectChat={setSelectedChat}
               isLoading={isLoading}
               error={error}
+              onGroupCreated={fetchChats}
             />
           </Tabs.Content>
         </div>

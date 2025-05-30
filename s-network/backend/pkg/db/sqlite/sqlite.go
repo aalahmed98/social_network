@@ -43,6 +43,13 @@ func New(dbPath string) (*DB, error) {
 		return nil, err
 	}
 
+	// Enable foreign key constraints
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	// Initialize the database struct
 	sqliteDB := &DB{db}
 
@@ -380,6 +387,33 @@ func (db *DB) DeleteSession(sessionID string) error {
 	return err
 }
 
+// DeleteSessionsByUserID removes all sessions for a specific user
+func (db *DB) DeleteSessionsByUserID(userID int) error {
+	query := `DELETE FROM sessions WHERE user_id = ?`
+
+	_, err := db.Exec(query, userID)
+	return err
+}
+
+// CleanupExpiredSessions removes all expired sessions and auth tokens
+func (db *DB) CleanupExpiredSessions() error {
+	// Delete expired sessions
+	sessionQuery := `DELETE FROM sessions WHERE expires_at <= datetime('now')`
+	_, err := db.Exec(sessionQuery)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup expired sessions: %v", err)
+	}
+
+	// Delete expired auth tokens
+	tokenQuery := `DELETE FROM auth_tokens WHERE expires_at <= datetime('now')`
+	_, err = db.Exec(tokenQuery)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup expired auth tokens: %v", err)
+	}
+
+	return nil
+}
+
 // CreateAuthToken creates a token for password reset or email verification
 func (db *DB) CreateAuthToken(tokenID string, userID int, tokenType string, expiresAt string) error {
 	query := `INSERT INTO auth_tokens (id, user_id, token_type, expires_at) 
@@ -420,6 +454,14 @@ func (db *DB) DeleteAuthToken(tokenID string) error {
 	query := `DELETE FROM auth_tokens WHERE id = ?`
 
 	_, err := db.Exec(query, tokenID)
+	return err
+}
+
+// DeleteAuthTokensByUserID removes all auth tokens for a specific user
+func (db *DB) DeleteAuthTokensByUserID(userID int) error {
+	query := `DELETE FROM auth_tokens WHERE user_id = ?`
+
+	_, err := db.Exec(query, userID)
 	return err
 }
 
@@ -785,16 +827,17 @@ func (db *DB) CreateFollowRequest(followerID, followingID int64) (int64, error) 
 	var tableName string
 	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
 	if err != nil {
-		// Create follow_requests table if it doesn't exist
+		// Create follow_requests table if it doesn't exist - using correct column names
 		_, err = db.Exec(`
 			CREATE TABLE IF NOT EXISTS follow_requests (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				follower_id INTEGER NOT NULL,
-				following_id INTEGER NOT NULL,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				UNIQUE(follower_id, following_id),
-				FOREIGN KEY (follower_id) REFERENCES users (id) ON DELETE CASCADE,
-				FOREIGN KEY (following_id) REFERENCES users (id) ON DELETE CASCADE
+				requester_id INTEGER NOT NULL,
+				requested_id INTEGER NOT NULL,
+				status TEXT NOT NULL DEFAULT 'pending',
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(requester_id, requested_id),
+				FOREIGN KEY (requester_id) REFERENCES users (id) ON DELETE CASCADE,
+				FOREIGN KEY (requested_id) REFERENCES users (id) ON DELETE CASCADE
 			)
 		`)
 		if err != nil {
@@ -802,8 +845,8 @@ func (db *DB) CreateFollowRequest(followerID, followingID int64) (int64, error) 
 		}
 	}
 
-	// Insert the follow request
-	query := `INSERT INTO follow_requests (follower_id, following_id) VALUES (?, ?)`
+	// Insert the follow request - using correct column names
+	query := `INSERT INTO follow_requests (requester_id, requested_id) VALUES (?, ?)`
 	result, err := db.Exec(query, followerID, followingID)
 	if err != nil {
 		return 0, err
@@ -822,8 +865,8 @@ func (db *DB) CheckFollowRequestExists(followerID, followingID int64) (bool, err
 		return false, nil
 	}
 
-	// Check if request exists
-	query := `SELECT 1 FROM follow_requests WHERE follower_id = ? AND following_id = ?`
+	// Check if request exists - using correct column names
+	query := `SELECT 1 FROM follow_requests WHERE requester_id = ? AND requested_id = ?`
 	row := db.QueryRow(query, followerID, followingID)
 	var exists int
 	err = row.Scan(&exists)
@@ -846,8 +889,8 @@ func (db *DB) GetFollowRequest(requestID int64) (*FollowRequest, error) {
 		return nil, fmt.Errorf("follow request not found")
 	}
 
-	// Get the follow request
-	query := `SELECT id, follower_id, following_id, created_at FROM follow_requests WHERE id = ?`
+	// Get the follow request - using correct column names
+	query := `SELECT id, requester_id, requested_id, created_at FROM follow_requests WHERE id = ?`
 	row := db.QueryRow(query, requestID)
 	
 	var request FollowRequest
@@ -872,8 +915,8 @@ func (db *DB) GetUserFollowRequests(userID int64) ([]*FollowRequest, error) {
 		return []*FollowRequest{}, nil
 	}
 
-	// Get all follow requests for the user
-	query := `SELECT id, follower_id, following_id, created_at FROM follow_requests WHERE following_id = ?`
+	// Get all follow requests for the user - using correct column names
+	query := `SELECT id, requester_id, requested_id, created_at FROM follow_requests WHERE requested_id = ?`
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		return nil, err
@@ -906,8 +949,8 @@ func (db *DB) AcceptFollowRequest(requestID int64) error {
 	}
 	defer tx.Rollback()
 
-	// Get the follow request
-	query := `SELECT follower_id, following_id FROM follow_requests WHERE id = ?`
+	// Get the follow request - using correct column names
+	query := `SELECT requester_id, requested_id FROM follow_requests WHERE id = ?`
 	row := tx.QueryRow(query, requestID)
 	
 	var followerID, followingID int64
@@ -1308,8 +1351,8 @@ func (db *DB) CancelFollowRequest(followerID, followingID int64) error {
 		return fmt.Errorf("follow request not found")
 	}
 
-	// Delete the follow request
-	query := `DELETE FROM follow_requests WHERE follower_id = ? AND following_id = ?`
+	// Delete the follow request - using correct column names
+	query := `DELETE FROM follow_requests WHERE requester_id = ? AND requested_id = ?`
 	result, err := db.Exec(query, followerID, followingID)
 	if err != nil {
 		return err
