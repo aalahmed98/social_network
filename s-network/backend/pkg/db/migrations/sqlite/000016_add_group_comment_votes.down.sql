@@ -1,0 +1,2 @@
+-- Note: SQLite doesn't support dropping columns easily
+-- In a real scenario, you might need to recreate the table without vote columns 
