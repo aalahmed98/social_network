@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"s-network/backend/pkg/db/sqlite"
@@ -172,7 +172,7 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 	// Add members if provided
 	if len(requestData.MemberIDs) > 0 {
 		log.Printf("[CreateGroup] Adding %d members to group %d", len(requestData.MemberIDs), groupID)
-		
+
 		for _, memberID := range requestData.MemberIDs {
 			// Check if target user exists
 			targetUser, err := db.GetUserById(int(memberID))
@@ -748,7 +748,7 @@ func GetGroupJoinRequests(w http.ResponseWriter, r *http.Request) {
 // CreateGroupPost creates a new post in a group
 func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 	log.Printf("=== CreateGroupPost Handler Start ===")
-	
+
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
 		log.Printf("CreateGroupPost: getUserIDFromSession error: %v", err)
@@ -760,7 +760,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupIDStr := vars["id"]
 	log.Printf("CreateGroupPost: Group ID string: %s", groupIDStr)
-	
+
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
 		log.Printf("CreateGroupPost: ParseInt error: %v", err)
@@ -773,7 +773,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 	log.Printf("CreateGroupPost: Checking if user %d is member of group %d", userID, groupID)
 	isMember := db.IsGroupMember(groupID, int64(userID))
 	log.Printf("CreateGroupPost: Is member check result: %t", isMember)
-	
+
 	if !isMember {
 		log.Printf("CreateGroupPost: Access denied - user %d is not a member of group %d", userID, groupID)
 		http.Error(w, "Access denied", http.StatusForbidden)
@@ -791,7 +791,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 
 	content := r.FormValue("content")
 	log.Printf("CreateGroupPost: Content: %s", content)
-	
+
 	if content == "" {
 		log.Printf("CreateGroupPost: Content is empty")
 		http.Error(w, "Content is required", http.StatusBadRequest)
@@ -915,7 +915,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("CreateGroupPost: json.Encode error: %v", err)
 	}
-	
+
 	log.Printf("=== CreateGroupPost Handler End ===")
 }
 
@@ -1104,7 +1104,7 @@ func GetGroupPostComments(w http.ResponseWriter, r *http.Request) {
 // CreateGroupEvent creates a new event in a group
 func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	log.Printf("=== CreateGroupEvent Handler Start ===")
-	
+
 	// Check if database is initialized
 	if db == nil {
 		log.Printf("CreateGroupEvent: CRITICAL ERROR - database is nil")
@@ -1112,7 +1112,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("CreateGroupEvent: Database connection OK")
-	
+
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
 		log.Printf("CreateGroupEvent: getUserIDFromSession error: %v", err)
@@ -1124,7 +1124,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupIDStr := vars["id"]
 	log.Printf("CreateGroupEvent: Group ID string: %s", groupIDStr)
-	
+
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
 		log.Printf("CreateGroupEvent: ParseInt error: %v", err)
@@ -1137,7 +1137,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	log.Printf("CreateGroupEvent: Checking if user %d is member of group %d", userID, groupID)
 	isMember := db.IsGroupMember(groupID, int64(userID))
 	log.Printf("CreateGroupEvent: Is member check result: %t", isMember)
-	
+
 	if !isMember {
 		log.Printf("CreateGroupEvent: Access denied - user %d is not a member of group %d", userID, groupID)
 		http.Error(w, "Access denied", http.StatusForbidden)
@@ -1160,7 +1160,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	log.Printf("CreateGroupEvent: Request data: %+v", requestData)
 
 	if requestData.Title == "" || requestData.Date == "" || requestData.Time == "" {
-		log.Printf("CreateGroupEvent: Missing required fields - Title: %s, Date: %s, Time: %s", 
+		log.Printf("CreateGroupEvent: Missing required fields - Title: %s, Date: %s, Time: %s",
 			requestData.Title, requestData.Date, requestData.Time)
 		http.Error(w, "Title, date, and time are required", http.StatusBadRequest)
 		return
@@ -1192,12 +1192,12 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("CreateGroupEvent: db.CreateGroupEvent error: %v", err)
 		log.Printf("CreateGroupEvent: Database error details - Type: %T, Message: %s", err, err.Error())
-		
+
 		// Return more specific error information
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Failed to create event",
+			"error":   "Failed to create event",
 			"details": err.Error(),
 		})
 		return
@@ -1212,7 +1212,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Failed to retrieve created event",
+			"error":   "Failed to retrieve created event",
 			"details": err.Error(),
 		})
 		return
@@ -1226,7 +1226,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("CreateGroupEvent: json.Encode error: %v", err)
 	}
-	
+
 	log.Printf("=== CreateGroupEvent Handler End ===")
 }
 
@@ -1363,8 +1363,8 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var requestData struct {
-		UserID    int64   `json:"user_id"`     // For single user
-		MemberIDs []int64 `json:"member_ids"`  // For multiple users
+		UserID    int64   `json:"user_id"`    // For single user
+		MemberIDs []int64 `json:"member_ids"` // For multiple users
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
@@ -1447,7 +1447,7 @@ func RemoveGroupMember(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupIDStr := vars["groupId"]
 	memberIDStr := vars["memberId"]
-	
+
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid group ID", http.StatusBadRequest)
@@ -1511,7 +1511,7 @@ func DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	log.Printf("=== DeleteGroup Handler Called ===")
 	log.Printf("Request URL: %s", r.URL.String())
 	log.Printf("Request Method: %s", r.Method)
-	
+
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
 		log.Printf("DeleteGroup: Authentication failed: %v", err)
@@ -1527,7 +1527,7 @@ func DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupIDStr := vars["id"]
 	log.Printf("DeleteGroup: Group ID from URL: %s", groupIDStr)
-	
+
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
 		log.Printf("DeleteGroup: Invalid group ID format: %v", err)
@@ -1551,7 +1551,7 @@ func DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	if group == nil {
 		log.Printf("DeleteGroup: Group %d not found", groupID)
 		w.Header().Set("Content-Type", "application/json")
@@ -1584,8 +1584,18 @@ func DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		log.Printf("DeleteGroup: Database error while deleting group: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+
+		// Provide more detailed error message based on the error type
+		errorMsg := "Failed to delete group"
+		if strings.Contains(err.Error(), "foreign key constraint") {
+			errorMsg = "Failed to delete group: Some related data could not be deleted. Please try again."
+		} else if strings.Contains(err.Error(), "no rows affected") {
+			errorMsg = "Failed to delete group: Group may have already been deleted."
+		}
+
 		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("Failed to delete group: %v", err),
+			"error":   errorMsg,
+			"details": err.Error(),
 		})
 		return
 	}
@@ -1815,4 +1825,4 @@ func RegisterGroupRoutes(router *mux.Router) {
 	router.HandleFunc("/groups/{id}/events", GetGroupEvents).Methods("GET", "OPTIONS")
 	router.HandleFunc("/groups/{id}/events", CreateGroupEvent).Methods("POST", "OPTIONS")
 	router.HandleFunc("/groups/events/{eventId}/respond", RespondToGroupEvent).Methods("POST", "OPTIONS")
-} 
+}
