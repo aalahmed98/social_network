@@ -90,7 +90,7 @@ func webSocketMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		
+
 		// Apply error middleware for all other requests
 		next.ServeHTTP(&ErrorResponseWriter{ResponseWriter: w}, r)
 	})
@@ -237,7 +237,7 @@ func init() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour) // Clean up every hour
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
@@ -269,36 +269,36 @@ func main() {
 	// Create auth subrouter and apply middleware
 	authRouter := r.PathPrefix("/api/auth").Subrouter()
 	authRouter.Use(LoggingMiddleware)
-	
+
 	// Register auth routes
 	handlers.RegisterAuthRoutes(authRouter)
-	
+
 	// Create API subrouter for authenticated endpoints
 	apiRouter := r.PathPrefix("/api").Subrouter()
 	apiRouter.Use(LoggingMiddleware)
 	apiRouter.Use(AuthMiddleware)
-	
+
 	// Register other API routes
 	handlers.RegisterPostRoutes(apiRouter)
 	handlers.RegisterProfileRoutes(apiRouter)
 	handlers.RegisterNotificationRoutes(apiRouter)
-	
+
 	// Register follow routes
 	handlers.RegisterFollowRoutes(apiRouter)
-	
+
 	// Register group routes
 	handlers.RegisterGroupRoutes(apiRouter)
-	
+
 	// Register chat routes (moved to authenticated router)
 	handlers.RegisterChatRoutes(apiRouter)
-	
+
 	// Register WebSocket routes on main router (no auth middleware)
 	handlers.RegisterChatWebSocketRoutes(r)
-	
+
 	// Serve uploaded files
 	uploadsFS := http.FileServer(http.Dir("./uploads"))
 	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", uploadsFS))
-	
+
 	// Add a health check endpoint
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -308,7 +308,7 @@ func main() {
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		port = envPort
 	}
-	
+
 	logger.Printf("Server setup completed in %v", time.Since(startTime))
 	logger.Printf("Starting server on port %s...", port)
 	logger.Fatal(http.ListenAndServe(":"+port, r))
