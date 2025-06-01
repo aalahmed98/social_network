@@ -217,6 +217,41 @@ func (db *DB) InitializeTables() error {
 		return err
 	}
 
+	// Create group_events table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			creator_id INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT,
+			event_date DATE NOT NULL,
+			event_time TIME NOT NULL, 
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create event_responses table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS event_responses (
+			event_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			response TEXT NOT NULL CHECK(response IN ('going', 'not_going')),
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (event_id, user_id),
+			FOREIGN KEY (event_id) REFERENCES group_events(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -655,7 +690,6 @@ func (db *DB) GetUserFollowers(userID int) ([]map[string]interface{}, error) {
 	return followers, nil
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // GetUserFollowers returns the list of followers for a user
@@ -892,7 +926,7 @@ func (db *DB) GetFollowRequest(requestID int64) (*FollowRequest, error) {
 	// Get the follow request - using correct column names
 	query := `SELECT id, requester_id, requested_id, created_at FROM follow_requests WHERE id = ?`
 	row := db.QueryRow(query, requestID)
-	
+
 	var request FollowRequest
 	err = row.Scan(&request.ID, &request.FollowerID, &request.FollowingID, &request.CreatedAt)
 	if err != nil {
@@ -952,7 +986,7 @@ func (db *DB) AcceptFollowRequest(requestID int64) error {
 	// Get the follow request - using correct column names
 	query := `SELECT requester_id, requested_id FROM follow_requests WHERE id = ?`
 	row := tx.QueryRow(query, requestID)
-	
+
 	var followerID, followingID int64
 	err = row.Scan(&followerID, &followingID)
 	if err != nil {
@@ -1318,11 +1352,11 @@ func (db *DB) SearchUsers(searchTerm string) ([]map[string]interface{}, error) {
 	exactTerm := strings.TrimPrefix(strings.TrimSuffix(searchTerm, "%"), "%")
 
 	rows, err := db.Query(
-		query, 
-		searchTerm, 
-		searchTerm, 
-		searchTerm, 
-		searchTerm, 
+		query,
+		searchTerm,
+		searchTerm,
+		searchTerm,
+		searchTerm,
 		searchTerm,
 		exactTerm,
 		exactTerm,
