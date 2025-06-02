@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"s-network/backend/pkg/db/sqlite"
@@ -1138,11 +1138,11 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	isMember := db.IsGroupMember(groupID, int64(userID))
 	log.Printf("CreateGroupEvent: Is member check result: %t", isMember)
 
-	// if !isMember {
-	// 	log.Printf("CreateGroupEvent: Access denied - user %d is not a member of group %d", userID, groupID)
-	// 	http.Error(w, "Access denied", http.StatusForbidden)
-	// 	return
-	// }
+	if !isMember {
+		log.Printf("CreateGroupEvent: Access denied - user %d is not a member of group %d", userID, groupID)
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
 
 	var requestData struct {
 		Title       string `json:"title"`
@@ -1232,46 +1232,33 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 
 // GetGroupEvents retrieves all events for a group
 func GetGroupEvents(w http.ResponseWriter, r *http.Request) {
-	log.Printf("=== GetGroupEvents Handler Start ===")
-
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
-		log.Printf("GetGroupEvents: Unauthorized - %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	log.Printf("GetGroupEvents: User ID: %d", userID)
 
 	vars := mux.Vars(r)
 	groupIDStr := vars["id"]
-	log.Printf("GetGroupEvents: Group ID string: %s", groupIDStr)
-
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
-		log.Printf("GetGroupEvents: Invalid group ID - %v", err)
 		http.Error(w, "Invalid group ID", http.StatusBadRequest)
 		return
 	}
-	log.Printf("GetGroupEvents: Parsed Group ID: %d", groupID)
 
-	// // Check if user is a member of the group
-	// if !db.IsGroupMember(groupID, int64(userID)) {
-	// 	log.Printf("GetGroupEvents: Access denied - user %d is not a member of group %d", userID, groupID)
-	// 	http.Error(w, "Access denied", http.StatusForbidden)
-	// 	return
-	// }
-	log.Printf("GetGroupEvents: User is member of group")
+	// Check if user is a member of the group
+	if !db.IsGroupMember(groupID, int64(userID)) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
 
 	events, err := db.GetGroupEvents(groupID, int64(userID))
 	if err != nil {
-		log.Printf("GetGroupEvents: Failed to get events - %v", err)
 		http.Error(w, "Failed to get events", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("GetGroupEvents: Retrieved %d events", len(events))
 
 	w.Header().Set("Content-Type", "application/json")
-	log.Printf("GetGroupEvents: Writing response")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"events": events,
 	})
@@ -1597,8 +1584,18 @@ func DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		log.Printf("DeleteGroup: Database error while deleting group: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+
+		// Provide more detailed error message based on the error type
+		errorMsg := "Failed to delete group"
+		if strings.Contains(err.Error(), "foreign key constraint") {
+			errorMsg = "Failed to delete group: Some related data could not be deleted. Please try again."
+		} else if strings.Contains(err.Error(), "no rows affected") {
+			errorMsg = "Failed to delete group: Group may have already been deleted."
+		}
+
 		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("Failed to delete group: %v", err),
+			"error":   errorMsg,
+			"details": err.Error(),
 		})
 		return
 	}

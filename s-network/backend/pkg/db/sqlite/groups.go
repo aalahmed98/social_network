@@ -328,6 +328,7 @@ func (db *DB) DeleteGroup(id int64) error {
 	}
 
 	// Delete related data in the correct order to avoid foreign key violations
+	// Use IGNORE to skip errors if tables don't exist
 
 	// 1. Delete group event responses
 	_, err = tx.Exec("DELETE FROM group_event_responses WHERE event_id IN (SELECT id FROM group_events WHERE group_id = ?)", id)
@@ -347,10 +348,11 @@ func (db *DB) DeleteGroup(id int64) error {
 		return err
 	}
 
-	// 4. Delete group post likes
+	// 4. Delete group post likes (if table exists)
 	_, err = tx.Exec("DELETE FROM group_post_likes WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?)", id)
 	if err != nil {
-		return err
+		// Log the error but continue - the table might not exist
+		log.Printf("Warning: Error deleting group post likes: %v", err)
 	}
 
 	// 5. Delete group posts
@@ -905,14 +907,10 @@ func (db *DB) DeleteGroupPostComment(commentID int64) error {
 
 // CreateGroupEvent creates a new event in a group
 func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
-	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date, event_time) 
-	          VALUES (?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date) 
+	          VALUES (?, ?, ?, ?, ?)`
 
-	// Format date and time separately for SQLite
-	formattedDate := event.EventDate.Format("2006-01-02")
-	formattedTime := event.EventDate.Format("15:04:05")
-
-	result, err := db.Exec(query, event.GroupID, event.CreatorID, event.Title, event.Description, formattedDate, formattedTime)
+	result, err := db.Exec(query, event.GroupID, event.CreatorID, event.Title, event.Description, event.EventDate)
 	if err != nil {
 		return 0, err
 	}
@@ -923,7 +921,7 @@ func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
 // GetGroupEvents retrieves all events for a group
 func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error) {
 	query := `SELECT ge.id, ge.group_id, ge.creator_id, ge.title, ge.description, 
-	                 ge.event_date, ge.created_at,
+	                 ge.event_date, ge.created_at, ge.updated_at,
 	                 u.first_name || ' ' || u.last_name as creator_name
 	          FROM group_events ge
 	          JOIN users u ON ge.creator_id = u.id
@@ -932,7 +930,6 @@ func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error)
 
 	rows, err := db.Query(query, groupID)
 	if err != nil {
-		log.Printf("GetGroupEvents: Query error - %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -942,10 +939,9 @@ func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error)
 		var event GroupEvent
 		if err := rows.Scan(
 			&event.ID, &event.GroupID, &event.CreatorID, &event.Title, &event.Description,
-			&event.EventDate, &event.CreatedAt, &event.CreatorName,
+			&event.EventDate, &event.CreatedAt, &event.UpdatedAt, &event.CreatorName,
 		); err != nil {
-			log.Printf("GetGroupEvents: Scan error - %v", err)
-			continue // Skip this event but continue processing others
+			return nil, err
 		}
 
 		// Get response counts
@@ -957,18 +953,13 @@ func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error)
 		events = append(events, &event)
 	}
 
-	if err := rows.Err(); err != nil {
-		log.Printf("GetGroupEvents: Rows error - %v", err)
-		return nil, err
-	}
-
-	return events, nil
+	return events, rows.Err()
 }
 
 // GetGroupEvent retrieves a specific group event by ID
 func (db *DB) GetGroupEvent(eventID int64, userID int64) (*GroupEvent, error) {
 	query := `SELECT ge.id, ge.group_id, ge.creator_id, ge.title, ge.description, 
-	                 ge.event_date, ge.created_at,
+	                 ge.event_date, ge.created_at, ge.updated_at,
 	                 u.first_name || ' ' || u.last_name as creator_name
 	          FROM group_events ge
 	          JOIN users u ON ge.creator_id = u.id
@@ -977,7 +968,7 @@ func (db *DB) GetGroupEvent(eventID int64, userID int64) (*GroupEvent, error) {
 	var event GroupEvent
 	err := db.QueryRow(query, eventID).Scan(
 		&event.ID, &event.GroupID, &event.CreatorID, &event.Title, &event.Description,
-		&event.EventDate, &event.CreatedAt, &event.CreatorName,
+		&event.EventDate, &event.CreatedAt, &event.UpdatedAt, &event.CreatorName,
 	)
 
 	if err != nil {
