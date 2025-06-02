@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"s-network/backend/pkg/db/sqlite"
@@ -1138,11 +1138,19 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 	isMember := db.IsGroupMember(groupID, int64(userID))
 	log.Printf("CreateGroupEvent: Is member check result: %t", isMember)
 
+<<<<<<< HEAD
+	if !isMember {
+		log.Printf("CreateGroupEvent: Access denied - user %d is not a member of group %d", userID, groupID)
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+=======
 	// if !isMember {
 	// 	log.Printf("CreateGroupEvent: Access denied - user %d is not a member of group %d", userID, groupID)
 	// 	http.Error(w, "Access denied", http.StatusForbidden)
 	// 	return
 	// }
+>>>>>>> 0d8c8931cea379fbc3e1ef1dd7e1dc42e3ebbfd5
 
 	var requestData struct {
 		Title       string `json:"title"`
@@ -1597,8 +1605,18 @@ func DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		log.Printf("DeleteGroup: Database error while deleting group: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+
+		// Provide more detailed error message based on the error type
+		errorMsg := "Failed to delete group"
+		if strings.Contains(err.Error(), "foreign key constraint") {
+			errorMsg = "Failed to delete group: Some related data could not be deleted. Please try again."
+		} else if strings.Contains(err.Error(), "no rows affected") {
+			errorMsg = "Failed to delete group: Group may have already been deleted."
+		}
+
 		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("Failed to delete group: %v", err),
+			"error":   errorMsg,
+			"details": err.Error(),
 		})
 		return
 	}

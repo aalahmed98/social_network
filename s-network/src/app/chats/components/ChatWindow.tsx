@@ -15,6 +15,12 @@ import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@/context/AuthContext";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import {
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Message {
   id: string;
@@ -983,57 +989,40 @@ export default function ChatWindow({
   };
 
   const handleDeleteGroup = async () => {
+    console.log("=== Starting Group Deletion Process ===");
+    console.log("Initial state:", {
+      chatId: chat.id,
+      chatGroupId: chat.groupId,
+      groupInfoId: groupInfo?.id,
+      isGroup: chat.isGroup
+    });
+
     if (!chat.isGroup) {
-      console.error("❌ Cannot delete: Chat is not a group");
+      console.error("❌ Cannot delete: Not a group chat");
+      alert("This is not a group chat. Cannot delete.");
       return;
     }
 
-    // Enhanced debugging - Check all values before proceeding
-    console.log("=== ENHANCED DELETE GROUP DEBUG INFO ===");
-    console.log("Raw chat object:", JSON.stringify(chat, null, 2));
-    console.log("chat.id (conversation ID):", chat.id);
-    console.log("chat.groupId:", chat.groupId);
-    console.log("typeof chat.groupId:", typeof chat.groupId);
-    console.log("chat.groupId is undefined:", chat.groupId === undefined);
-    console.log("chat.groupId is null:", chat.groupId === null);
-    console.log("groupInfo object:", JSON.stringify(groupInfo, null, 2));
-    console.log("groupInfo?.id:", groupInfo?.id);
-    console.log("currentUser:", currentUser);
-    console.log("=========================================");
-
     setIsDeleting(true);
     try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
       // COMPREHENSIVE GROUP ID RESOLUTION
       let groupIdToDelete: number | null = null;
 
       // Method 1: Try chat.groupId (from conversation API)
-      if (
-        chat.groupId &&
-        typeof chat.groupId === "number" &&
-        chat.groupId > 0
-      ) {
+      if (chat.groupId && typeof chat.groupId === "number" && chat.groupId > 0) {
         groupIdToDelete = chat.groupId;
         console.log(`✅ Using chat.groupId: ${groupIdToDelete}`);
       }
       // Method 2: Try groupInfo.id (from group API)
-      else if (
-        groupInfo &&
-        groupInfo.id &&
-        typeof groupInfo.id === "number" &&
-        groupInfo.id > 0
-      ) {
+      else if (groupInfo && groupInfo.id && typeof groupInfo.id === "number" && groupInfo.id > 0) {
         groupIdToDelete = groupInfo.id;
         console.log(`✅ Using groupInfo.id: ${groupIdToDelete}`);
       }
       // Method 3: Try to extract from chat.id if it looks like a group conversation
       else if (chat.id && chat.isGroup) {
-        // Last resort - try to fetch group info first
-        console.log(
-          "⚠️ No groupId available, attempting to load group info first..."
-        );
+        console.log("⚠️ No groupId available, attempting to load group info first...");
 
         try {
           // Try using conversation ID to get group info via API
@@ -1048,10 +1037,10 @@ export default function ChatWindow({
 
             if (convData.group_id) {
               groupIdToDelete = convData.group_id;
-              console.log(
-                `✅ Found group ID from conversation API: ${groupIdToDelete}`
-              );
+              console.log(`✅ Found group ID from conversation API: ${groupIdToDelete}`);
             }
+          } else {
+            console.error("Failed to fetch conversation info:", await groupInfoResponse.text());
           }
         } catch (apiError) {
           console.error("Failed to fetch conversation info:", apiError);
@@ -1060,9 +1049,7 @@ export default function ChatWindow({
 
       // Final validation
       if (!groupIdToDelete || groupIdToDelete <= 0) {
-        console.error(
-          "❌ CRITICAL ERROR: No valid group ID found for deletion"
-        );
+        console.error("❌ CRITICAL ERROR: No valid group ID found for deletion");
         console.error("All attempts failed:");
         console.error("- chat.groupId:", chat.groupId);
         console.error("- groupInfo?.id:", groupInfo?.id);
@@ -1071,30 +1058,24 @@ export default function ChatWindow({
 
         alert(
           "Error: Cannot determine group ID for deletion.\n\n" +
-            "Please try the following:\n" +
-            "1. Refresh the page and try again\n" +
-            "2. Close and reopen this group chat\n" +
-            "3. If the problem persists, contact support\n\n" +
-            `Debug info: conversation=${chat.id}, groupId=${chat.groupId}, groupInfo=${groupInfo?.id}`
+          "Please try the following:\n" +
+          "1. Refresh the page and try again\n" +
+          "2. Close and reopen this group chat\n" +
+          "3. If the problem persists, contact support\n\n" +
+          `Debug info: conversation=${chat.id}, groupId=${chat.groupId}, groupInfo=${groupInfo?.id}`
         );
         return;
       }
 
       // Double-check the group ID is reasonable
       if (groupIdToDelete < 1 || groupIdToDelete > 999999) {
-        console.error(
-          `❌ Group ID ${groupIdToDelete} seems invalid (outside reasonable range)`
-        );
-        alert(
-          `Error: Invalid group ID (${groupIdToDelete}). Please refresh and try again.`
-        );
+        console.error(`❌ Group ID ${groupIdToDelete} seems invalid (outside reasonable range)`);
+        alert(`Error: Invalid group ID (${groupIdToDelete}). Please refresh and try again.`);
         return;
       }
 
       console.log(`✅ FINAL GROUP ID TO DELETE: ${groupIdToDelete}`);
-      console.log(
-        `✅ Making DELETE request to: ${backendUrl}/api/groups/${groupIdToDelete}`
-      );
+      console.log(`✅ Making DELETE request to: ${backendUrl}/api/groups/${groupIdToDelete}`);
 
       const response = await fetch(
         `${backendUrl}/api/groups/${groupIdToDelete}`,
@@ -1105,6 +1086,8 @@ export default function ChatWindow({
       );
 
       console.log(`Delete response status: ${response.status}`);
+      const responseText = await response.text();
+      console.log("Raw response text:", responseText);
 
       if (response.ok) {
         console.log("✅ Group deleted successfully");
@@ -1118,9 +1101,6 @@ export default function ChatWindow({
         // Get the actual error message from the response
         let errorMessage = "Failed to delete group. Please try again.";
         try {
-          const responseText = await response.text();
-          console.log("Raw response text:", responseText);
-
           const errorData = JSON.parse(responseText);
           errorMessage = errorData.message || errorData.error || errorMessage;
           console.error("Delete error response:", errorData);
@@ -1134,9 +1114,15 @@ export default function ChatWindow({
         if (response.status === 404) {
           alert(
             `Error: Group not found (404)\n\n` +
-              `The group may have already been deleted or the ID is incorrect.\n` +
-              `Group ID used: ${groupIdToDelete}\n\n` +
-              `Please refresh the page to see the updated group list.`
+            `The group may have already been deleted or the ID is incorrect.\n` +
+            `Group ID used: ${groupIdToDelete}\n\n` +
+            `Please refresh the page to see the updated group list.`
+          );
+        } else if (response.status === 403) {
+          alert(
+            `Error: Permission denied (403)\n\n` +
+            `You don't have permission to delete this group.\n` +
+            `Only the group creator can delete the group.`
           );
         } else {
           alert(`Error: ${errorMessage}`);
@@ -2720,7 +2706,7 @@ export default function ChatWindow({
       <Dialog.Root open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl p-6 w-full max-w-md z-50 border border-red-200">
+          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl p-6 w-full max-w-lg z-50 border border-red-200">
             <Dialog.Title className="text-xl font-bold mb-4 text-red-600 flex items-center gap-2">
               <svg
                 className="w-6 h-6"
@@ -2733,83 +2719,98 @@ export default function ChatWindow({
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.502 0L4.732 15.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+            ⚠️ Delete Group Permanently
+          </Dialog.Title>
+
+          <div className="mb-6 space-y-3">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-red-800 font-semibold mb-1">
+                🚨 This action cannot be undone!
+              </p>
+              <p className="text-red-700 text-sm">
+                Permanently delete <strong>"{chat.name}"</strong> and all its content?
+              </p>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <p className="text-gray-700 text-sm">
+                • All messages, posts, and files will be lost
+                <br />• All {chat.members?.length || 0} members will lose access immediately
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => {
+                setShowDeleteConfirm(false);
+              }}
+              className="w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors border border-gray-300 flex items-center justify-center gap-2"
+              disabled={isDeleting}
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              ⚠️ Delete Group Permanently
-            </Dialog.Title>
+              ✅ Cancel - Keep Group Safe
+            </button>
+            <button
+              onClick={handleDeleteGroup}
+              disabled={isDeleting}
+              className={`w-full px-4 py-3 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-all duration-200 ${
+                isDeleting
+                  ? "bg-red-300 text-red-100 cursor-not-allowed"
+                  : "bg-red-600 hover:bg-red-700 text-white border-2 border-red-800 hover:shadow-lg"
+              }`}
+            >
+              {isDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Deleting Permanently...</span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  <span>🗑️ YES, DELETE "{chat.name}" FOREVER</span>
+                </>
+              )}
+            </button>
+          </div>
 
-            <div className="mb-6 space-y-3">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-red-800 font-semibold mb-1">
-                  🚨 This action cannot be undone!
-                </p>
-                <p className="text-red-700 text-sm">
-                  Permanently delete <strong>"{chat.name}"</strong> and all its
-                  content?
-                </p>
-              </div>
-
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <p className="text-gray-700 text-sm">
-                  • All messages, posts, and files will be lost
-                  <br />• All {chat.members?.length || 0} members will lose
-                  access immediately
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  setShowDeleteConfirm(false);
-                }}
-                className="w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors border border-gray-300"
-                disabled={isDeleting}
-              >
-                ✅ Cancel - Keep Group Safe
-              </button>
-              <button
-                onClick={handleDeleteGroup}
-                disabled={isDeleting}
-                className={`w-full px-4 py-3 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${
-                  isDeleting
-                    ? "bg-red-300 text-red-100 cursor-not-allowed"
-                    : "bg-red-600 hover:bg-red-700 text-white border-2 border-red-800"
-                }`}
-              >
-                {isDeleting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Deleting Permanently...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                    🗑️ YES, DELETE FOREVER
-                  </>
-                )}
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-500 text-center mt-4">
-              Only group creators can perform this action. This deletion is
-              immediate and irreversible.
+          <div className="mt-4 text-center">
+            <p className="text-xs text-gray-500">
+              🛡️ Only group creators can perform this action
             </p>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            <p className="text-xs text-red-500 font-medium">
+              This deletion is immediate and irreversible
+            </p>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
 
       {/* Add Member Modal */}
       <Dialog.Root

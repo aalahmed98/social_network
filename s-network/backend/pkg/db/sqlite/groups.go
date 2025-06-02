@@ -328,6 +328,10 @@ func (db *DB) DeleteGroup(id int64) error {
 	}
 
 	// Delete related data in the correct order to avoid foreign key violations
+<<<<<<< HEAD
+	// Use IGNORE to skip errors if tables don't exist
+=======
+>>>>>>> 0d8c8931cea379fbc3e1ef1dd7e1dc42e3ebbfd5
 
 	// 1. Delete group event responses
 	_, err = tx.Exec("DELETE FROM group_event_responses WHERE event_id IN (SELECT id FROM group_events WHERE group_id = ?)", id)
@@ -347,10 +351,11 @@ func (db *DB) DeleteGroup(id int64) error {
 		return err
 	}
 
-	// 4. Delete group post likes
+	// 4. Delete group post likes (if table exists)
 	_, err = tx.Exec("DELETE FROM group_post_likes WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?)", id)
 	if err != nil {
-		return err
+		// Log the error but continue - the table might not exist
+		log.Printf("Warning: Error deleting group post likes: %v", err)
 	}
 
 	// 5. Delete group posts
@@ -905,6 +910,12 @@ func (db *DB) DeleteGroupPostComment(commentID int64) error {
 
 // CreateGroupEvent creates a new event in a group
 func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
+<<<<<<< HEAD
+	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date) 
+	          VALUES (?, ?, ?, ?, ?)`
+
+	result, err := db.Exec(query, event.GroupID, event.CreatorID, event.Title, event.Description, event.EventDate)
+=======
 	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date, event_time) 
 	          VALUES (?, ?, ?, ?, ?, ?)`
 
@@ -913,6 +924,7 @@ func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
 	formattedTime := event.EventDate.Format("15:04:05")
 
 	result, err := db.Exec(query, event.GroupID, event.CreatorID, event.Title, event.Description, formattedDate, formattedTime)
+>>>>>>> 0d8c8931cea379fbc3e1ef1dd7e1dc42e3ebbfd5
 	if err != nil {
 		return 0, err
 	}
@@ -957,12 +969,16 @@ func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error)
 		events = append(events, &event)
 	}
 
+<<<<<<< HEAD
+	return events, rows.Err()
+=======
 	if err := rows.Err(); err != nil {
 		log.Printf("GetGroupEvents: Rows error - %v", err)
 		return nil, err
 	}
 
 	return events, nil
+>>>>>>> 0d8c8931cea379fbc3e1ef1dd7e1dc42e3ebbfd5
 }
 
 // GetGroupEvent retrieves a specific group event by ID
