@@ -565,9 +565,11 @@ export default function GroupChatList({
                     <h3 className="font-bold text-slate-800 truncate">
                       {chat.name}
                     </h3>
-                    <span className="text-xs text-slate-500 font-medium">
-                      {chat.lastMessageTime}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500 font-medium">
+                        {chat.lastMessageTime}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-sm text-slate-600 truncate leading-relaxed">
                     {chat.lastMessage || "No messages yet"}
@@ -581,57 +583,6 @@ export default function GroupChatList({
                     </div>
                   )}
                 </div>
-
-                {/* Modern Dropdown Menu */}
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger asChild>
-                    <button className="p-2 rounded-xl bg-slate-100/60 hover:bg-slate-200/80 text-slate-400 hover:text-slate-600 transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105 shadow-md">
-                      <FaEllipsisV size={14} className="transition-transform" />
-                    </button>
-                  </DropdownMenu.Trigger>
-
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content
-                      className="min-w-[200px] bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 p-3 z-50"
-                      sideOffset={5}
-                    >
-                      {isGroupCreator(chat) ? (
-                        <DropdownMenu.Item
-                          className="flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-gradient-to-r hover:from-red-50 hover:to-pink-50 rounded-xl cursor-pointer transition-all duration-200 group border border-red-200/60 hover:border-red-300 hover:shadow-md"
-                          onClick={() => {
-                            setGroupToDelete(chat);
-                            setShowDeleteConfirm(true);
-                          }}
-                        >
-                          <div className="bg-red-100 p-2 rounded-lg group-hover:bg-red-200 transition-colors">
-                            <FaTrash
-                              size={12}
-                              className="group-hover:scale-110 transition-transform"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <span className="font-semibold">Delete Group</span>
-                            <p className="text-xs text-red-500 mt-0.5">
-                              Permanently remove
-                            </p>
-                          </div>
-                        </DropdownMenu.Item>
-                      ) : (
-                        <div className="flex items-center gap-3 px-4 py-3 text-sm text-slate-500 rounded-xl bg-slate-50/60">
-                          <div className="bg-slate-200 p-2 rounded-lg">
-                            <FaUsers size={12} />
-                          </div>
-                          <div className="flex-1">
-                            <span className="font-medium">Group Member</span>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              Limited actions
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
-                </DropdownMenu.Root>
               </div>
             ))}
           </div>
@@ -790,10 +741,7 @@ export default function GroupChatList({
                             <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-3 flex items-center justify-center">
                               {user.avatar ? (
                                 <img
-                                  src={`${
-                                    process.env.NEXT_PUBLIC_BACKEND_URL ||
-                                    "http://localhost:8080"
-                                  }${user.avatar}`}
+                                  src={user.avatar.startsWith('http') ? user.avatar : `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080/'}${user.avatar}`}
                                   alt={user.first_name}
                                   className="h-full w-full object-cover"
                                 />

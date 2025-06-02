@@ -15,12 +15,7 @@ import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@/context/AuthContext";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
-import {
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 
 interface Message {
   id: string;
