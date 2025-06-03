@@ -40,5 +40,30 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# database
+# database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+backend/data/
+s-network/backend/data/
+data/
+database/
 
+# migrations
+migrations/
+**/migrations/
+migrate/
+**/migrate/
+db/migrate/
+**/db/migrate/
+
+# uploads and user-generated content
+uploads/
+**/uploads/
+backend/uploads/
+s-network/backend/uploads/
+public/uploads/
+static/uploads/
+media/
+**/media/
