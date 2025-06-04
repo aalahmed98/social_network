@@ -32,6 +32,7 @@ type GroupMember struct {
 	GroupID  int64     `json:"group_id"`
 	UserID   int64     `json:"user_id"`
 	Role     string    `json:"role"`
+	Status   string    `json:"status"` // "member" for confirmed members, "pending" for invitations
 	JoinedAt time.Time `json:"joined_at"`
 
 	// User details for API responses
@@ -296,10 +297,49 @@ func (db *DB) GetGroupMembers(groupID int64) ([]*GroupMember, error) {
 		); err != nil {
 			return nil, err
 		}
+		member.Status = "member" // Set status for confirmed members
 		members = append(members, &member)
 	}
 
 	return members, rows.Err()
+}
+
+// GetGroupMembersWithPending retrieves all members and pending invitations for a group
+func (db *DB) GetGroupMembersWithPending(groupID int64) ([]*GroupMember, error) {
+	// First get confirmed members
+	members, err := db.GetGroupMembers(groupID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Then get pending invitations
+	invitationQuery := `SELECT gi.group_id, gi.invitee_id, gi.created_at,
+	                           u.first_name, u.last_name, u.avatar, u.email
+	                    FROM group_invitations gi
+	                    JOIN users u ON gi.invitee_id = u.id
+	                    WHERE gi.group_id = ? AND gi.status = 'pending'
+	                    ORDER BY gi.created_at ASC`
+
+	rows, err := db.Query(invitationQuery, groupID)
+	if err != nil {
+		return members, nil // Return confirmed members even if pending query fails
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var member GroupMember
+		if err := rows.Scan(
+			&member.GroupID, &member.UserID, &member.JoinedAt,
+			&member.FirstName, &member.LastName, &member.Avatar, &member.Email,
+		); err != nil {
+			continue // Skip this invitation if scan fails
+		}
+		member.Role = "pending"   // Role for pending invitations
+		member.Status = "pending" // Status for pending invitations
+		members = append(members, &member)
+	}
+
+	return members, nil
 }
 
 // UpdateGroup updates an existing group
@@ -530,8 +570,7 @@ func (db *DB) CreateGroupInvitation(invitation *GroupInvitation) (int64, error) 
 
 // UpdateInvitationStatus updates the status of a group invitation
 func (db *DB) UpdateInvitationStatus(invitationID int64, status string) error {
-	query := `UPDATE group_invitations SET status = ?, updated_at = CURRENT_TIMESTAMP 
-	          WHERE id = ?`
+	query := `UPDATE group_invitations SET status = ? WHERE id = ?`
 
 	_, err := db.Exec(query, status, invitationID)
 	return err
@@ -540,7 +579,7 @@ func (db *DB) UpdateInvitationStatus(invitationID int64, status string) error {
 // GetUserInvitations retrieves all invitations for a user
 func (db *DB) GetUserInvitations(userID int64, status string) ([]*GroupInvitation, error) {
 	query := `SELECT gi.id, gi.group_id, gi.inviter_id, gi.invitee_id, gi.status, 
-	                 gi.created_at, gi.updated_at, g.name as group_name,
+	                 gi.created_at, g.name as group_name,
 	                 u.first_name || ' ' || u.last_name as inviter_name
 	          FROM group_invitations gi
 	          JOIN groups g ON gi.group_id = g.id
@@ -559,10 +598,12 @@ func (db *DB) GetUserInvitations(userID int64, status string) ([]*GroupInvitatio
 		var inv GroupInvitation
 		if err := rows.Scan(
 			&inv.ID, &inv.GroupID, &inv.InviterID, &inv.InviteeID, &inv.Status,
-			&inv.CreatedAt, &inv.UpdatedAt, &inv.GroupName, &inv.InviterName,
+			&inv.CreatedAt, &inv.GroupName, &inv.InviterName,
 		); err != nil {
 			return nil, err
 		}
+		// Set updated_at to created_at since we don't have updated_at in the database
+		inv.UpdatedAt = inv.CreatedAt
 		invitations = append(invitations, &inv)
 	}
 

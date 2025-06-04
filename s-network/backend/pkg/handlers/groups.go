@@ -125,7 +125,7 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 		Description string  `json:"description"`
 		Privacy     string  `json:"privacy"`
 		Avatar      string  `json:"avatar"`
-		MemberIDs   []int64 `json:"member_ids"` // Optional member IDs to add
+		MemberIDs   []int64 `json:"member_ids"` // Optional member IDs to invite
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
@@ -169,9 +169,22 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the group creation if chat creation fails
 	}
 
-	// Add members if provided
+	// Send invitations to members if provided
 	if len(requestData.MemberIDs) > 0 {
-		log.Printf("[CreateGroup] Adding %d members to group %d", len(requestData.MemberIDs), groupID)
+		log.Printf("[CreateGroup] Sending invitations to %d members for group %d", len(requestData.MemberIDs), groupID)
+
+		// Get inviter (creator) information for notifications
+		inviter, err := db.GetUserById(int(userID))
+		if err != nil {
+			log.Printf("[CreateGroup] Warning: Could not get inviter info: %v", err)
+		}
+
+		var inviterName string
+		if inviter != nil {
+			inviterName = inviter["first_name"].(string) + " " + inviter["last_name"].(string)
+		} else {
+			inviterName = "Unknown User"
+		}
 
 		for _, memberID := range requestData.MemberIDs {
 			// Check if target user exists
@@ -181,19 +194,39 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Add user as member
-			err = db.AddGroupMember(groupID, memberID, "member")
-			if err != nil {
-				log.Printf("[CreateGroup] Error adding member %d: %v", memberID, err)
+			// Check if user is already a member (shouldn't happen for new group, but safety check)
+			if db.IsGroupMember(groupID, memberID) {
+				log.Printf("[CreateGroup] Warning: User %d is already a member, skipping", memberID)
 				continue
 			}
 
-			// Add user to group chat conversation
-			err = db.AddMemberToGroupConversation(groupID, memberID)
-			if err != nil {
-				log.Printf("[CreateGroup] Error adding member %d to conversation: %v", memberID, err)
-				// Don't fail if chat addition fails
+			// Check if invitation already exists
+			if db.HasPendingInvitation(groupID, memberID) {
+				log.Printf("[CreateGroup] Warning: User %d already has pending invitation, skipping", memberID)
+				continue
 			}
+
+			// Create invitation
+			invitation := &sqlite.GroupInvitation{
+				GroupID:   groupID,
+				InviterID: int64(userID),
+				InviteeID: memberID,
+			}
+
+			invitationID, err := db.CreateGroupInvitation(invitation)
+			if err != nil {
+				log.Printf("[CreateGroup] Error creating invitation for user %d: %v", memberID, err)
+				continue
+			}
+
+			// Create notification for the invited user
+			_, err = db.CreateGroupInviteNotification(memberID, int64(userID), groupID, requestData.Name, inviterName)
+			if err != nil {
+				log.Printf("[CreateGroup] Error creating notification for user %d: %v", memberID, err)
+				// Don't fail the invitation if notification creation fails
+			}
+
+			log.Printf("[CreateGroup] Successfully sent invitation %d to user %d", invitationID, memberID)
 		}
 	}
 
@@ -376,6 +409,23 @@ func InviteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get group information for notification
+	group, err := db.GetGroup(groupID)
+	if err != nil || group == nil {
+		http.Error(w, "Group not found", http.StatusNotFound)
+		return
+	}
+
+	// Get inviter information for notification
+	inviter, err := db.GetUserById(int(userID))
+	if err != nil {
+		log.Printf("Error getting inviter info: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	inviterName := inviter["first_name"].(string) + " " + inviter["last_name"].(string)
+
 	// Create invitation
 	invitation := &sqlite.GroupInvitation{
 		GroupID:   groupID,
@@ -389,6 +439,22 @@ func InviteToGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to send invitation", http.StatusInternalServerError)
 		return
 	}
+
+	// Create notification for the invited user
+	_, err = db.CreateGroupInviteNotification(requestData.UserID, int64(userID), groupID, group.Name, inviterName)
+	if err != nil {
+		log.Printf("Error creating notification for invitation: %v", err)
+		// Don't fail the invitation if notification creation fails
+	}
+
+	// Add user to group chat
+	err = db.AddMemberToGroupConversation(groupID, int64(userID))
+	if err != nil {
+		log.Printf("Error adding user to group conversation: %v", err)
+	}
+
+	// Mark related notification as read
+	markGroupInvitationNotificationAsRead(int64(userID), groupID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -516,6 +582,9 @@ func AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error adding user to group conversation: %v", err)
 	}
 
+	// Mark related notification as read
+	markGroupInvitationNotificationAsRead(int64(userID), invitation.GroupID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Invitation accepted successfully",
@@ -545,15 +614,15 @@ func RejectInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	found := false
+	var foundInvitation *sqlite.GroupInvitation
 	for _, inv := range invitations {
 		if inv.ID == invitationID {
-			found = true
+			foundInvitation = inv
 			break
 		}
 	}
 
-	if !found {
+	if foundInvitation == nil {
 		http.Error(w, "Invitation not found", http.StatusNotFound)
 		return
 	}
@@ -564,6 +633,9 @@ func RejectInvitation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to reject invitation", http.StatusInternalServerError)
 		return
 	}
+
+	// Mark related notification as read
+	markGroupInvitationNotificationAsRead(int64(userID), foundInvitation.GroupID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -1334,7 +1406,7 @@ func GetGroupMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := db.GetGroupMembers(groupID)
+	members, err := db.GetGroupMembersWithPending(groupID)
 	if err != nil {
 		http.Error(w, "Failed to get group members", http.StatusInternalServerError)
 		return
@@ -1825,4 +1897,14 @@ func RegisterGroupRoutes(router *mux.Router) {
 	router.HandleFunc("/groups/{id}/events", GetGroupEvents).Methods("GET", "OPTIONS")
 	router.HandleFunc("/groups/{id}/events", CreateGroupEvent).Methods("POST", "OPTIONS")
 	router.HandleFunc("/groups/events/{eventId}/respond", RespondToGroupEvent).Methods("POST", "OPTIONS")
+}
+
+// Helper function to mark group invitation notifications as read
+func markGroupInvitationNotificationAsRead(userID, groupID int64) {
+	query := `UPDATE notifications SET is_read = 1 
+	          WHERE receiver_id = ? AND reference_id = ? AND type = 'group_invitation'`
+	_, err := db.Exec(query, userID, groupID)
+	if err != nil {
+		log.Printf("Error marking group invitation notification as read: %v", err)
+	}
 }

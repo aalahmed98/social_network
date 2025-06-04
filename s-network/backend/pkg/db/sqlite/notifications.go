@@ -24,13 +24,13 @@ func (db *DB) EnsureNotificationsTableExists() error {
 	// Check if the table already exists
 	var tableName string
 	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='notifications'").Scan(&tableName)
-	
+
 	// If table doesn't exist, create it
 	if err != nil {
 		if err != sql.ErrNoRows {
 			return err
 		}
-		
+
 		// Create notifications table if it doesn't exist
 		_, err := db.Exec(`
 			CREATE TABLE IF NOT EXISTS notifications (
@@ -51,14 +51,14 @@ func (db *DB) EnsureNotificationsTableExists() error {
 		}
 		return nil
 	}
-	
+
 	// Check if the table has the correct schema
 	var columnCount int
 	err = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('notifications') WHERE name='receiver_id'").Scan(&columnCount)
 	if err != nil {
 		return err
 	}
-	
+
 	// If receiver_id column doesn't exist, drop and recreate the table
 	if columnCount == 0 {
 		// Begin a transaction to avoid data loss if possible
@@ -67,13 +67,13 @@ func (db *DB) EnsureNotificationsTableExists() error {
 			return err
 		}
 		defer tx.Rollback()
-		
+
 		// Drop the existing table
 		_, err = tx.Exec("DROP TABLE notifications")
 		if err != nil {
 			return err
 		}
-		
+
 		// Create the table with the correct schema
 		_, err = tx.Exec(`
 			CREATE TABLE notifications (
@@ -92,15 +92,15 @@ func (db *DB) EnsureNotificationsTableExists() error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Commit the transaction
 		if err = tx.Commit(); err != nil {
 			return err
 		}
-		
+
 		fmt.Println("Notifications table was recreated with the correct schema")
 	}
-	
+
 	return nil
 }
 
@@ -113,19 +113,19 @@ func (db *DB) CreateNotification(notification *Notification) (int64, error) {
 
 	query := `INSERT INTO notifications (receiver_id, sender_id, type, content, reference_id, is_read)
 	          VALUES (?, ?, ?, ?, ?, ?)`
-	
-	result, err := db.Exec(query, 
-		notification.ReceiverID, 
-		notification.SenderID, 
-		notification.Type, 
-		notification.Content, 
-		notification.ReferenceID, 
+
+	result, err := db.Exec(query,
+		notification.ReceiverID,
+		notification.SenderID,
+		notification.Type,
+		notification.Content,
+		notification.ReferenceID,
 		notification.IsRead)
-	
+
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return result.LastInsertId()
 }
 
@@ -139,7 +139,7 @@ func (db *DB) CreateMessageNotification(receiverID, senderID, conversationID int
 		ReferenceID: conversationID,
 		IsRead:      false,
 	}
-	
+
 	return db.CreateNotification(notification)
 }
 
@@ -147,7 +147,7 @@ func (db *DB) CreateMessageNotification(receiverID, senderID, conversationID int
 func (db *DB) GetNotification(id int64) (*Notification, error) {
 	query := `SELECT id, receiver_id, sender_id, type, content, reference_id, is_read, created_at
 	          FROM notifications WHERE id = ?`
-	
+
 	var notification Notification
 	err := db.QueryRow(query, id).Scan(
 		&notification.ID,
@@ -159,14 +159,14 @@ func (db *DB) GetNotification(id int64) (*Notification, error) {
 		&notification.IsRead,
 		&notification.CreatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	
+
 	return &notification, nil
 }
 
@@ -177,16 +177,16 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 		fmt.Printf("Error ensuring notifications table exists: %v\n", err)
 		return nil, fmt.Errorf("failed to ensure notifications table: %w", err)
 	}
-	
-	fmt.Printf("Fetching notifications for user ID: %d (type: %s, limit: %d, offset: %d)\n", 
+
+	fmt.Printf("Fetching notifications for user ID: %d (type: %s, limit: %d, offset: %d)\n",
 		userID, notificationType, limit, offset)
-	
+
 	var notifications []*Notification
-	
+
 	// Try to get notifications from the database
 	var query string
 	var args []interface{}
-	
+
 	if notificationType != "" {
 		query = `SELECT id, receiver_id, sender_id, type, content, reference_id, is_read, created_at
 		         FROM notifications 
@@ -202,15 +202,15 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 		         LIMIT ? OFFSET ?`
 		args = []interface{}{userID, limit, offset}
 	}
-	
+
 	// Debug the query being executed
 	fmt.Printf("Executing query: %s with args: %v\n", query, args)
-	
+
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		// Log the specific error
 		fmt.Printf("Database error querying notifications: %v\n", err)
-		
+
 		// If there's an error but it's not because the table doesn't exist,
 		// return the error
 		if !strings.Contains(err.Error(), "no such table") {
@@ -220,7 +220,7 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 		// and try to get follow requests later
 	} else {
 		defer rows.Close()
-		
+
 		for rows.Next() {
 			var notification Notification
 			if err := rows.Scan(
@@ -238,15 +238,15 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 			}
 			notifications = append(notifications, &notification)
 		}
-		
+
 		if err := rows.Err(); err != nil {
 			fmt.Printf("Error after notification rows iteration: %v\n", err)
 			return nil, err
 		}
 	}
-	
+
 	fmt.Printf("Found %d notifications in the database\n", len(notifications))
-	
+
 	// Try to get follow requests as notifications, even if we already have some notifications
 	fmt.Println("Attempting to get follow requests...")
 	followRequests, err := db.GetUserFollowRequests(userID)
@@ -263,9 +263,9 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 					fmt.Printf("Error getting follower info for request from user %d: %v\n", request.FollowerID, err)
 					continue
 				}
-				
+
 				followerName := follower["first_name"].(string) + " " + follower["last_name"].(string)
-				
+
 				notification := &Notification{
 					ID:          request.ID,
 					ReceiverID:  userID,
@@ -276,17 +276,17 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 					IsRead:      false,
 					CreatedAt:   request.CreatedAt,
 				}
-				
+
 				notifications = append(notifications, notification)
 			}
 		}
 	}
-	
+
 	// Even if we get no notifications or follow requests, return an empty slice rather than an error
 	if notifications == nil {
 		notifications = []*Notification{}
 	}
-	
+
 	fmt.Printf("Returning total of %d notifications and follow requests\n", len(notifications))
 	return notifications, nil
 }
@@ -312,9 +312,9 @@ func (db *DB) GetUnreadNotificationCount(userID int64) (int, error) {
 		fmt.Printf("Error ensuring notifications table exists in GetUnreadNotificationCount: %v\n", err)
 		return 0, err
 	}
-	
+
 	query := `SELECT COUNT(*) FROM notifications WHERE receiver_id = ? AND is_read = FALSE`
-	
+
 	var count int
 	err := db.QueryRow(query, userID).Scan(&count)
 	if err != nil {
@@ -327,7 +327,7 @@ func (db *DB) GetUnreadNotificationCount(userID int64) (int, error) {
 		// If the table doesn't exist, return 0
 		return 0, nil
 	}
-	
+
 	// Also add pending follow requests to count
 	var requestCount int
 	requestCountQuery := `SELECT COUNT(*) FROM follow_requests WHERE following_id = ?`
@@ -342,7 +342,7 @@ func (db *DB) GetUnreadNotificationCount(userID int64) (int, error) {
 		// Add follow request count to total
 		count += requestCount
 	}
-	
+
 	return count, nil
 }
 
@@ -368,7 +368,7 @@ func (db *DB) CreateSystemNotification(userID int64, content string) (int64, err
 		Content:    content,
 		IsRead:     false,
 	}
-	
+
 	return db.CreateNotification(notification)
 }
 
@@ -376,12 +376,12 @@ func (db *DB) CreateSystemNotification(userID int64, content string) (int64, err
 func (db *DB) CreateGroupInviteNotification(userID, senderID, groupID int64, groupName, senderName string) (int64, error) {
 	notification := &Notification{
 		ReceiverID:  userID,
-		Type:        "group_invite",
+		Type:        "group_invitation",
 		Content:     senderName + " invited you to join " + groupName,
 		ReferenceID: groupID,
 		IsRead:      false,
 	}
-	
+
 	return db.CreateNotification(notification)
 }
 
@@ -394,7 +394,7 @@ func (db *DB) CreatePostLikeNotification(userID, senderID, postID int64, senderN
 		ReferenceID: postID,
 		IsRead:      false,
 	}
-	
+
 	return db.CreateNotification(notification)
 }
 
@@ -407,6 +407,6 @@ func (db *DB) CreatePostCommentNotification(userID, senderID, postID int64, send
 		ReferenceID: postID,
 		IsRead:      false,
 	}
-	
+
 	return db.CreateNotification(notification)
-} 
+}

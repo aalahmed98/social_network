@@ -68,7 +68,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("✅ GetConversations: Found %d conversations for user %d", len(conversations), userID)
 	for i, conv := range conversations {
-		log.Printf("  Conversation %d: ID=%d, Name='%s', IsGroup=%t, GroupID=%v", 
+		log.Printf("  Conversation %d: ID=%d, Name='%s', IsGroup=%t, GroupID=%v",
 			i+1, conv.ID, conv.Name, conv.IsGroup, conv.GroupID)
 	}
 
@@ -76,7 +76,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 	result := make([]map[string]interface{}, 0)
 	for _, conv := range conversations {
 		log.Printf("🔄 Processing conversation %d (IsGroup: %t)", conv.ID, conv.IsGroup)
-		
+
 		// Get participants
 		participants, err := db.GetConversationParticipants(conv.ID)
 		if err != nil {
@@ -139,19 +139,41 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 
 		// Get participant user info
 		participantDetails := make([]map[string]interface{}, 0)
-		for _, p := range participants {
-			user, err := db.GetUserById(int(p.UserID))
-			if err != nil {
-				continue
-			}
 
-			participantDetails = append(participantDetails, map[string]interface{}{
-				"id":         p.UserID,
-				"first_name": user["first_name"],
-				"last_name":  user["last_name"],
-				"avatar":     user["avatar"],
-				"joined_at":  p.JoinedAt,
-			})
+		if conv.IsGroup && conv.GroupID != nil {
+			// For group conversations, get members with pending status
+			groupMembers, err := db.GetGroupMembersWithPending(*conv.GroupID)
+			if err != nil {
+				log.Printf("❌ Error getting group members with pending for group %d: %v", *conv.GroupID, err)
+			} else {
+				for _, member := range groupMembers {
+					participantDetails = append(participantDetails, map[string]interface{}{
+						"id":         member.UserID,
+						"first_name": member.FirstName,
+						"last_name":  member.LastName,
+						"avatar":     member.Avatar,
+						"joined_at":  member.JoinedAt,
+						"status":     member.Status, // "member" or "pending"
+					})
+				}
+			}
+		} else {
+			// For direct conversations, use regular participants
+			for _, p := range participants {
+				user, err := db.GetUserById(int(p.UserID))
+				if err != nil {
+					continue
+				}
+
+				participantDetails = append(participantDetails, map[string]interface{}{
+					"id":         p.UserID,
+					"first_name": user["first_name"],
+					"last_name":  user["last_name"],
+					"avatar":     user["avatar"],
+					"joined_at":  p.JoinedAt,
+					"status":     "member", // Direct chat participants are always confirmed
+				})
+			}
 		}
 
 		// Get unread count
@@ -192,19 +214,19 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 
 		// Build conversation data
 		conversationData := map[string]interface{}{
-			"id":            conv.ID,
-			"name":          name,
-			"avatar":        avatar,
-			"is_group":      conv.IsGroup,
-			"group_id":      conv.GroupID,
-			"last_message":  lastMessage,
-			"unread_count":  unreadCount,
-			"participants":  participantDetails,
-			"updated_at":    conv.UpdatedAt,
-			"created_at":    conv.CreatedAt,
+			"id":           conv.ID,
+			"name":         name,
+			"avatar":       avatar,
+			"is_group":     conv.IsGroup,
+			"group_id":     conv.GroupID,
+			"last_message": lastMessage,
+			"unread_count": unreadCount,
+			"participants": participantDetails,
+			"updated_at":   conv.UpdatedAt,
+			"created_at":   conv.CreatedAt,
 		}
 
-		log.Printf("  📤 Adding conversation data: ID=%v, Name='%s', IsGroup=%v, GroupID=%v", 
+		log.Printf("  📤 Adding conversation data: ID=%v, Name='%s', IsGroup=%v, GroupID=%v",
 			conversationData["id"], conversationData["name"], conversationData["is_group"], conversationData["group_id"])
 
 		result = append(result, conversationData)
@@ -212,7 +234,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("🎯 GetConversations: Returning %d conversations total", len(result))
 	for i, conv := range result {
-		log.Printf("  Final conversation %d: ID=%v, Name='%s', IsGroup=%v, GroupID=%v", 
+		log.Printf("  Final conversation %d: ID=%v, Name='%s', IsGroup=%v, GroupID=%v",
 			i+1, conv["id"], conv["name"], conv["is_group"], conv["group_id"])
 	}
 
@@ -220,7 +242,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"conversations": result,
 	})
-	
+
 	log.Printf("✅ GetConversations: Response sent successfully")
 }
 
@@ -471,9 +493,9 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Parse request body
 	var requestData struct {
-		Name        string  `json:"name"`
-		IsGroup     bool    `json:"is_group"`
-		GroupID     *int64  `json:"group_id"`
+		Name         string  `json:"name"`
+		IsGroup      bool    `json:"is_group"`
+		GroupID      *int64  `json:"group_id"`
 		Participants []int64 `json:"participants"`
 	}
 
@@ -519,13 +541,13 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          conversation.ID,
-				"name":        conversation.Name,
-				"is_group":    conversation.IsGroup,
-				"group_id":    conversation.GroupID,
-				"created_at":  conversation.CreatedAt,
-				"updated_at":  conversation.UpdatedAt,
-				"message":     "Conversation already exists",
+				"id":         conversation.ID,
+				"name":       conversation.Name,
+				"is_group":   conversation.IsGroup,
+				"group_id":   conversation.GroupID,
+				"created_at": conversation.CreatedAt,
+				"updated_at": conversation.UpdatedAt,
+				"message":    "Conversation already exists",
 			})
 			return
 		}
@@ -691,10 +713,10 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 		// Save as direct message
 		msg := &sqlite.ChatMessage{
 			ConversationID: conversationID,
-			SenderID:      int64(userID),
-			Content:       req.Content,
-			IsDeleted:     false,
-			CreatedAt:     time.Now(),
+			SenderID:       int64(userID),
+			Content:        req.Content,
+			IsDeleted:      false,
+			CreatedAt:      time.Now(),
 		}
 		_, err = db.CreateMessage(msg)
 		if err != nil {
@@ -705,4 +727,4 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-} 
+}

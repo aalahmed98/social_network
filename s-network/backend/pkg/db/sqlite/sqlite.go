@@ -252,6 +252,217 @@ func (db *DB) InitializeTables() error {
 		return err
 	}
 
+	// Create groups table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT,
+			creator_id INTEGER NOT NULL,
+			avatar TEXT,
+			privacy TEXT DEFAULT 'public' CHECK(privacy IN ('public', 'private')),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_members table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_members (
+			group_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			role TEXT DEFAULT 'member' CHECK(role IN ('admin', 'member')),
+			joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (group_id, user_id),
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_invitations table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_invitations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			inviter_id INTEGER NOT NULL,
+			invitee_id INTEGER NOT NULL,
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'rejected')),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (invitee_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_join_requests table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_join_requests (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			message TEXT,
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'rejected')),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_posts table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_posts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			author_id INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			image_path TEXT,
+			likes_count INTEGER DEFAULT 0,
+			comments_count INTEGER DEFAULT 0,
+			upvotes INTEGER DEFAULT 0,
+			downvotes INTEGER DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_post_likes table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_post_likes (
+			post_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (post_id, user_id),
+			FOREIGN KEY (post_id) REFERENCES group_posts(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_post_comments table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_post_comments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			post_id INTEGER NOT NULL,
+			author_id INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			vote_count INTEGER DEFAULT 0,
+			upvotes INTEGER DEFAULT 0,
+			downvotes INTEGER DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (post_id) REFERENCES group_posts(id) ON DELETE CASCADE,
+			FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_event_responses table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_event_responses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			response TEXT NOT NULL CHECK(response IN ('going', 'not_going')),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(event_id, user_id),
+			FOREIGN KEY (event_id) REFERENCES group_events(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create chat_conversations table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_conversations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT,
+			is_group BOOLEAN DEFAULT FALSE,
+			group_id INTEGER,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create chat_participants table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_participants (
+			conversation_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			last_read_message_id INTEGER,
+			PRIMARY KEY (conversation_id, user_id),
+			FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create chat_messages table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			conversation_id INTEGER NOT NULL,
+			sender_id INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			is_deleted BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_messages table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			sender_id INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			is_deleted BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
