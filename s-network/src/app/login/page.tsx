@@ -53,16 +53,25 @@ export default function Login() {
         body: JSON.stringify(formData),
       });
 
-      let result;
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Invalid email or password");
+        }
+        // Try to parse error response
+        try {
+          const result = await response.json();
+          throw new Error(result?.error || "Login failed");
+        } catch {
+          throw new Error("Login failed");
+        }
+      }
+
+      let result: any;
       try {
         result = await response.json();
       } catch (e) {
         console.error("Failed to parse JSON response:", e);
-        throw new Error("Invalid server response");
-      }
-
-      if (!response.ok) {
-        throw new Error(result?.error || "Login failed");
+        throw new Error("Server communication error");
       }
 
       // Navigate to dashboard on success
