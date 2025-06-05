@@ -18,7 +18,7 @@ import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 
 interface Message {
-  id: string;
+  id: string; 
   senderId: string | number;
   senderName: string;
   senderAvatar?: string;
@@ -2128,14 +2128,25 @@ export default function ChatWindow({
                             <p className="font-semibold text-slate-800">
                               {member.name}
                             </p>
-                            {index === 0 && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="h-1.5 w-1.5 bg-amber-500 rounded-full"></div>
-                                <p className="text-xs font-medium text-amber-600">
-                                  Group Creator
-                                </p>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              {index === 0 && (
+                                <div className="flex items-center gap-1">
+                                  <div className="h-1.5 w-1.5 bg-amber-500 rounded-full"></div>
+                                  <p className="text-xs font-medium text-amber-600">
+                                    Group Creator
+                                  </p>
+                                </div>
+                              )}
+                              {/* Show pending status for invited members */}
+                              {member.status === "pending" && (
+                                <div className="flex items-center gap-1">
+                                  <div className="h-1.5 w-1.5 bg-orange-500 rounded-full"></div>
+                                  <p className="text-xs font-medium text-orange-600">
+                                    Invitation Pending
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
 
                           {/* Remove Member Button */}

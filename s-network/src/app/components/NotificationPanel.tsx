@@ -199,6 +199,89 @@ export default function NotificationPanel() {
           credentials: "include",
         });
       }
+
+      // Handle group invitation actions
+      if (notification.type === "group_invitation") {
+        if (action === "accept") {
+          // First get the user's invitations to find the invitation ID for this group
+          const invitationsResponse = await fetch(
+            `${backendUrl}/api/invitations`,
+            {
+              method: "GET",
+              credentials: "include",
+            }
+          );
+
+          if (!invitationsResponse.ok) {
+            console.error("Failed to get invitations:", invitationsResponse.status);
+            return;
+          }
+
+          const invitationsData = await invitationsResponse.json();
+          const invitation = invitationsData.invitations?.find(
+            (inv: any) => inv.group_id === notification.reference_id
+          );
+
+          if (!invitation) {
+            console.error("Invitation not found for group:", notification.reference_id);
+            return;
+          }
+
+          // Accept the invitation using the invitation ID
+          const response = await fetch(
+            `${backendUrl}/api/invitations/${invitation.id}/accept`,
+            {
+              method: "POST",
+              credentials: "include",
+            }
+          );
+
+          if (response.ok) {
+            fetchNotifications(); // Refresh notifications
+          } else {
+            console.error("Failed to accept invitation:", response.status);
+          }
+        } else if (action === "decline") {
+          // First get the user's invitations to find the invitation ID for this group
+          const invitationsResponse = await fetch(
+            `${backendUrl}/api/invitations`,
+            {
+              method: "GET",
+              credentials: "include",
+            }
+          );
+
+          if (!invitationsResponse.ok) {
+            console.error("Failed to get invitations:", invitationsResponse.status);
+            return;
+          }
+
+          const invitationsData = await invitationsResponse.json();
+          const invitation = invitationsData.invitations?.find(
+            (inv: any) => inv.group_id === notification.reference_id
+          );
+
+          if (!invitation) {
+            console.error("Invitation not found for group:", notification.reference_id);
+            return;
+          }
+
+          // Reject the invitation using the invitation ID
+          const response = await fetch(
+            `${backendUrl}/api/invitations/${invitation.id}/reject`,
+            {
+              method: "POST",
+              credentials: "include",
+            }
+          );
+
+          if (response.ok) {
+            fetchNotifications(); // Refresh notifications
+          } else {
+            console.error("Failed to reject invitation:", response.status);
+          }
+        }
+      }
     } catch (error) {
       console.error("Error handling notification action:", error);
     }
@@ -392,6 +475,35 @@ export default function NotificationPanel() {
                                     )
                                   }
                                   className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 flex items-center gap-1"
+                                >
+                                  <FaTimes size={10} />
+                                  Decline
+                                </button>
+                              </>
+                            )}
+
+                            {notification.type === "group_invitation" && (
+                              <>
+                                <button
+                                  onClick={() =>
+                                    handleNotificationAction(
+                                      notification,
+                                      "accept"
+                                    )
+                                  }
+                                  className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 flex items-center gap-1"
+                                >
+                                  <FaCheck size={10} />
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    handleNotificationAction(
+                                      notification,
+                                      "decline"
+                                    )
+                                  }
+                                  className="px-3 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 flex items-center gap-1"
                                 >
                                   <FaTimes size={10} />
                                   Decline

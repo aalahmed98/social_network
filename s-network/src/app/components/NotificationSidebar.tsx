@@ -147,6 +147,106 @@ export default function NotificationSidebar({
     }
   };
 
+  const handleAcceptGroupInvite = async (notification: Notification) => {
+    try {
+      if (!notification.reference_id) return;
+
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      
+      // First get the user's invitations to find the invitation ID for this group
+      const invitationsResponse = await fetch(
+        `${backendUrl}/api/invitations`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (!invitationsResponse.ok) {
+        console.error("Failed to get invitations:", invitationsResponse.status);
+        return;
+      }
+
+      const invitationsData = await invitationsResponse.json();
+      const invitation = invitationsData.invitations?.find(
+        (inv: any) => inv.group_id === notification.reference_id
+      );
+
+      if (!invitation) {
+        console.error("Invitation not found for group:", notification.reference_id);
+        return;
+      }
+
+      // Accept the invitation using the invitation ID
+      const response = await fetch(
+        `${backendUrl}/api/invitations/${invitation.id}/accept`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        await refreshNotifications(); // Refresh notifications
+      } else {
+        console.error("Failed to accept invitation:", response.status);
+      }
+    } catch (error) {
+      console.error("Error accepting group invitation:", error);
+    }
+  };
+
+  const handleRejectGroupInvite = async (notification: Notification) => {
+    try {
+      if (!notification.reference_id) return;
+
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      
+      // First get the user's invitations to find the invitation ID for this group
+      const invitationsResponse = await fetch(
+        `${backendUrl}/api/invitations`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (!invitationsResponse.ok) {
+        console.error("Failed to get invitations:", invitationsResponse.status);
+        return;
+      }
+
+      const invitationsData = await invitationsResponse.json();
+      const invitation = invitationsData.invitations?.find(
+        (inv: any) => inv.group_id === notification.reference_id
+      );
+
+      if (!invitation) {
+        console.error("Invitation not found for group:", notification.reference_id);
+        return;
+      }
+
+      // Reject the invitation using the invitation ID
+      const response = await fetch(
+        `${backendUrl}/api/invitations/${invitation.id}/reject`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        await refreshNotifications(); // Refresh notifications
+      } else {
+        console.error("Failed to reject invitation:", response.status);
+      }
+    } catch (error) {
+      console.error("Error rejecting group invitation:", error);
+    }
+  };
+
   const handleViewProfile = (userId: number) => {
     router.push(`/profile/${userId}`);
     onClose();
@@ -553,6 +653,29 @@ export default function NotificationSidebar({
                               handleRejectFollowRequest(notification);
                             }}
                             className="flex items-center bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-xs font-medium"
+                          >
+                            <FaTimes className="mr-1" size={10} /> Decline
+                          </button>
+                        </div>
+                      )}
+
+                      {notification.type === "group_invitation" && (
+                        <div className="mt-2 flex space-x-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAcceptGroupInvite(notification);
+                            }}
+                            className="flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                          >
+                            <FaCheck className="mr-1" size={10} /> Accept
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRejectGroupInvite(notification);
+                            }}
+                            className="flex items-center bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded-md text-xs font-medium"
                           >
                             <FaTimes className="mr-1" size={10} /> Decline
                           </button>
