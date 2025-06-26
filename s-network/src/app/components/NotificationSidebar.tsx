@@ -49,6 +49,15 @@ export default function NotificationSidebar({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
+  const [filteredNotifications, setFilteredNotifications] = useState<
+    Notification[]
+  >([]);
+  const [processedNotifications, setProcessedNotifications] = useState<
+    Set<string>
+  >(new Set());
+  const [feedbackMessages, setFeedbackMessages] = useState<{
+    [key: string]: { message: string; type: "success" | "error" };
+  }>({});
 
   // Refresh notifications when sidebar opens
   useEffect(() => {
@@ -56,6 +65,63 @@ export default function NotificationSidebar({
       handleRefresh();
     }
   }, [isOpen]);
+
+  // Auto-hide notifications after 1 minute
+  useEffect(() => {
+    const hideNotifications = async () => {
+      const now = new Date();
+      const expiredNotifications = notifications.filter((notification) => {
+        if (notification.type === "group_invitation") {
+          const createdAt = new Date(notification.created_at);
+          const diffInMinutes =
+            (now.getTime() - createdAt.getTime()) / (1000 * 60);
+          return diffInMinutes >= 1; // Find notifications older than 1 minute
+        }
+        return false;
+      });
+
+      if (expiredNotifications.length > 0) {
+        // Call backend to delete expired notifications from database
+        try {
+          const backendUrl =
+            process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+          await fetch(`${backendUrl}/api/notifications/cleanup-expired`, {
+            method: "POST",
+            credentials: "include",
+          });
+
+          // Refresh notifications to update the UI
+          await refreshNotifications();
+        } catch (error) {
+          console.error("Error cleaning up expired notifications:", error);
+        }
+      }
+    };
+
+    const interval = setInterval(hideNotifications, 10000); // Check every 10 seconds
+    return () => clearInterval(interval);
+  }, [notifications, refreshNotifications]);
+
+  // Show feedback message temporarily
+  const showFeedback = (
+    notificationId: string,
+    message: string,
+    type: "success" | "error"
+  ) => {
+    setFeedbackMessages((prev) => ({
+      ...prev,
+      [notificationId]: { message, type },
+    }));
+
+    // Hide feedback after 3 seconds
+    setTimeout(() => {
+      setFeedbackMessages((prev) => {
+        const newMessages = { ...prev };
+        delete newMessages[notificationId];
+        return newMessages;
+      });
+    }, 3000);
+  };
 
   const handleRefresh = async () => {
     setIsLoading(true);
@@ -71,7 +137,7 @@ export default function NotificationSidebar({
   };
 
   // Filtered notifications based on active filter
-  const filteredNotifications = notifications.filter((notification) => {
+  const displayedNotifications = notifications.filter((notification) => {
     if (activeFilter === "all") return true;
     return notification.type === activeFilter;
   });
@@ -114,6 +180,12 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
+        // Mark this notification as processed
+        setProcessedNotifications(
+          (prev) => new Set([...prev, notification.id])
+        );
+        showFeedback(notification.id, `✅ Follow request accepted!`, "success");
+
         await refreshNotifications(); // Refresh notifications
       }
     } catch (error) {
@@ -140,6 +212,12 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
+        // Mark this notification as processed
+        setProcessedNotifications(
+          (prev) => new Set([...prev, notification.id])
+        );
+        showFeedback(notification.id, `❌ Follow request declined`, "success");
+
         await refreshNotifications(); // Refresh notifications
       }
     } catch (error) {
@@ -153,18 +231,20 @@ export default function NotificationSidebar({
 
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      
+
       // First get the user's invitations to find the invitation ID for this group
-      const invitationsResponse = await fetch(
-        `${backendUrl}/api/invitations`,
-        {
-          method: "GET",
-          credentials: "include",
-        }
-      );
+      const invitationsResponse = await fetch(`${backendUrl}/api/invitations`, {
+        method: "GET",
+        credentials: "include",
+      });
 
       if (!invitationsResponse.ok) {
         console.error("Failed to get invitations:", invitationsResponse.status);
+        showFeedback(
+          notification.id,
+          "Failed to load invitation details",
+          "error"
+        );
         return;
       }
 
@@ -174,7 +254,11 @@ export default function NotificationSidebar({
       );
 
       if (!invitation) {
-        console.error("Invitation not found for group:", notification.reference_id);
+        console.error(
+          "Invitation not found for group:",
+          notification.reference_id
+        );
+        showFeedback(notification.id, "Invitation not found", "error");
         return;
       }
 
@@ -188,12 +272,24 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
+        // Mark this notification as processed
+        setProcessedNotifications(
+          (prev) => new Set([...prev, notification.id])
+        );
+        showFeedback(
+          notification.id,
+          `✅ Successfully joined ${invitation.group_name}!`,
+          "success"
+        );
+
         await refreshNotifications(); // Refresh notifications
       } else {
         console.error("Failed to accept invitation:", response.status);
+        showFeedback(notification.id, "Failed to accept invitation", "error");
       }
     } catch (error) {
       console.error("Error accepting group invitation:", error);
+      showFeedback(notification.id, "An error occurred", "error");
     }
   };
 
@@ -203,18 +299,20 @@ export default function NotificationSidebar({
 
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      
+
       // First get the user's invitations to find the invitation ID for this group
-      const invitationsResponse = await fetch(
-        `${backendUrl}/api/invitations`,
-        {
-          method: "GET",
-          credentials: "include",
-        }
-      );
+      const invitationsResponse = await fetch(`${backendUrl}/api/invitations`, {
+        method: "GET",
+        credentials: "include",
+      });
 
       if (!invitationsResponse.ok) {
         console.error("Failed to get invitations:", invitationsResponse.status);
+        showFeedback(
+          notification.id,
+          "Failed to load invitation details",
+          "error"
+        );
         return;
       }
 
@@ -224,7 +322,11 @@ export default function NotificationSidebar({
       );
 
       if (!invitation) {
-        console.error("Invitation not found for group:", notification.reference_id);
+        console.error(
+          "Invitation not found for group:",
+          notification.reference_id
+        );
+        showFeedback(notification.id, "Invitation not found", "error");
         return;
       }
 
@@ -238,12 +340,24 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
+        // Mark this notification as processed
+        setProcessedNotifications(
+          (prev) => new Set([...prev, notification.id])
+        );
+        showFeedback(
+          notification.id,
+          `❌ Declined invitation to ${invitation.group_name}`,
+          "success"
+        );
+
         await refreshNotifications(); // Refresh notifications
       } else {
         console.error("Failed to reject invitation:", response.status);
+        showFeedback(notification.id, "Failed to decline invitation", "error");
       }
     } catch (error) {
       console.error("Error rejecting group invitation:", error);
+      showFeedback(notification.id, "An error occurred", "error");
     }
   };
 
@@ -554,7 +668,7 @@ export default function NotificationSidebar({
               </div>
               <p className="text-gray-500">No notifications yet</p>
             </div>
-          ) : filteredNotifications.length === 0 ? (
+          ) : displayedNotifications.length === 0 ? (
             <div className="text-center p-6">
               <p className="text-gray-500">
                 No {activeFilter.replace("_", " ")} notifications
@@ -568,7 +682,7 @@ export default function NotificationSidebar({
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredNotifications.map((notification, index) => (
+              {displayedNotifications.map((notification, index) => (
                 <div
                   key={`${notification.id}-${notification.type}-${index}`}
                   className={`bg-white rounded-lg ${
@@ -635,52 +749,70 @@ export default function NotificationSidebar({
                         </span>
                       </div>
 
-                      {/* Action buttons for specific notification types */}
-                      {notification.type === "follow_request" && (
-                        <div className="mt-2 flex space-x-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAcceptFollowRequest(notification);
-                            }}
-                            className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-xs font-medium"
-                          >
-                            <FaCheck className="mr-1" size={10} /> Accept
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRejectFollowRequest(notification);
-                            }}
-                            className="flex items-center bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-xs font-medium"
-                          >
-                            <FaTimes className="mr-1" size={10} /> Decline
-                          </button>
+                      {/* Feedback Message */}
+                      {feedbackMessages[notification.id] && (
+                        <div
+                          className={`mt-2 p-2 rounded-md text-xs font-medium ${
+                            feedbackMessages[notification.id].type === "success"
+                              ? "bg-green-100 text-green-800 border border-green-200"
+                              : "bg-red-100 text-red-800 border border-red-200"
+                          }`}
+                        >
+                          {feedbackMessages[notification.id].message}
                         </div>
                       )}
 
-                      {notification.type === "group_invitation" && (
-                        <div className="mt-2 flex space-x-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAcceptGroupInvite(notification);
-                            }}
-                            className="flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs font-medium"
-                          >
-                            <FaCheck className="mr-1" size={10} /> Accept
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRejectGroupInvite(notification);
-                            }}
-                            className="flex items-center bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded-md text-xs font-medium"
-                          >
-                            <FaTimes className="mr-1" size={10} /> Decline
-                          </button>
-                        </div>
-                      )}
+                      {/* Action buttons for specific notification types - Only show if not processed and no feedback */}
+                      {!processedNotifications.has(notification.id) &&
+                        !feedbackMessages[notification.id] && (
+                          <>
+                            {notification.type === "follow_request" && (
+                              <div className="mt-2 flex space-x-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAcceptFollowRequest(notification);
+                                  }}
+                                  className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                                >
+                                  <FaCheck className="mr-1" size={10} /> Accept
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRejectFollowRequest(notification);
+                                  }}
+                                  className="flex items-center bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-xs font-medium"
+                                >
+                                  <FaTimes className="mr-1" size={10} /> Decline
+                                </button>
+                              </div>
+                            )}
+
+                            {notification.type === "group_invitation" && (
+                              <div className="mt-2 flex space-x-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAcceptGroupInvite(notification);
+                                  }}
+                                  className="flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs font-medium"
+                                >
+                                  <FaCheck className="mr-1" size={10} /> Accept
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRejectGroupInvite(notification);
+                                  }}
+                                  className="flex items-center bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded-md text-xs font-medium"
+                                >
+                                  <FaTimes className="mr-1" size={10} /> Decline
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
                     </div>
                   </div>
                 </div>

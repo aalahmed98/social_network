@@ -66,14 +66,19 @@ func (e *ErrorResponseWriter) WriteHeader(statusCode int) {
 		e.errorSent = true
 		e.ResponseWriter.Header().Set("Content-Type", "application/json")
 		e.ResponseWriter.WriteHeader(statusCode)
-		errorMsg := "Internal Server Error"
-		if statusCode == http.StatusBadRequest {
+		
+		var errorMsg string
+		switch statusCode {
+		case http.StatusBadRequest:
 			errorMsg = "Bad Request"
-		} else if statusCode == http.StatusUnauthorized {
+		case http.StatusUnauthorized:
 			errorMsg = "Unauthorized"
-		} else if statusCode == http.StatusNotFound {
+		case http.StatusNotFound:
 			errorMsg = "Not Found"
+		default:
+			errorMsg = "Internal Server Error"
 		}
+		
 		json.NewEncoder(e.ResponseWriter).Encode(map[string]string{
 			"error": errorMsg,
 		})
@@ -238,15 +243,12 @@ func init() {
 		ticker := time.NewTicker(1 * time.Hour) // Clean up every hour
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				err := db.CleanupExpiredSessions()
-				if err != nil {
-					logger.Printf("Warning: Failed to cleanup expired sessions: %v", err)
-				} else {
-					logger.Printf("🧹 Expired sessions and auth tokens cleaned up")
-				}
+		for range ticker.C {
+			err := db.CleanupExpiredSessions()
+			if err != nil {
+				logger.Printf("Warning: Failed to cleanup expired sessions: %v", err)
+			} else {
+				logger.Printf("🧹 Expired sessions and auth tokens cleaned up")
 			}
 		}
 	}()
@@ -291,6 +293,9 @@ func main() {
 
 	// Register chat routes (moved to authenticated router)
 	handlers.RegisterChatRoutes(apiRouter)
+
+	// Register analytics routes
+	handlers.RegisterAnalyticsRoutes(apiRouter)
 
 	// Register WebSocket routes on main router (no auth middleware)
 	handlers.RegisterChatWebSocketRoutes(r)

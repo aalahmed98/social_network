@@ -193,24 +193,22 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 	err = db.QueryRow(accessExistQuery).Scan(&accessCount)
 	accessExist := err == nil && accessCount > 0
 
-	// Build query based on which tables exist
+	// Build query based on which tables exist - HOME FEED: Only user's posts and friends' posts
 	if !followersExist && !accessExist {
-		// Basic query - just public posts and user's own posts
+		// Basic query - only user's own posts (no friends system available)
 		query = `
 			SELECT p.id, p.user_id, p.title, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
 				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
 				(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
 			FROM posts p
 			JOIN users u ON p.user_id = u.id
-			WHERE 
-				p.privacy = 'public'
-				OR p.user_id = ?
+			WHERE p.user_id = ?
 			ORDER BY p.created_at DESC
 			LIMIT ? OFFSET ?
 		`
 		args = []interface{}{userID, limit, offset}
 	} else if followersExist && !accessExist {
-		// Query with followers table
+		// Query with followers table - user's posts + friends' public/almost_private posts
 		query = `
 			SELECT p.id, p.user_id, p.title, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
 				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
@@ -218,9 +216,8 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 			FROM posts p
 			JOIN users u ON p.user_id = u.id
 			WHERE 
-				p.privacy = 'public'
-				OR p.user_id = ?
-				OR (p.privacy = 'almost_private' AND EXISTS (
+				p.user_id = ?
+				OR (p.privacy IN ('public', 'almost_private') AND EXISTS (
 					SELECT 1 FROM followers f WHERE f.follower_id = ? AND f.following_id = p.user_id
 				))
 			ORDER BY p.created_at DESC
@@ -228,7 +225,7 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 		`
 		args = []interface{}{userID, userID, limit, offset}
 	} else if !followersExist && accessExist {
-		// Query with post_access table
+		// Query with post_access table - user's posts + accessible private posts
 		query = `
 			SELECT p.id, p.user_id, p.title, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
 				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
@@ -236,8 +233,7 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 			FROM posts p
 			JOIN users u ON p.user_id = u.id
 			WHERE 
-				p.privacy = 'public'
-				OR p.user_id = ?
+				p.user_id = ?
 				OR (p.privacy = 'private' AND EXISTS (
 					SELECT 1 FROM post_access pa WHERE pa.post_id = p.id AND pa.follower_id = ?
 				))
@@ -246,7 +242,7 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 		`
 		args = []interface{}{userID, userID, limit, offset}
 	} else {
-		// Full query with both tables
+		// Full query with both tables - user's posts + friends' posts + accessible private posts
 		query = `
 			SELECT p.id, p.user_id, p.title, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
 				p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
@@ -254,9 +250,8 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 			FROM posts p
 			JOIN users u ON p.user_id = u.id
 			WHERE 
-				p.privacy = 'public'
-				OR p.user_id = ?
-				OR (p.privacy = 'almost_private' AND EXISTS (
+				p.user_id = ?
+				OR (p.privacy IN ('public', 'almost_private') AND EXISTS (
 					SELECT 1 FROM followers f WHERE f.follower_id = ? AND f.following_id = p.user_id
 				))
 				OR (p.privacy = 'private' AND EXISTS (
@@ -270,6 +265,87 @@ func (db *DB) GetPosts(userID int, page, limit int) ([]map[string]interface{}, e
 	
 	// Execute the query
 	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	posts := []map[string]interface{}{}
+
+	for rows.Next() {
+		var id, postUserID int64
+		var title, content, privacy, createdAt, updatedAt string
+		var imageURL, avatar sql.NullString
+		var firstName, lastName string
+		var upvotes, downvotes, commentCount int
+		
+		err := rows.Scan(&id, &postUserID, &title, &content, &imageURL, &privacy, &createdAt, &updatedAt, 
+		                 &upvotes, &downvotes, &firstName, &lastName, &avatar, &commentCount)
+		if err != nil {
+			return nil, err
+		}
+
+		post := map[string]interface{}{
+			"id":         id,
+			"user_id":    postUserID,
+			"title":      title,
+			"content":    content,
+			"privacy":    privacy,
+			"created_at": createdAt,
+			"updated_at": updatedAt,
+			"upvotes":    upvotes,
+			"downvotes":  downvotes,
+			"comment_count": commentCount,
+			"author": map[string]interface{}{
+				"id":         postUserID,
+				"first_name": firstName,
+				"last_name":  lastName,
+			},
+		}
+
+		if imageURL.Valid {
+			post["image_url"] = imageURL.String
+		}
+		
+		if avatar.Valid {
+			post["author"].(map[string]interface{})["avatar"] = avatar.String
+		}
+
+		// Check user's vote on this post
+		userVote, err := db.GetUserVote(userID, id, "post")
+		if err == nil {
+			post["user_vote"] = userVote
+		}
+
+		posts = append(posts, post)
+	}
+
+	return posts, nil
+}
+
+// GetExplorePosts retrieves all public posts for the explore page
+func (db *DB) GetExplorePosts(userID int, page, limit int) ([]map[string]interface{}, error) {
+	// Ensure tables exist
+	if err := db.ensurePostTablesExist(); err != nil {
+		return nil, err
+	}
+
+	offset := (page - 1) * limit
+
+	// Simple query that gets all public posts from all users
+	query := `
+		SELECT p.id, p.user_id, p.title, p.content, p.image_url, p.privacy, p.created_at, p.updated_at, 
+			p.upvotes, p.downvotes, u.first_name, u.last_name, u.avatar,
+			(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		WHERE p.privacy = 'public'
+		ORDER BY p.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	
+	// Execute the query
+	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		return nil, err
 	}

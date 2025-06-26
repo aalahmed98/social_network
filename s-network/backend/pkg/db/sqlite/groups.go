@@ -1047,12 +1047,13 @@ func (db *DB) RespondToEvent(eventID, userID int64, response string) error {
 	query := `SELECT response FROM group_event_responses WHERE event_id = ? AND user_id = ?`
 	err := db.QueryRow(query, eventID, userID).Scan(&existingResponse)
 
-	if err == sql.ErrNoRows {
+	switch err {
+	case sql.ErrNoRows:
 		// Insert new response
 		insertQuery := `INSERT INTO group_event_responses (event_id, user_id, response) 
 		                VALUES (?, ?, ?)`
 		_, err = db.Exec(insertQuery, eventID, userID, response)
-	} else if err == nil {
+	case nil:
 		// Update existing response
 		updateQuery := `UPDATE group_event_responses 
 		                SET response = ?, updated_at = CURRENT_TIMESTAMP 

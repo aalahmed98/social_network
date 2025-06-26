@@ -17,6 +17,7 @@ func RegisterAuthRoutes(router *mux.Router) {
 func RegisterPostRoutes(router *mux.Router) {
 	// Posts routes
 	router.HandleFunc("/posts", GetPostsHandler).Methods("GET", "OPTIONS")
+	router.HandleFunc("/posts/explore", GetExplorePostsHandler).Methods("GET", "OPTIONS")
 	router.HandleFunc("/posts", CreatePostHandler).Methods("POST", "OPTIONS")
 	router.HandleFunc("/posts/{id}", GetPostHandler).Methods("GET", "OPTIONS")
 	router.HandleFunc("/posts/{id}", DeletePostHandler).Methods("DELETE", "OPTIONS")
@@ -41,4 +42,12 @@ func RegisterProfileRoutes(router *mux.Router) {
 	// Follow-related routes
 	router.HandleFunc("/followers", GetUserFollowersHandler).Methods("GET", "OPTIONS")
 	router.HandleFunc("/following", GetUserFollowingHandler).Methods("GET", "OPTIONS")
+}
+
+// RegisterAnalyticsRoutes registers all analytics-related routes
+func RegisterAnalyticsRoutes(router *mux.Router) {
+	router.HandleFunc("/analytics/dashboard", GetDashboardAnalytics).Methods("GET", "OPTIONS")
+	router.HandleFunc("/analytics/followers", GetFollowerAnalytics).Methods("GET", "OPTIONS")
+	router.HandleFunc("/analytics/posts", GetPostAnalytics).Methods("GET", "OPTIONS")
+	router.HandleFunc("/analytics/engagement", GetEngagementAnalytics).Methods("GET", "OPTIONS")
 } 

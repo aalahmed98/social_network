@@ -185,6 +185,67 @@ func GetPostsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetExplorePostsHandler retrieves all public posts for the explore page
+func GetExplorePostsHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse pagination parameters
+	page := 1
+	limit := 10
+
+	pageStr := r.URL.Query().Get("page")
+	if pageStr != "" {
+		pageNum, err := strconv.Atoi(pageStr)
+		if err == nil && pageNum > 0 {
+			page = pageNum
+		}
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr != "" {
+		limitNum, err := strconv.Atoi(limitStr)
+		if err == nil && limitNum > 0 && limitNum <= 50 {
+			limit = limitNum
+		}
+	}
+
+	// Get public posts from the database
+	posts, err := db.GetExplorePosts(userID, page, limit)
+	if err != nil {
+		http.Error(w, "Failed to retrieve posts: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Set is_author flag for each post
+	for i := range posts {
+		postUserID, ok := posts[i]["user_id"].(int64)
+		if ok && int64(userID) == postUserID {
+			posts[i]["is_author"] = true
+		} else {
+			posts[i]["is_author"] = false
+		}
+	}
+
+	// Return post data
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"posts": posts,
+		"page":  page,
+		"limit": limit,
+	})
+}
+
 // GetPostHandler retrieves a specific post by ID
 func GetPostHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from session

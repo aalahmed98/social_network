@@ -376,6 +376,7 @@ func (db *DB) CreateSystemNotification(userID int64, content string) (int64, err
 func (db *DB) CreateGroupInviteNotification(userID, senderID, groupID int64, groupName, senderName string) (int64, error) {
 	notification := &Notification{
 		ReceiverID:  userID,
+		SenderID:    senderID,
 		Type:        "group_invitation",
 		Content:     senderName + " invited you to join " + groupName,
 		ReferenceID: groupID,
@@ -409,4 +410,23 @@ func (db *DB) CreatePostCommentNotification(userID, senderID, postID int64, send
 	}
 
 	return db.CreateNotification(notification)
+}
+
+// DeleteExpiredGroupInvitations deletes group invitation notifications older than 1 minute
+func (db *DB) DeleteExpiredGroupInvitations() error {
+	query := `DELETE FROM notifications 
+	          WHERE type = 'group_invitation' 
+	          AND created_at < datetime('now', '-1 minute')`
+	
+	result, err := db.Exec(query)
+	if err != nil {
+		return err
+	}
+	
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected > 0 {
+		fmt.Printf("Deleted %d expired group invitation notifications\n", rowsAffected)
+	}
+	
+	return nil
 }

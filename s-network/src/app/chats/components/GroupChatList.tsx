@@ -86,6 +86,35 @@ export default function GroupChatList({
   const [groupToDelete, setGroupToDelete] = useState<Chat | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Feedback state for invitations
+  const [feedbackMessages, setFeedbackMessages] = useState<{
+    [key: number]: { message: string; type: "success" | "error" };
+  }>({});
+  const [processedInvitations, setProcessedInvitations] = useState<Set<number>>(
+    new Set()
+  );
+
+  // Show feedback message temporarily
+  const showFeedback = (
+    invitationId: number,
+    message: string,
+    type: "success" | "error"
+  ) => {
+    setFeedbackMessages((prev) => ({
+      ...prev,
+      [invitationId]: { message, type },
+    }));
+
+    // Hide feedback after 3 seconds
+    setTimeout(() => {
+      setFeedbackMessages((prev) => {
+        const newMessages = { ...prev };
+        delete newMessages[invitationId];
+        return newMessages;
+      });
+    }, 3000);
+  };
+
   // Filter chats based on search query
   const filteredChats = groupChats.filter((chat) =>
     chat.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -254,14 +283,39 @@ export default function GroupChatList({
       );
 
       if (response.ok) {
+        // Immediately remove the invitation from the UI
+        setInvitations((prev) => prev.filter((inv) => inv.id !== invitationId));
+
+        setFeedbackMessages((prev) => ({
+          ...prev,
+          [invitationId]: {
+            message: `✅ Successfully joined ${
+              invitations.find((inv) => inv.id === invitationId)?.group_name
+            }!`,
+            type: "success",
+          },
+        }));
+
+        // Clear feedback after 3 seconds
+        setTimeout(() => {
+          setFeedbackMessages((prev) => {
+            const newMessages = { ...prev };
+            delete newMessages[invitationId];
+            return newMessages;
+          });
+        }, 3000);
+
         loadInvitations();
         loadAllGroups();
         if (onGroupCreated) {
           onGroupCreated();
         }
+      } else {
+        showFeedback(invitationId, "Failed to accept invitation", "error");
       }
     } catch (error) {
       console.error("Error accepting invitation:", error);
+      showFeedback(invitationId, "An error occurred", "error");
     }
   };
 
@@ -278,10 +332,35 @@ export default function GroupChatList({
       );
 
       if (response.ok) {
+        // Immediately remove the invitation from the UI
+        setInvitations((prev) => prev.filter((inv) => inv.id !== invitationId));
+
+        setFeedbackMessages((prev) => ({
+          ...prev,
+          [invitationId]: {
+            message: `❌ Declined invitation to ${
+              invitations.find((inv) => inv.id === invitationId)?.group_name
+            }`,
+            type: "success",
+          },
+        }));
+
+        // Clear feedback after 3 seconds
+        setTimeout(() => {
+          setFeedbackMessages((prev) => {
+            const newMessages = { ...prev };
+            delete newMessages[invitationId];
+            return newMessages;
+          });
+        }, 3000);
+
         loadInvitations();
+      } else {
+        showFeedback(invitationId, "Failed to decline invitation", "error");
       }
     } catch (error) {
       console.error("Error rejecting invitation:", error);
+      showFeedback(invitationId, "An error occurred", "error");
     }
   };
 
@@ -741,7 +820,14 @@ export default function GroupChatList({
                             <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-200 mr-3 flex items-center justify-center">
                               {user.avatar ? (
                                 <img
-                                  src={user.avatar.startsWith('http') ? user.avatar : `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080/'}${user.avatar}`}
+                                  src={
+                                    user.avatar.startsWith("http")
+                                      ? user.avatar
+                                      : `${
+                                          process.env.NEXT_PUBLIC_BACKEND_URL ||
+                                          "http://localhost:8080/"
+                                        }${user.avatar}`
+                                  }
                                   alt={user.first_name}
                                   className="h-full w-full object-cover"
                                 />
@@ -970,7 +1056,7 @@ export default function GroupChatList({
                             className="border rounded-lg p-4"
                           >
                             <div className="flex justify-between items-center">
-                              <div>
+                              <div className="flex-1">
                                 <h3 className="font-medium">
                                   {invitation.group_name}
                                 </h3>
@@ -982,25 +1068,44 @@ export default function GroupChatList({
                                     invitation.created_at
                                   ).toLocaleDateString()}
                                 </p>
+
+                                {/* Feedback Message */}
+                                {feedbackMessages[invitation.id] && (
+                                  <div
+                                    className={`mt-2 p-2 rounded-md text-xs font-medium ${
+                                      feedbackMessages[invitation.id].type ===
+                                      "success"
+                                        ? "bg-green-100 text-green-800 border border-green-200"
+                                        : "bg-red-100 text-red-800 border border-red-200"
+                                    }`}
+                                  >
+                                    {feedbackMessages[invitation.id].message}
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() =>
-                                    handleAcceptInvitation(invitation.id)
-                                  }
-                                  className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleRejectInvitation(invitation.id)
-                                  }
-                                  className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"
-                                >
-                                  Decline
-                                </button>
-                              </div>
+
+                              {/* Action Buttons - Only show if not processed and no feedback */}
+                              {!processedInvitations.has(invitation.id) &&
+                                !feedbackMessages[invitation.id] && (
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() =>
+                                        handleAcceptInvitation(invitation.id)
+                                      }
+                                      className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700"
+                                    >
+                                      Accept
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleRejectInvitation(invitation.id)
+                                      }
+                                      className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"
+                                    >
+                                      Decline
+                                    </button>
+                                  </div>
+                                )}
                             </div>
                           </div>
                         ))

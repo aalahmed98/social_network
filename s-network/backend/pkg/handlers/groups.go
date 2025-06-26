@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -297,6 +298,8 @@ func JoinGroup(w http.ResponseWriter, r *http.Request) {
 		// Don't fail if chat addition fails
 	}
 
+	// No notification needed for JoinGroup since the user is joining voluntarily
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Successfully joined group",
@@ -453,8 +456,7 @@ func InviteToGroup(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error adding user to group conversation: %v", err)
 	}
 
-	// Mark related notification as read
-	markGroupInvitationNotificationAsRead(int64(userID), groupID)
+	// No need to mark notification as read here since invitation was just sent
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -582,8 +584,8 @@ func AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error adding user to group conversation: %v", err)
 	}
 
-	// Mark related notification as read
-	markGroupInvitationNotificationAsRead(int64(userID), invitation.GroupID)
+	// Delete related notification since invitation is processed
+	deleteGroupInvitationNotification(int64(userID), invitation.GroupID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -634,8 +636,8 @@ func RejectInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark related notification as read
-	markGroupInvitationNotificationAsRead(int64(userID), foundInvitation.GroupID)
+	// Delete related notification since invitation is processed
+	deleteGroupInvitationNotification(int64(userID), foundInvitation.GroupID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -1500,6 +1502,39 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error adding user to group conversation: %v", err)
 			// Don't fail if chat addition fails
 		}
+
+		// Create notification for public groups
+		if group.Privacy == "public" {
+			// Get the current user's information (the one adding the member)
+			currentUser, err := db.GetUserById(int(userID))
+			if err != nil {
+				log.Printf("Warning: Could not get current user info for notification: %v", err)
+			} else {
+				var currentUserName string
+				if currentUser != nil {
+					currentUserName = currentUser["first_name"].(string) + " " + currentUser["last_name"].(string)
+				} else {
+					currentUserName = "Someone"
+				}
+
+							// Create notification for the added user
+			notificationContent := fmt.Sprintf("%s added you to the group '%s'", currentUserName, group.Name)
+			
+			notification := &sqlite.Notification{
+				ReceiverID:  memberID,
+				SenderID:    int64(userID),
+				Type:        "group_invitation",
+				Content:     notificationContent,
+				ReferenceID: groupID,
+				IsRead:      false,
+			}
+			
+			_, err = db.CreateNotification(notification)
+			if err != nil {
+				log.Printf("Warning: Could not create group addition notification: %v", err)
+			}
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1899,12 +1934,12 @@ func RegisterGroupRoutes(router *mux.Router) {
 	router.HandleFunc("/groups/events/{eventId}/respond", RespondToGroupEvent).Methods("POST", "OPTIONS")
 }
 
-// Helper function to mark group invitation notifications as read
-func markGroupInvitationNotificationAsRead(userID, groupID int64) {
-	query := `UPDATE notifications SET is_read = 1 
+// Helper function to delete group invitation notifications
+func deleteGroupInvitationNotification(userID, groupID int64) {
+	query := `DELETE FROM notifications 
 	          WHERE receiver_id = ? AND reference_id = ? AND type = 'group_invitation'`
 	_, err := db.Exec(query, userID, groupID)
 	if err != nil {
-		log.Printf("Error marking group invitation notification as read: %v", err)
+		log.Printf("Error deleting group invitation notification: %v", err)
 	}
 }

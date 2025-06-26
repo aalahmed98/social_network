@@ -43,7 +43,13 @@ export default function NotificationPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [processedNotifications, setProcessedNotifications] = useState<
+    Set<string>
+  >(new Set());
+  const [feedbackMessages, setFeedbackMessages] = useState<{
+    [key: string]: { message: string; type: "success" | "error" };
+  }>({});
   const [error, setError] = useState<string | null>(null);
 
   // Fetch notifications from the API
@@ -102,6 +108,73 @@ export default function NotificationPanel() {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-hide notifications after 1 minute
+  useEffect(() => {
+    const hideNotifications = async () => {
+      const now = new Date();
+      const expiredNotifications = notifications.filter((notification) => {
+        if (notification.type === "group_invitation") {
+          const createdAt = new Date(notification.created_at);
+          const diffInMinutes =
+            (now.getTime() - createdAt.getTime()) / (1000 * 60);
+          return diffInMinutes >= 1; // Find notifications older than 1 minute
+        }
+        return false;
+      });
+
+      if (expiredNotifications.length > 0) {
+        // Remove expired notifications from UI
+        setNotifications((prev) =>
+          prev.filter((notification) => {
+            if (notification.type === "group_invitation") {
+              const createdAt = new Date(notification.created_at);
+              const diffInMinutes =
+                (now.getTime() - createdAt.getTime()) / (1000 * 60);
+              return diffInMinutes < 1; // Keep notifications younger than 1 minute
+            }
+            return true; // Keep other notifications
+          })
+        );
+
+        // Call backend to delete expired notifications from database
+        try {
+          const backendUrl =
+            process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+          await fetch(`${backendUrl}/api/notifications/cleanup-expired`, {
+            method: "POST",
+            credentials: "include",
+          });
+        } catch (error) {
+          console.error("Error cleaning up expired notifications:", error);
+        }
+      }
+    };
+
+    const interval = setInterval(hideNotifications, 10000); // Check every 10 seconds
+    return () => clearInterval(interval);
+  }, [notifications]);
+
+  // Show feedback message temporarily
+  const showFeedback = (
+    notificationId: string,
+    message: string,
+    type: "success" | "error"
+  ) => {
+    setFeedbackMessages((prev) => ({
+      ...prev,
+      [notificationId]: { message, type },
+    }));
+
+    // Hide feedback after 3 seconds
+    setTimeout(() => {
+      setFeedbackMessages((prev) => {
+        const newMessages = { ...prev };
+        delete newMessages[notificationId];
+        return newMessages;
+      });
+    }, 3000);
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -123,31 +196,11 @@ export default function NotificationPanel() {
 
   const handleNotificationAction = async (
     notification: Notification,
-    action: "accept" | "decline" | "view" | "markAsRead"
+    action: "accept" | "decline" | "view"
   ) => {
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-
-      if (action === "markAsRead") {
-        const response = await fetch(
-          `${backendUrl}/api/notifications/${notification.id}/read`,
-          {
-            method: "POST",
-            credentials: "include",
-          }
-        );
-
-        if (response.ok) {
-          setNotifications(
-            notifications.map((n) =>
-              n.id === notification.id ? { ...n, is_read: true } : n
-            )
-          );
-          setUnreadCount((prev) => Math.max(0, prev - 1));
-        }
-        return;
-      }
 
       // Handle follow request actions
       if (notification.type === "follow_request") {
@@ -161,8 +214,22 @@ export default function NotificationPanel() {
           );
 
           if (response.ok) {
-            // Refresh notifications after accepting
-            fetchNotifications();
+            // Immediately remove the notification from the UI
+            setNotifications((prev) =>
+              prev.filter((n) => n.id !== notification.id)
+            );
+
+            // Mark this notification as processed
+            setProcessedNotifications(
+              (prev) => new Set([...prev, notification.id])
+            );
+            showFeedback(
+              notification.id,
+              `✅ Successfully joined ${notification.sender?.first_name} ${notification.sender?.last_name}!`,
+              "success"
+            );
+
+            fetchNotifications(); // Refresh notifications
           }
         } else if (action === "decline") {
           const response = await fetch(
@@ -174,8 +241,22 @@ export default function NotificationPanel() {
           );
 
           if (response.ok) {
-            // Refresh notifications after rejecting
-            fetchNotifications();
+            // Immediately remove the notification from the UI
+            setNotifications((prev) =>
+              prev.filter((n) => n.id !== notification.id)
+            );
+
+            // Mark this notification as processed
+            setProcessedNotifications(
+              (prev) => new Set([...prev, notification.id])
+            );
+            showFeedback(
+              notification.id,
+              `❌ Declined invitation to ${notification.sender?.first_name} ${notification.sender?.last_name}`,
+              "success"
+            );
+
+            fetchNotifications(); // Refresh notifications
           }
         }
       } else if (action === "view") {
@@ -213,7 +294,15 @@ export default function NotificationPanel() {
           );
 
           if (!invitationsResponse.ok) {
-            console.error("Failed to get invitations:", invitationsResponse.status);
+            console.error(
+              "Failed to get invitations:",
+              invitationsResponse.status
+            );
+            showFeedback(
+              notification.id,
+              "Failed to load invitation details",
+              "error"
+            );
             return;
           }
 
@@ -223,7 +312,11 @@ export default function NotificationPanel() {
           );
 
           if (!invitation) {
-            console.error("Invitation not found for group:", notification.reference_id);
+            console.error(
+              "Invitation not found for group:",
+              notification.reference_id
+            );
+            showFeedback(notification.id, "Invitation not found", "error");
             return;
           }
 
@@ -237,9 +330,29 @@ export default function NotificationPanel() {
           );
 
           if (response.ok) {
+            // Immediately remove the notification from the UI
+            setNotifications((prev) =>
+              prev.filter((n) => n.id !== notification.id)
+            );
+
+            // Mark this notification as processed
+            setProcessedNotifications(
+              (prev) => new Set([...prev, notification.id])
+            );
+            showFeedback(
+              notification.id,
+              `✅ Successfully joined ${invitation.group_name}!`,
+              "success"
+            );
+
             fetchNotifications(); // Refresh notifications
           } else {
             console.error("Failed to accept invitation:", response.status);
+            showFeedback(
+              notification.id,
+              "Failed to accept invitation",
+              "error"
+            );
           }
         } else if (action === "decline") {
           // First get the user's invitations to find the invitation ID for this group
@@ -252,7 +365,15 @@ export default function NotificationPanel() {
           );
 
           if (!invitationsResponse.ok) {
-            console.error("Failed to get invitations:", invitationsResponse.status);
+            console.error(
+              "Failed to get invitations:",
+              invitationsResponse.status
+            );
+            showFeedback(
+              notification.id,
+              "Failed to load invitation details",
+              "error"
+            );
             return;
           }
 
@@ -262,7 +383,11 @@ export default function NotificationPanel() {
           );
 
           if (!invitation) {
-            console.error("Invitation not found for group:", notification.reference_id);
+            console.error(
+              "Invitation not found for group:",
+              notification.reference_id
+            );
+            showFeedback(notification.id, "Invitation not found", "error");
             return;
           }
 
@@ -276,14 +401,35 @@ export default function NotificationPanel() {
           );
 
           if (response.ok) {
+            // Immediately remove the notification from the UI
+            setNotifications((prev) =>
+              prev.filter((n) => n.id !== notification.id)
+            );
+
+            // Mark this notification as processed
+            setProcessedNotifications(
+              (prev) => new Set([...prev, notification.id])
+            );
+            showFeedback(
+              notification.id,
+              `❌ Declined invitation to ${invitation.group_name}`,
+              "success"
+            );
+
             fetchNotifications(); // Refresh notifications
           } else {
             console.error("Failed to reject invitation:", response.status);
+            showFeedback(
+              notification.id,
+              "Failed to decline invitation",
+              "error"
+            );
           }
         }
       }
     } catch (error) {
       console.error("Error handling notification action:", error);
+      showFeedback(notification.id, "An error occurred", "error");
     }
   };
 
@@ -452,94 +598,100 @@ export default function NotificationPanel() {
                             {notification.content}
                           </p>
 
-                          <div className="mt-2 flex gap-2">
-                            {notification.type === "follow_request" && (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    handleNotificationAction(
-                                      notification,
-                                      "accept"
-                                    )
-                                  }
-                                  className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center gap-1"
-                                >
-                                  <FaCheck size={10} />
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleNotificationAction(
-                                      notification,
-                                      "decline"
-                                    )
-                                  }
-                                  className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 flex items-center gap-1"
-                                >
-                                  <FaTimes size={10} />
-                                  Decline
-                                </button>
-                              </>
-                            )}
+                          {/* Feedback Message */}
+                          {feedbackMessages[notification.id] && (
+                            <div
+                              className={`mt-2 p-2 rounded-md text-xs font-medium ${
+                                feedbackMessages[notification.id].type ===
+                                "success"
+                                  ? "bg-green-100 text-green-800 border border-green-200"
+                                  : "bg-red-100 text-red-800 border border-red-200"
+                              }`}
+                            >
+                              {feedbackMessages[notification.id].message}
+                            </div>
+                          )}
 
-                            {notification.type === "group_invitation" && (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    handleNotificationAction(
-                                      notification,
-                                      "accept"
-                                    )
-                                  }
-                                  className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 flex items-center gap-1"
-                                >
-                                  <FaCheck size={10} />
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleNotificationAction(
-                                      notification,
-                                      "decline"
-                                    )
-                                  }
-                                  className="px-3 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 flex items-center gap-1"
-                                >
-                                  <FaTimes size={10} />
-                                  Decline
-                                </button>
-                              </>
-                            )}
+                          {/* Action Buttons - Only show if not processed and no feedback */}
+                          {!processedNotifications.has(notification.id) &&
+                            !feedbackMessages[notification.id] && (
+                              <div className="mt-2 flex gap-2">
+                                {notification.type === "follow_request" && (
+                                  <>
+                                    <button
+                                      onClick={() =>
+                                        handleNotificationAction(
+                                          notification,
+                                          "accept"
+                                        )
+                                      }
+                                      className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center gap-1"
+                                    >
+                                      <FaCheck size={10} />
+                                      Accept
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleNotificationAction(
+                                          notification,
+                                          "decline"
+                                        )
+                                      }
+                                      className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 flex items-center gap-1"
+                                    >
+                                      <FaTimes size={10} />
+                                      Decline
+                                    </button>
+                                  </>
+                                )}
 
-                            {(notification.type === "follow" ||
-                              notification.type === "follow_accepted" ||
-                              notification.type === "post_like" ||
-                              notification.type === "post_comment") && (
-                              <button
-                                onClick={() =>
-                                  handleNotificationAction(notification, "view")
-                                }
-                                className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100"
-                              >
-                                View
-                              </button>
-                            )}
+                                {notification.type === "group_invitation" && (
+                                  <>
+                                    <button
+                                      onClick={() =>
+                                        handleNotificationAction(
+                                          notification,
+                                          "accept"
+                                        )
+                                      }
+                                      className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 flex items-center gap-1"
+                                    >
+                                      <FaCheck size={10} />
+                                      Accept
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleNotificationAction(
+                                          notification,
+                                          "decline"
+                                        )
+                                      }
+                                      className="px-3 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 flex items-center gap-1"
+                                    >
+                                      <FaTimes size={10} />
+                                      Decline
+                                    </button>
+                                  </>
+                                )}
 
-                            {!notification.is_read && (
-                              <button
-                                onClick={() =>
-                                  handleNotificationAction(
-                                    notification,
-                                    "markAsRead"
-                                  )
-                                }
-                                className="ml-auto text-gray-400 hover:text-gray-600"
-                                aria-label="Mark as read"
-                              >
-                                <IoCheckmark size={16} />
-                              </button>
+                                {(notification.type === "follow" ||
+                                  notification.type === "follow_accepted" ||
+                                  notification.type === "post_like" ||
+                                  notification.type === "post_comment") && (
+                                  <button
+                                    onClick={() =>
+                                      handleNotificationAction(
+                                        notification,
+                                        "view"
+                                      )
+                                    }
+                                    className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100"
+                                  >
+                                    View
+                                  </button>
+                                )}
+                              </div>
                             )}
-                          </div>
                         </div>
                       </div>
                     </div>

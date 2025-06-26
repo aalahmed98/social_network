@@ -493,4 +493,21 @@ func RegisterNotificationRoutes(router *mux.Router) {
 	router.HandleFunc("/notifications/{id}/read", MarkNotificationAsRead).Methods("POST", "OPTIONS")
 	router.HandleFunc("/notifications/unread", GetUnreadNotificationCount).Methods("GET", "OPTIONS")
 	router.HandleFunc("/notifications/read-all", MarkAllNotificationsAsRead).Methods("POST", "OPTIONS")
+	router.HandleFunc("/notifications/cleanup-expired", CleanupExpiredNotifications).Methods("POST", "OPTIONS")
+}
+
+// CleanupExpiredNotifications removes group invitation notifications older than 1 minute
+func CleanupExpiredNotifications(w http.ResponseWriter, r *http.Request) {
+	// Clean up expired group invitations
+	err := db.DeleteExpiredGroupInvitations()
+	if err != nil {
+		http.Error(w, "Failed to cleanup expired notifications", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Expired notifications cleaned up successfully",
+	})
 } 
