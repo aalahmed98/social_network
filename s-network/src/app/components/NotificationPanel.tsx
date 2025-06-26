@@ -204,7 +204,7 @@ export default function NotificationPanel() {
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
       // Handle follow request actions
-      if (notification.type === "follow_request") {
+      if (notification.type === "follow_request" && action !== "view") {
         if (action === "accept") {
           const response = await fetch(
             `${backendUrl}/api/follow/request/${notification.reference_id}/accept`,
@@ -260,7 +260,10 @@ export default function NotificationPanel() {
             fetchNotifications(); // Refresh notifications
           }
         }
-      } else if (action === "view") {
+      }
+
+      // Handle view action for all notification types
+      if (action === "view") {
         // Navigate to relevant page
         if (
           notification.type === "follow_request" ||
