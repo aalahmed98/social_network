@@ -1288,6 +1288,48 @@ func CancelFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RemoveFollowerHandler allows a user to remove someone from their followers list
+func RemoveFollowerHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from session (the user who wants to remove a follower)
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := session.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get follower ID to remove from request
+	vars := mux.Vars(r)
+	followerIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "Follower ID is required", http.StatusBadRequest)
+		return
+	}
+
+	followerID, err := strconv.Atoi(followerIDStr)
+	if err != nil {
+		http.Error(w, "Invalid follower ID", http.StatusBadRequest)
+		return
+	}
+
+	// Remove the follow relationship (the followerID follows userID, so we unfollow)
+	err = db.UnfollowUser(followerID, userID)
+	if err != nil {
+		http.Error(w, "Failed to remove follower: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Follower removed successfully",
+	})
+}
+
 // RegisterFollowRoutes registers follow-related routes
 func RegisterFollowRoutes(router *mux.Router) {
 	router.HandleFunc("/follow/status/{id}", GetFollowStatusHandler).Methods("GET", "OPTIONS")
@@ -1296,6 +1338,7 @@ func RegisterFollowRoutes(router *mux.Router) {
 	router.HandleFunc("/follow/request/{id}/accept", AcceptFollowRequestHandler).Methods("POST", "OPTIONS")
 	router.HandleFunc("/follow/request/{id}/reject", RejectFollowRequestHandler).Methods("POST", "OPTIONS")
 	router.HandleFunc("/follow/request/{id}/cancel", CancelFollowRequestHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/followers/remove/{id}", RemoveFollowerHandler).Methods("DELETE", "OPTIONS")
 }
 
 // GetUserFollowingByIDHandler retrieves following list for a specific user

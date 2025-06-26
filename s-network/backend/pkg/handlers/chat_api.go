@@ -57,7 +57,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("✅ GetConversations: Authenticated user ID: %d", userID)
+
 
 	conversations, err := db.GetUserConversations(int64(userID))
 	if err != nil {
@@ -66,11 +66,8 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("✅ GetConversations: Found %d conversations for user %d", len(conversations), userID)
-	for i, conv := range conversations {
-		log.Printf("  Conversation %d: ID=%d, Name='%s', IsGroup=%t, GroupID=%v",
-			i+1, conv.ID, conv.Name, conv.IsGroup, conv.GroupID)
-	}
+
+
 
 	// Enhance conversations with additional data
 	result := make([]map[string]interface{}, 0)
@@ -196,7 +193,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 					avatar = group.Avatar
 				}
 			}
-			log.Printf("  ✅ Group conversation: Name='%s', GroupID=%v", name, conv.GroupID)
+	
 		} else {
 			// For direct conversations, use the other participant's name
 			for _, p := range participants {
@@ -209,7 +206,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
-			log.Printf("  ✅ Direct conversation: Name='%s'", name)
+
 		}
 
 		// Build conversation data
@@ -226,24 +223,19 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 			"created_at":   conv.CreatedAt,
 		}
 
-		log.Printf("  📤 Adding conversation data: ID=%v, Name='%s', IsGroup=%v, GroupID=%v",
-			conversationData["id"], conversationData["name"], conversationData["is_group"], conversationData["group_id"])
+
 
 		result = append(result, conversationData)
 	}
 
-	log.Printf("🎯 GetConversations: Returning %d conversations total", len(result))
-	for i, conv := range result {
-		log.Printf("  Final conversation %d: ID=%v, Name='%s', IsGroup=%v, GroupID=%v",
-			i+1, conv["id"], conv["name"], conv["is_group"], conv["group_id"])
-	}
+
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"conversations": result,
 	})
 
-	log.Printf("✅ GetConversations: Response sent successfully")
+
 }
 
 // GetConversation returns details of a specific conversation

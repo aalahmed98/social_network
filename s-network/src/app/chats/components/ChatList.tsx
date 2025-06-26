@@ -147,8 +147,6 @@ export default function ChatList({
                       </div>
                     )}
                   </div>
-                  {/* Online indicator */}
-                  <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 border-2 border-white rounded-full"></div>
                 </div>
 
                 <div className="ml-4 flex-1 overflow-hidden">

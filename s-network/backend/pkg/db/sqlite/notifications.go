@@ -174,12 +174,11 @@ func (db *DB) GetNotification(id int64) (*Notification, error) {
 func (db *DB) GetUserNotifications(userID int64, notificationType string, limit, offset int) ([]*Notification, error) {
 	// Ensure the table exists with correct schema
 	if err := db.EnsureNotificationsTableExists(); err != nil {
-		fmt.Printf("Error ensuring notifications table exists: %v\n", err)
+		fmt.Printf("\033[31m[ERROR] Error ensuring notifications table exists: %v\033[0m\n", err)
 		return nil, fmt.Errorf("failed to ensure notifications table: %w", err)
 	}
 
-	fmt.Printf("Fetching notifications for user ID: %d (type: %s, limit: %d, offset: %d)\n",
-		userID, notificationType, limit, offset)
+
 
 	var notifications []*Notification
 
@@ -204,7 +203,7 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 	}
 
 	// Debug the query being executed
-	fmt.Printf("Executing query: %s with args: %v\n", query, args)
+
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -233,34 +232,33 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 				&notification.IsRead,
 				&notification.CreatedAt,
 			); err != nil {
-				fmt.Printf("Error scanning notification row: %v\n", err)
+				fmt.Printf("\033[31m[ERROR] Error scanning notification row: %v\033[0m\n", err)
 				return nil, err
 			}
 			notifications = append(notifications, &notification)
 		}
 
 		if err := rows.Err(); err != nil {
-			fmt.Printf("Error after notification rows iteration: %v\n", err)
+			fmt.Printf("\033[31m[ERROR] Error after notification rows iteration: %v\033[0m\n", err)
 			return nil, err
 		}
 	}
 
-	fmt.Printf("Found %d notifications in the database\n", len(notifications))
+
 
 	// Try to get follow requests as notifications, even if we already have some notifications
-	fmt.Println("Attempting to get follow requests...")
+
 	followRequests, err := db.GetUserFollowRequests(userID)
 	if err != nil {
-		fmt.Printf("Error getting follow requests: %v\n", err)
+		fmt.Printf("\033[31m[ERROR] Error getting follow requests: %v\033[0m\n", err)
 		// Continue with any notifications we have
 	} else {
-		fmt.Printf("Found %d follow requests\n", len(followRequests))
 		if len(followRequests) > 0 {
 			for _, request := range followRequests {
 				// Get follower user info for the notification content
 				follower, err := db.GetUserById(int(request.FollowerID))
 				if err != nil {
-					fmt.Printf("Error getting follower info for request from user %d: %v\n", request.FollowerID, err)
+					fmt.Printf("\033[31m[ERROR] Error getting follower info for request from user %d: %v\033[0m\n", request.FollowerID, err)
 					continue
 				}
 
@@ -287,7 +285,7 @@ func (db *DB) GetUserNotifications(userID int64, notificationType string, limit,
 		notifications = []*Notification{}
 	}
 
-	fmt.Printf("Returning total of %d notifications and follow requests\n", len(notifications))
+
 	return notifications, nil
 }
 
@@ -309,7 +307,7 @@ func (db *DB) MarkNotificationsAsRead(userID int64) error {
 func (db *DB) GetUnreadNotificationCount(userID int64) (int, error) {
 	// Ensure the table exists with correct schema
 	if err := db.EnsureNotificationsTableExists(); err != nil {
-		fmt.Printf("Error ensuring notifications table exists in GetUnreadNotificationCount: %v\n", err)
+		fmt.Printf("\033[31m[ERROR] Error ensuring notifications table exists in GetUnreadNotificationCount: %v\033[0m\n", err)
 		return 0, err
 	}
 
@@ -321,7 +319,7 @@ func (db *DB) GetUnreadNotificationCount(userID int64) (int, error) {
 		// If there's an error but it's not because the table doesn't exist,
 		// return the error
 		if !strings.Contains(err.Error(), "no such table") {
-			fmt.Printf("Error getting unread count: %v\n", err)
+			fmt.Printf("\033[31m[ERROR] Error getting unread count: %v\033[0m\n", err)
 			return 0, err
 		}
 		// If the table doesn't exist, return 0
@@ -330,13 +328,13 @@ func (db *DB) GetUnreadNotificationCount(userID int64) (int, error) {
 
 	// Also add pending follow requests to count
 	var requestCount int
-	requestCountQuery := `SELECT COUNT(*) FROM follow_requests WHERE following_id = ?`
+	requestCountQuery := `SELECT COUNT(*) FROM follow_requests WHERE requested_id = ?`
 	err = db.QueryRow(requestCountQuery, userID).Scan(&requestCount)
 	if err != nil {
 		// If there's an error but it's not because the table doesn't exist,
 		// log the error but continue with the count we have
 		if !strings.Contains(err.Error(), "no such table") {
-			fmt.Printf("Error getting follow request count: %v\n", err)
+			fmt.Printf("\033[31m[ERROR] Error getting follow request count: %v\033[0m\n", err)
 		}
 	} else {
 		// Add follow request count to total
@@ -423,10 +421,8 @@ func (db *DB) DeleteExpiredGroupInvitations() error {
 		return err
 	}
 	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected > 0 {
-		fmt.Printf("Deleted %d expired group invitation notifications\n", rowsAffected)
-	}
+	// Silently clean up expired notifications
+	_, _ = result.RowsAffected()
 	
 	return nil
 }

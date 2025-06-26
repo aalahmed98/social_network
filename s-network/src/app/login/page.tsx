@@ -54,14 +54,18 @@ export default function Login() {
       });
 
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Invalid email or password");
-        }
-        // Try to parse error response
+        // Try to parse error response first
         try {
           const result = await response.json();
+          if (response.status === 401) {
+            throw new Error(result?.error || "Invalid email or password");
+          }
           throw new Error(result?.error || "Login failed");
-        } catch {
+        } catch (parseError) {
+          // If parsing fails, use generic error messages based on status code
+          if (response.status === 401) {
+            throw new Error("Invalid email or password");
+          }
           throw new Error("Login failed");
         }
       }
@@ -77,8 +81,8 @@ export default function Login() {
       // Navigate to dashboard on success
       router.push("/dashboard");
     } catch (err: any) {
-      console.error("Login error:", err);
-      setError(err.message || "Something went wrong");
+      const errorMessage = err.message || "Something went wrong";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -92,8 +96,21 @@ export default function Login() {
         </h1>
 
         {error && (
-          <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
-            {error}
+          <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md mb-4 text-sm font-medium">
+            <div className="flex items-center">
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              {error}
+            </div>
           </div>
         )}
 

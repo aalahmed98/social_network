@@ -98,7 +98,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get notifications from database
-	fmt.Printf("Fetching notifications for user ID: %d\n", userID)
+
 	notifications, err := db.GetUserNotifications(int64(userID), typeFilter, limit, offset)
 	if err != nil {
 		fmt.Printf("Error getting notifications: %v\n", err)
@@ -110,7 +110,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Found %d notifications for user ID: %d\n", len(notifications), userID)
+
 	
 	// Instead of getting follow requests again, since we already get them from GetUserNotifications,
 	// we'll just use the notifications we've already retrieved.

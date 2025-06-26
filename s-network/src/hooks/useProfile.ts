@@ -33,6 +33,7 @@ interface UseProfileReturn {
   followUser: (userId: number) => Promise<boolean>;
   unfollowUser: (userId: number) => Promise<boolean>;
   isFollowing: (userId: number) => boolean;
+  removeFollower: (followerId: number) => Promise<boolean>;
 }
 
 export function useProfile(): UseProfileReturn {
@@ -233,6 +234,30 @@ export function useProfile(): UseProfileReturn {
     return following.some((followedUser) => followedUser.id === userId);
   };
 
+  const removeFollower = async (followerId: number): Promise<boolean> => {
+    try {
+      const response = await fetch(
+        `${backendUrl}/api/followers/remove/${followerId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to remove follower");
+      }
+
+      // Refresh followers list
+      await fetchFollowers();
+
+      return true;
+    } catch (err) {
+      console.error("Error removing follower:", err);
+      return false;
+    }
+  };
+
   return {
     user,
     loading,
@@ -244,5 +269,6 @@ export function useProfile(): UseProfileReturn {
     followUser,
     unfollowUser,
     isFollowing,
+    removeFollower,
   };
 }

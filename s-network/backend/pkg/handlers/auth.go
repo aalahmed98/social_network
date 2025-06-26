@@ -216,11 +216,9 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	newUser, err := db.GetUserByEmail(req.Email)
 	if err == nil && newUser != nil {
 		// Create auth token for the new user
-		authToken, err := createAuthToken(newUser["id"].(int), "login")
+		_, err := createAuthToken(newUser["id"].(int), "login")
 		if err != nil {
-			fmt.Printf("Warning: Failed to create auth token for new user: %v\n", err)
-		} else {
-			fmt.Printf("✅ Auth token created for new user %d: %s\n", newUser["id"].(int), authToken)
+			fmt.Printf("\033[33m[WARNING] Failed to create auth token for new user: %v\033[0m\n", err)
 		}
 	}
 
@@ -305,16 +303,12 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	userID := user["id"].(int)
 	err = db.DeleteSessionsByUserID(userID)
 	if err != nil {
-		fmt.Printf("Warning: Failed to delete old sessions for user %d: %v\n", userID, err)
-	} else {
-		fmt.Printf("🧹 Old sessions cleaned up for user %d\n", userID)
+		fmt.Printf("\033[33m[WARNING] Failed to delete old sessions for user %d: %v\033[0m\n", userID, err)
 	}
 
 	err = deleteUserAuthTokens(userID)
 	if err != nil {
-		fmt.Printf("Warning: Failed to delete old auth tokens for user %d: %v\n", userID, err)
-	} else {
-		fmt.Printf("🧹 Old auth tokens cleaned up for user %d\n", userID)
+		fmt.Printf("\033[33m[WARNING] Failed to delete old auth tokens for user %d: %v\033[0m\n", userID, err)
 	}
 
 	// Generate session ID
@@ -389,9 +383,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	authToken, err := createAuthToken(user["id"].(int), "login")
 	if err != nil {
 		// Log the error but don't fail the login
-		fmt.Printf("Warning: Failed to create auth token: %v\n", err)
-	} else {
-		fmt.Printf("✅ Auth token created for user %d: %s\n", user["id"].(int), authToken)
+		fmt.Printf("\033[33m[WARNING] Failed to create auth token: %v\033[0m\n", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -432,9 +424,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	if userIDOk && userID > 0 {
 		err := deleteUserAuthTokens(userID)
 		if err != nil {
-			fmt.Printf("Warning: Failed to delete auth tokens for user %d: %v\n", userID, err)
-		} else {
-			fmt.Printf("✅ Auth tokens deleted for user %d\n", userID)
+			fmt.Printf("\033[33m[WARNING] Failed to delete auth tokens for user %d: %v\033[0m\n", userID, err)
 		}
 	}
 	
@@ -532,7 +522,6 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 	
 	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
-		fmt.Printf("🔍 CheckAuth: Session error: %v\n", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]bool{
@@ -541,12 +530,8 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Debug: Print all session values
-	fmt.Printf("🔍 CheckAuth: Session values: %+v\n", session.Values)
-	
 	// Check if user is authenticated (same pattern as AuthMiddleware)
 	auth, ok := session.Values["authenticated"].(bool)
-	fmt.Printf("🔍 CheckAuth: authenticated value: %v, ok: %v\n", auth, ok)
 	
 	if !ok || !auth {
 		w.Header().Set("Content-Type", "application/json")
@@ -559,7 +544,6 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 	
 	// Get user ID from session
 	userID, ok := session.Values["user_id"].(int)
-	fmt.Printf("🔍 CheckAuth: user_id value: %v, ok: %v\n", userID, ok)
 	
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
@@ -569,8 +553,6 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
-	fmt.Printf("🔍 CheckAuth: Authentication successful for user %d\n", userID)
 	
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

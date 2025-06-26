@@ -13,6 +13,7 @@ interface Notification {
   id: string;
   type:
     | "group_invitation"
+    | "group_member_added"
     | "follow_request"
     | "follow_accepted"
     | "follow"
@@ -229,6 +230,15 @@ export default function NotificationSidebar({
     try {
       if (!notification.reference_id) return;
 
+      // Check if this notification has already been processed
+      if (processedNotifications.has(notification.id)) {
+        console.log("Notification already processed:", notification.id);
+        return;
+      }
+
+      // Mark as processed immediately to prevent duplicate processing
+      setProcessedNotifications((prev) => new Set([...prev, notification.id]));
+
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
@@ -258,7 +268,12 @@ export default function NotificationSidebar({
           "Invitation not found for group:",
           notification.reference_id
         );
-        showFeedback(notification.id, "Invitation not found", "error");
+        // This might be normal if the invitation was already processed
+        showFeedback(
+          notification.id,
+          "This invitation may have already been processed",
+          "error"
+        );
         return;
       }
 
@@ -272,10 +287,6 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
-        // Mark this notification as processed
-        setProcessedNotifications(
-          (prev) => new Set([...prev, notification.id])
-        );
         showFeedback(
           notification.id,
           `✅ Successfully joined ${invitation.group_name}!`,
@@ -286,16 +297,37 @@ export default function NotificationSidebar({
       } else {
         console.error("Failed to accept invitation:", response.status);
         showFeedback(notification.id, "Failed to accept invitation", "error");
+        // Remove from processed if it failed
+        setProcessedNotifications((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(notification.id);
+          return newSet;
+        });
       }
     } catch (error) {
       console.error("Error accepting group invitation:", error);
       showFeedback(notification.id, "An error occurred", "error");
+      // Remove from processed if it failed
+      setProcessedNotifications((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(notification.id);
+        return newSet;
+      });
     }
   };
 
   const handleRejectGroupInvite = async (notification: Notification) => {
     try {
       if (!notification.reference_id) return;
+
+      // Check if this notification has already been processed
+      if (processedNotifications.has(notification.id)) {
+        console.log("Notification already processed:", notification.id);
+        return;
+      }
+
+      // Mark as processed immediately to prevent duplicate processing
+      setProcessedNotifications((prev) => new Set([...prev, notification.id]));
 
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
@@ -326,7 +358,12 @@ export default function NotificationSidebar({
           "Invitation not found for group:",
           notification.reference_id
         );
-        showFeedback(notification.id, "Invitation not found", "error");
+        // This might be normal if the invitation was already processed
+        showFeedback(
+          notification.id,
+          "This invitation may have already been processed",
+          "error"
+        );
         return;
       }
 
@@ -340,10 +377,6 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
-        // Mark this notification as processed
-        setProcessedNotifications(
-          (prev) => new Set([...prev, notification.id])
-        );
         showFeedback(
           notification.id,
           `❌ Declined invitation to ${invitation.group_name}`,
@@ -354,10 +387,22 @@ export default function NotificationSidebar({
       } else {
         console.error("Failed to reject invitation:", response.status);
         showFeedback(notification.id, "Failed to decline invitation", "error");
+        // Remove from processed if it failed
+        setProcessedNotifications((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(notification.id);
+          return newSet;
+        });
       }
     } catch (error) {
       console.error("Error rejecting group invitation:", error);
       showFeedback(notification.id, "An error occurred", "error");
+      // Remove from processed if it failed
+      setProcessedNotifications((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(notification.id);
+        return newSet;
+      });
     }
   };
 
@@ -407,6 +452,20 @@ export default function NotificationSidebar({
         return (
           <div className="text-blue-600">
             <FaUserCheck size={16} />
+          </div>
+        );
+      case "group_invitation":
+      case "group_member_added":
+        return (
+          <div className="text-indigo-600">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-5 h-5"
+            >
+              <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM6 8a2 2 0 11-4 0 2 2 0 014 0zM1.49 15.326a.78.78 0 01-.358-.442 3 3 0 014.308-3.516 6.484 6.484 0 00-1.905 3.959c-.023.222-.014.442.025.654a4.97 4.97 0 01-2.07-.655zM16.44 15.98a4.97 4.97 0 002.07-.654.78.78 0 00.357-.442 3 3 0 00-4.308-3.517 6.484 6.484 0 011.907 3.96 2.32 2.32 0 01-.026.654zM18 8a2 2 0 11-4 0 2 2 0 014 0zM5.304 16.19a.844.844 0 01-.277-.71 5 5 0 019.947 0 .843.843 0 01-.277.71A6.975 6.975 0 0110 18a6.974 6.974 0 01-4.696-1.81z" />
+            </svg>
           </div>
         );
       case "post_like":

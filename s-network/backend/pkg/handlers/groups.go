@@ -170,9 +170,9 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the group creation if chat creation fails
 	}
 
-	// Send invitations to members if provided
+	// Handle initial members based on group privacy
 	if len(requestData.MemberIDs) > 0 {
-		log.Printf("[CreateGroup] Sending invitations to %d members for group %d", len(requestData.MemberIDs), groupID)
+		log.Printf("[CreateGroup] Adding %d members to %s group %d", len(requestData.MemberIDs), requestData.Privacy, groupID)
 
 		// Get inviter (creator) information for notifications
 		inviter, err := db.GetUserById(int(userID))
@@ -201,33 +201,71 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Check if invitation already exists
-			if db.HasPendingInvitation(groupID, memberID) {
-				log.Printf("[CreateGroup] Warning: User %d already has pending invitation, skipping", memberID)
-				continue
-			}
+			if requestData.Privacy == "private" {
+				// For private groups, send invitation
+				
+				// Check if invitation already exists
+				if db.HasPendingInvitation(groupID, memberID) {
+					log.Printf("[CreateGroup] Warning: User %d already has pending invitation, skipping", memberID)
+					continue
+				}
 
-			// Create invitation
-			invitation := &sqlite.GroupInvitation{
-				GroupID:   groupID,
-				InviterID: int64(userID),
-				InviteeID: memberID,
-			}
+				// Create invitation
+				invitation := &sqlite.GroupInvitation{
+					GroupID:   groupID,
+					InviterID: int64(userID),
+					InviteeID: memberID,
+				}
 
-			invitationID, err := db.CreateGroupInvitation(invitation)
-			if err != nil {
-				log.Printf("[CreateGroup] Error creating invitation for user %d: %v", memberID, err)
-				continue
-			}
+				invitationID, err := db.CreateGroupInvitation(invitation)
+				if err != nil {
+					log.Printf("[CreateGroup] Error creating invitation for user %d: %v", memberID, err)
+					continue
+				}
 
-			// Create notification for the invited user
-			_, err = db.CreateGroupInviteNotification(memberID, int64(userID), groupID, requestData.Name, inviterName)
-			if err != nil {
-				log.Printf("[CreateGroup] Error creating notification for user %d: %v", memberID, err)
-				// Don't fail the invitation if notification creation fails
-			}
+				// Create notification for the invited user
+				_, err = db.CreateGroupInviteNotification(memberID, int64(userID), groupID, requestData.Name, inviterName)
+				if err != nil {
+					log.Printf("[CreateGroup] Error creating notification for user %d: %v", memberID, err)
+					// Don't fail the invitation if notification creation fails
+				}
 
-			log.Printf("[CreateGroup] Successfully sent invitation %d to user %d", invitationID, memberID)
+				log.Printf("[CreateGroup] Successfully sent invitation %d to user %d for private group", invitationID, memberID)
+
+			} else {
+				// For public groups, add directly as member
+				err = db.AddGroupMember(groupID, memberID, "member")
+				if err != nil {
+					log.Printf("[CreateGroup] Error adding member %d: %v", memberID, err)
+					continue
+				}
+
+				// Add user to group chat conversation
+				err = db.AddMemberToGroupConversation(groupID, memberID)
+				if err != nil {
+					log.Printf("[CreateGroup] Error adding user %d to group conversation: %v", memberID, err)
+					// Don't fail if chat addition fails
+				}
+
+				// Create notification for the added user (different type than invitation)
+				notificationContent := fmt.Sprintf("%s added you to the group '%s'", inviterName, requestData.Name)
+				
+				notification := &sqlite.Notification{
+					ReceiverID:  memberID,
+					SenderID:    int64(userID),
+					Type:        "group_member_added", // Different type for direct addition
+					Content:     notificationContent,
+					ReferenceID: groupID,
+					IsRead:      false,
+				}
+				
+				_, err = db.CreateNotification(notification)
+				if err != nil {
+					log.Printf("[CreateGroup] Warning: Could not create group addition notification for user %d: %v", memberID, err)
+				}
+
+				log.Printf("[CreateGroup] Successfully added user %d as member to public group", memberID)
+			}
 		}
 	}
 
@@ -1487,43 +1525,79 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add users as members
+	// Get inviter information for notifications
+	inviter, err := db.GetUserById(int(userID))
+	if err != nil {
+		log.Printf("Warning: Could not get inviter info: %v", err)
+	}
+
+	var inviterName string
+	if inviter != nil {
+		inviterName = inviter["first_name"].(string) + " " + inviter["last_name"].(string)
+	} else {
+		inviterName = "Unknown User"
+	}
+
+	var addedMembers []int64
+	var sentInvitations []int64
+
+	// Handle users based on group privacy
 	for _, memberID := range userIDsToAdd {
-		err = db.AddGroupMember(groupID, memberID, "member")
-		if err != nil {
-			log.Printf("Error adding group member: %v", err)
-			http.Error(w, "Failed to add member", http.StatusInternalServerError)
-			return
-		}
+		if group.Privacy == "private" {
+			// For private groups, send invitation instead of adding directly
+			
+			// Check if invitation already exists
+			if db.HasPendingInvitation(groupID, memberID) {
+				log.Printf("Warning: User %d already has pending invitation, skipping", memberID)
+				continue
+			}
 
-		// Add user to group chat conversation
-		err = db.AddMemberToGroupConversation(groupID, memberID)
-		if err != nil {
-			log.Printf("Error adding user to group conversation: %v", err)
-			// Don't fail if chat addition fails
-		}
+			// Create invitation
+			invitation := &sqlite.GroupInvitation{
+				GroupID:   groupID,
+				InviterID: int64(userID),
+				InviteeID: memberID,
+			}
 
-		// Create notification for public groups
-		if group.Privacy == "public" {
-			// Get the current user's information (the one adding the member)
-			currentUser, err := db.GetUserById(int(userID))
+			invitationID, err := db.CreateGroupInvitation(invitation)
 			if err != nil {
-				log.Printf("Warning: Could not get current user info for notification: %v", err)
-			} else {
-				var currentUserName string
-				if currentUser != nil {
-					currentUserName = currentUser["first_name"].(string) + " " + currentUser["last_name"].(string)
-				} else {
-					currentUserName = "Someone"
-				}
+				log.Printf("Error creating invitation for user %d: %v", memberID, err)
+				continue
+			}
 
-							// Create notification for the added user
-			notificationContent := fmt.Sprintf("%s added you to the group '%s'", currentUserName, group.Name)
+			// Create notification for the invited user
+			_, err = db.CreateGroupInviteNotification(memberID, int64(userID), groupID, group.Name, inviterName)
+			if err != nil {
+				log.Printf("Error creating notification for user %d: %v", memberID, err)
+				// Don't fail the invitation if notification creation fails
+			}
+
+			sentInvitations = append(sentInvitations, memberID)
+			log.Printf("Successfully sent invitation %d to user %d for private group", invitationID, memberID)
+
+		} else {
+			// For public groups, add directly as before
+			err = db.AddGroupMember(groupID, memberID, "member")
+			if err != nil {
+				log.Printf("Error adding group member: %v", err)
+				http.Error(w, "Failed to add member", http.StatusInternalServerError)
+				return
+			}
+
+			// Add user to group chat conversation
+			err = db.AddMemberToGroupConversation(groupID, memberID)
+			if err != nil {
+				log.Printf("Error adding user to group conversation: %v", err)
+				// Don't fail if chat addition fails
+			}
+
+			// Create notification for the added user (different type than invitation)
+			notificationContent := fmt.Sprintf("%s added you to the group '%s'", inviterName, group.Name)
 			
 			notification := &sqlite.Notification{
 				ReceiverID:  memberID,
 				SenderID:    int64(userID),
-				Type:        "group_invitation",
+				Type:        "group_member_added", // Different type for direct addition
 				Content:     notificationContent,
 				ReferenceID: groupID,
 				IsRead:      false,
@@ -1533,13 +1607,33 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Printf("Warning: Could not create group addition notification: %v", err)
 			}
-			}
+
+			addedMembers = append(addedMembers, memberID)
+		}
+	}
+
+	// Create appropriate response message
+	var message string
+	if group.Privacy == "private" {
+		if len(sentInvitations) > 0 {
+			message = fmt.Sprintf("Invitations sent to %d user(s)", len(sentInvitations))
+		} else {
+			message = "No invitations were sent"
+		}
+	} else {
+		if len(addedMembers) > 0 {
+			message = fmt.Sprintf("%d member(s) added successfully", len(addedMembers))
+		} else {
+			message = "No members were added"
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Members added successfully",
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":           message,
+		"group_privacy":     group.Privacy,
+		"added_members":     addedMembers,
+		"sent_invitations":  sentInvitations,
 	})
 }
 

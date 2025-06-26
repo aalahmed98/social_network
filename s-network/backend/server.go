@@ -233,8 +233,6 @@ func init() {
 	err = db.CleanupExpiredSessions()
 	if err != nil {
 		logger.Printf("Warning: Failed to cleanup expired sessions on startup: %v", err)
-	} else {
-		logger.Printf("🧹 Expired sessions and auth tokens cleaned up on startup")
 	}
 	logger.Printf("Cleanup completed in %v", time.Since(cleanupStartTime))
 
@@ -247,8 +245,6 @@ func init() {
 			err := db.CleanupExpiredSessions()
 			if err != nil {
 				logger.Printf("Warning: Failed to cleanup expired sessions: %v", err)
-			} else {
-				logger.Printf("🧹 Expired sessions and auth tokens cleaned up")
 			}
 		}
 	}()

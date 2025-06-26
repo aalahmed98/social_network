@@ -1689,8 +1689,6 @@ export default function ChatWindow({
                     </div>
                   )}
                 </div>
-                {/* Online Status Indicator */}
-                <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 border-2 border-white rounded-full"></div>
               </div>
 
               <div>
@@ -1703,21 +1701,6 @@ export default function ChatWindow({
                       {chat.members.length} members
                     </p>
                   )}
-                  {/* Modern Connection Status */}
-                  <div className="flex items-center space-x-1.5">
-                    <div
-                      className={`h-2 w-2 rounded-full ${
-                        socket && socket.readyState === WebSocket.OPEN
-                          ? "bg-green-500 animate-pulse"
-                          : "bg-amber-500"
-                      }`}
-                    />
-                    <span className="text-xs font-medium text-slate-600">
-                      {socket && socket.readyState === WebSocket.OPEN
-                        ? "Connected"
-                        : "Syncing"}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>

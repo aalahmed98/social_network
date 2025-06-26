@@ -361,6 +361,63 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
     }
   };
 
+  const handleRemoveFollower = async (followerId: number) => {
+    if (!confirm("Are you sure you want to remove this follower?")) {
+      return;
+    }
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${backendUrl}/api/followers/remove/${followerId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        // Remove the follower from the local state
+        setFollowers(followers.filter((f) => f.id !== followerId));
+        alert("Follower removed successfully");
+      } else {
+        const errorText = await response.text();
+        alert(`Failed to remove follower: ${errorText}`);
+      }
+    } catch (error) {
+      console.error("Error removing follower:", error);
+      alert("Failed to remove follower. Please try again.");
+    }
+  };
+
+  const handleUnfollowFromList = async (userId: number) => {
+    if (!confirm("Are you sure you want to unfollow this user?")) {
+      return;
+    }
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/follow/${userId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        // Remove the user from the following list
+        setFollowing(following.filter((f) => f.id !== userId));
+        alert("User unfollowed successfully");
+      } else {
+        const errorText = await response.text();
+        alert(`Failed to unfollow user: ${errorText}`);
+      }
+    } catch (error) {
+      console.error("Error unfollowing user:", error);
+      alert("Failed to unfollow user. Please try again.");
+    }
+  };
+
   if (loading) return <div className="p-4 text-center">Loading…</div>;
   if (error)
     return (
@@ -510,28 +567,40 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
                         {followers.map((f) => (
                           <li
                             key={f.id}
-                            className="flex items-center space-x-2"
+                            className="flex items-center justify-between space-x-2"
                           >
-                            {getImageUrl(f.avatar || "") ? (
-                              <img
-                                src={getImageUrl(f.avatar || "")!}
-                                className="w-6 h-6 rounded-full"
-                                onError={(e) =>
-                                  createAvatarFallback(
-                                    e.currentTarget,
-                                    f.first_name.charAt(0),
-                                    "text-xs"
-                                  )
-                                }
-                              />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs text-white">
-                                {f.first_name.charAt(0)}
-                              </div>
+                            <div className="flex items-center space-x-2">
+                              {getImageUrl(f.avatar || "") ? (
+                                <img
+                                  src={getImageUrl(f.avatar || "")!}
+                                  className="w-6 h-6 rounded-full"
+                                  onError={(e) =>
+                                    createAvatarFallback(
+                                      e.currentTarget,
+                                      f.first_name.charAt(0),
+                                      "text-xs"
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs text-white">
+                                  {f.first_name.charAt(0)}
+                                </div>
+                              )}
+                              <span>
+                                {f.first_name} {f.last_name}
+                              </span>
+                            </div>
+                            {/* Show remove button only if this is the current user's own profile */}
+                            {currentUser && currentUser.id === userId && (
+                              <button
+                                onClick={() => handleRemoveFollower(f.id)}
+                                className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded border border-red-300 hover:border-red-500 transition-colors"
+                                title="Remove follower"
+                              >
+                                Remove
+                              </button>
                             )}
-                            <span>
-                              {f.first_name} {f.last_name}
-                            </span>
                           </li>
                         ))}
                       </ul>
@@ -563,28 +632,40 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
                         {following.map((f) => (
                           <li
                             key={f.id}
-                            className="flex items-center space-x-2"
+                            className="flex items-center justify-between space-x-2"
                           >
-                            {getImageUrl(f.avatar || "") ? (
-                              <img
-                                src={getImageUrl(f.avatar || "")!}
-                                className="w-6 h-6 rounded-full"
-                                onError={(e) =>
-                                  createAvatarFallback(
-                                    e.currentTarget,
-                                    f.first_name.charAt(0),
-                                    "text-xs"
-                                  )
-                                }
-                              />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs text-white">
-                                {f.first_name.charAt(0)}
-                              </div>
+                            <div className="flex items-center space-x-2">
+                              {getImageUrl(f.avatar || "") ? (
+                                <img
+                                  src={getImageUrl(f.avatar || "")!}
+                                  className="w-6 h-6 rounded-full"
+                                  onError={(e) =>
+                                    createAvatarFallback(
+                                      e.currentTarget,
+                                      f.first_name.charAt(0),
+                                      "text-xs"
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs text-white">
+                                  {f.first_name.charAt(0)}
+                                </div>
+                              )}
+                              <span>
+                                {f.first_name} {f.last_name}
+                              </span>
+                            </div>
+                            {/* Show unfollow button only if this is the current user's own profile */}
+                            {currentUser && currentUser.id === userId && (
+                              <button
+                                onClick={() => handleUnfollowFromList(f.id)}
+                                className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded border border-red-300 hover:border-red-500 transition-colors"
+                                title="Unfollow"
+                              >
+                                Unfollow
+                              </button>
                             )}
-                            <span>
-                              {f.first_name} {f.last_name}
-                            </span>
                           </li>
                         ))}
                       </ul>

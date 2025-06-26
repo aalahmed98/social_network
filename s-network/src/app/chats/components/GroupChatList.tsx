@@ -632,8 +632,6 @@ export default function GroupChatList({
                       <FaUsers className="h-6 w-6" />
                     )}
                   </div>
-                  {/* Online indicator */}
-                  <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 border-2 border-white rounded-full"></div>
                 </div>
 
                 <div

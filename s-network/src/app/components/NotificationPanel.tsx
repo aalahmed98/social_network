@@ -17,6 +17,7 @@ interface Notification {
   id: string;
   type:
     | "group_invitation"
+    | "group_member_added"
     | "follow_request"
     | "follow_accepted"
     | "follow"
@@ -283,6 +284,17 @@ export default function NotificationPanel() {
 
       // Handle group invitation actions
       if (notification.type === "group_invitation") {
+        // Check if this notification has already been processed
+        if (processedNotifications.has(notification.id)) {
+          console.log("Notification already processed:", notification.id);
+          return;
+        }
+
+        // Mark as processed immediately to prevent duplicate processing
+        setProcessedNotifications(
+          (prev) => new Set([...prev, notification.id])
+        );
+
         if (action === "accept") {
           // First get the user's invitations to find the invitation ID for this group
           const invitationsResponse = await fetch(
@@ -316,7 +328,11 @@ export default function NotificationPanel() {
               "Invitation not found for group:",
               notification.reference_id
             );
-            showFeedback(notification.id, "Invitation not found", "error");
+            showFeedback(
+              notification.id,
+              "This invitation may have already been processed",
+              "error"
+            );
             return;
           }
 
@@ -335,10 +351,6 @@ export default function NotificationPanel() {
               prev.filter((n) => n.id !== notification.id)
             );
 
-            // Mark this notification as processed
-            setProcessedNotifications(
-              (prev) => new Set([...prev, notification.id])
-            );
             showFeedback(
               notification.id,
               `✅ Successfully joined ${invitation.group_name}!`,
@@ -353,6 +365,12 @@ export default function NotificationPanel() {
               "Failed to accept invitation",
               "error"
             );
+            // Remove from processed if it failed
+            setProcessedNotifications((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(notification.id);
+              return newSet;
+            });
           }
         } else if (action === "decline") {
           // First get the user's invitations to find the invitation ID for this group
@@ -387,7 +405,11 @@ export default function NotificationPanel() {
               "Invitation not found for group:",
               notification.reference_id
             );
-            showFeedback(notification.id, "Invitation not found", "error");
+            showFeedback(
+              notification.id,
+              "This invitation may have already been processed",
+              "error"
+            );
             return;
           }
 
@@ -406,10 +428,6 @@ export default function NotificationPanel() {
               prev.filter((n) => n.id !== notification.id)
             );
 
-            // Mark this notification as processed
-            setProcessedNotifications(
-              (prev) => new Set([...prev, notification.id])
-            );
             showFeedback(
               notification.id,
               `❌ Declined invitation to ${invitation.group_name}`,
@@ -424,6 +442,12 @@ export default function NotificationPanel() {
               "Failed to decline invitation",
               "error"
             );
+            // Remove from processed if it failed
+            setProcessedNotifications((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(notification.id);
+              return newSet;
+            });
           }
         }
       }
@@ -436,6 +460,7 @@ export default function NotificationPanel() {
   const getNotificationIcon = (type: Notification["type"]) => {
     switch (type) {
       case "group_invitation":
+      case "group_member_added":
       case "group_request":
         return <FaUsers className="text-indigo-600" size={18} />;
       case "follow_request":

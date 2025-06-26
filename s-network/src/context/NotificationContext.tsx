@@ -13,6 +13,7 @@ interface Notification {
   id: string;
   type:
     | "group_invitation"
+    | "group_member_added"
     | "follow_request"
     | "follow_accepted"
     | "follow"

@@ -8,8 +8,10 @@ import (
 )
 
 var (
-	// Create a green color printer
-	redPrinter = color.New(color.FgGreen)
+	// Create color printers
+	greenPrinter = color.New(color.FgGreen)
+	redPrinter   = color.New(color.FgRed)
+	yellowPrinter = color.New(color.FgYellow)
 )
 
 // Standard logger
@@ -23,14 +25,14 @@ func init() {
 	color.NoColor = false
 }
 
-// Println prints a message in red
+// Println prints a message in green (for startup logs)
 func Println(v ...interface{}) {
-	stdLog.Println(redPrinter.Sprint(v...))
+	stdLog.Println(greenPrinter.Sprint(v...))
 }
 
-// Printf prints a formatted message in red
+// Printf prints a formatted message in green (for startup logs)
 func Printf(format string, v ...interface{}) {
-	stdLog.Print(redPrinter.Sprintf(format, v...))
+	stdLog.Print(greenPrinter.Sprintf(format, v...))
 }
 
 // Fatal logs a message then calls os.Exit(1)
@@ -45,10 +47,15 @@ func Fatalf(format string, v ...interface{}) {
 
 // Error prints an error message in red
 func Error(format string, v ...interface{}) {
-	stdLog.Println(redPrinter.Sprintf(format, v...))
+	stdLog.Println(redPrinter.Sprintf("[ERROR] "+format, v...))
 }
 
-// Info prints an informational message in red
+// Warning prints a warning message in yellow
+func Warning(format string, v ...interface{}) {
+	stdLog.Println(yellowPrinter.Sprintf("[WARNING] "+format, v...))
+}
+
+// Info prints an informational message in green
 func Info(format string, v ...interface{}) {
-	stdLog.Println(redPrinter.Sprintf(format, v...))
+	stdLog.Println(greenPrinter.Sprintf(format, v...))
 } 
