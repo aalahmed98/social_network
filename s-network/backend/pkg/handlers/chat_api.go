@@ -531,6 +531,40 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			// Still broadcast to ensure both users see the conversation in their list
+			if chatHub != nil {
+				participants, err := db.GetConversationParticipants(existingConvID)
+				if err == nil {
+					conversationData, _ := json.Marshal(map[string]interface{}{
+						"type":            "conversation_created",
+						"conversation_id": conversation.ID,
+						"name":           conversation.Name,
+						"is_group":       conversation.IsGroup,
+						"group_id":       conversation.GroupID,
+						"created_by":     userID,
+						"created_at":     conversation.CreatedAt,
+					})
+
+					chatHub.mutex.Lock()
+					for client := range chatHub.clients {
+						if client.ConversationID == 0 {
+							for _, participant := range participants {
+								if client.UserID == participant.UserID {
+									select {
+									case client.Send <- conversationData:
+										log.Printf("💬 Sent existing conversation notification to user %d", client.UserID)
+									default:
+										log.Printf("Failed to send existing conversation notification to client %d", client.UserID)
+									}
+									break
+								}
+							}
+						}
+					}
+					chatHub.mutex.Unlock()
+				}
+			}
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"id":         conversation.ID,
@@ -570,6 +604,46 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	}
+
+	// Broadcast new conversation to all participants via WebSocket
+	if chatHub != nil {
+		// Get all participants for this conversation
+		participants, err := db.GetConversationParticipants(conversationID)
+		if err == nil {
+			// Create WebSocket message for new conversation
+			conversationData, _ := json.Marshal(map[string]interface{}{
+				"type":            "conversation_created",
+				"conversation_id": createdConversation.ID,
+				"name":           createdConversation.Name,
+				"is_group":       createdConversation.IsGroup,
+				"group_id":       createdConversation.GroupID,
+				"created_by":     userID,
+				"created_at":     createdConversation.CreatedAt,
+			})
+
+			// Send to all globally registered users who are participants
+			chatHub.mutex.Lock()
+			for client := range chatHub.clients {
+				if client.ConversationID == 0 { // Only globally registered clients
+					// Check if this client is a participant in the conversation
+					for _, participant := range participants {
+						if client.UserID == participant.UserID {
+							select {
+							case client.Send <- conversationData:
+								log.Printf("💬 Sent new conversation notification to user %d", client.UserID)
+							default:
+								log.Printf("Failed to send new conversation notification to client %d", client.UserID)
+							}
+							break
+						}
+					}
+				}
+			}
+			chatHub.mutex.Unlock()
+			
+			log.Printf("💬 Broadcasted new conversation %d to participants", conversationID)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

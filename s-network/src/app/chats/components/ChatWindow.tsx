@@ -473,6 +473,8 @@ export default function ChatWindow({
             return updatedMessages;
           });
 
+          // Note: Notifications are now handled by the global WebSocket in NotificationContext
+
           // Notify parent component that there's a new message (updates conversation list)
           onConversationUpdated(newMessage.content);
         } else if (
@@ -640,6 +642,7 @@ export default function ChatWindow({
               );
             }
 
+            // Note: Notifications are now handled by the global WebSocket in NotificationContext
             createNotification("📝 New post added", "bg-green-500");
           }
         } else if (
@@ -655,6 +658,7 @@ export default function ChatWindow({
               setGroupEvents((prevEvents) => [data.event_data, ...prevEvents]);
             }
 
+            // Note: Notifications are now handled by the global WebSocket in NotificationContext
             createNotification("📅 New event added", "bg-blue-500");
           }
         } else if (
@@ -716,6 +720,7 @@ export default function ChatWindow({
               setTimeout(() => loadPostCommentsCount(data.post_id), 100);
             }
 
+            // Note: Notifications are now handled by the global WebSocket in NotificationContext
             createNotification("💬 New comment added", "bg-purple-500");
           }
         }
@@ -1826,7 +1831,7 @@ export default function ChatWindow({
       loadGroupPosts();
       loadGroupInfo();
     }
-  }, [chat.id, chat.isGroup]);
+  }, [chat.id, chat.isGroup, chat.groupId]);
 
   const loadGroupInfo = async () => {
     if (!chat.isGroup) return;
@@ -1857,6 +1862,15 @@ export default function ChatWindow({
         setGroupInfo(data);
       } else {
         console.error(`Failed to load group info: ${response.status}`);
+        // If we can't load group info, we'll rely on fallback logic
+        // but let's at least log this for debugging
+        if (response.status === 403) {
+          console.warn(
+            "Permission denied when loading group info - user might not be a member"
+          );
+        } else if (response.status === 404) {
+          console.warn("Group not found - it might have been deleted");
+        }
       }
     } catch (error) {
       console.error("Error loading group info:", error);
@@ -3125,6 +3139,17 @@ export default function ChatWindow({
                       >
                         <FaUsers size={18} />
                       </button>
+                      <button
+                        onClick={() => setShowChatInfo(!showChatInfo)}
+                        className={`p-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 ${
+                          showChatInfo
+                            ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
+                            : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                        }`}
+                        title="Chat Details"
+                      >
+                        <IoInformationCircle size={18} />
+                      </button>
                     </>
                   )}
                   {deviceType === "tablet" && (
@@ -3849,8 +3874,22 @@ export default function ChatWindow({
                 {/* Group Actions Section */}
                 {chat.isGroup && currentUser && (
                   <div className="pt-6 border-t border-slate-200">
-                    {groupInfo ? (
-                      groupInfo.creatorId === currentUser.id ? (
+                    {(() => {
+                      // Determine if current user is the group creator
+                      let isCreator = false;
+
+                      // Primary method: Use groupInfo.creatorId if available
+                      if (groupInfo && groupInfo.creatorId) {
+                        isCreator = groupInfo.creatorId === currentUser.id;
+                      }
+                      // Fallback method: Check if user is first member AND has creator-like privileges
+                      // This is a backup when groupInfo isn't loaded yet
+                      else if (chat.members && chat.members.length > 0) {
+                        // Assume first member might be creator, but this is just a fallback
+                        isCreator = chat.members[0].id === currentUser.id;
+                      }
+
+                      return isCreator ? (
                         <div className="space-y-4">
                           <button
                             onClick={() => setShowDeleteConfirm(true)}
@@ -3894,55 +3933,8 @@ export default function ChatWindow({
                             Leave Group
                           </button>
                         </div>
-                      )
-                    ) : chat.members &&
-                      chat.members.length > 0 &&
-                      (chat.members[0].id === currentUser.id ||
-                        chat.members[0].id === currentUser.id) ? (
-                      <div className="space-y-4">
-                        <button
-                          onClick={() => setShowDeleteConfirm(true)}
-                          className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
-                        >
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                          Delete Group Forever
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <button
-                          onClick={() => setShowLeaveConfirm(true)}
-                          className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
-                        >
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                            />
-                          </svg>
-                          Leave Group
-                        </button>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
               </>
@@ -4582,9 +4574,10 @@ export default function ChatWindow({
                     // Enhanced date parsing
                     let dateDisplay = "Just now";
                     try {
-                      const postDate = post.created_at || post.createdAt;
+                      const postDate =
+                        (post as any).created_at || post.createdAt;
                       console.log("Post date fields:", {
-                        created_at: post.created_at,
+                        created_at: (post as any).created_at,
                         createdAt: post.createdAt,
                         using: postDate,
                       });
@@ -4658,18 +4651,18 @@ export default function ChatWindow({
                         </div>
 
                         {/* Post Image */}
-                        {(post.imagePath || post.image_path) && (
+                        {(post.imagePath || (post as any).image_path) && (
                           <div className="relative z-10 mb-4">
                             <img
                               src={getImageUrl(
-                                post.imagePath || post.image_path
+                                post.imagePath || (post as any).image_path
                               )}
                               alt="Post image"
                               className="w-full h-40 object-cover rounded-xl border border-blue-200/50 shadow-md"
                               onError={(e) => {
                                 console.error("Failed to load post image:", {
                                   imagePath: post.imagePath,
-                                  image_path: post.image_path,
+                                  image_path: (post as any).image_path,
                                   src: e.currentTarget.src,
                                 });
                               }}
@@ -5246,7 +5239,8 @@ export default function ChatWindow({
                                 {(() => {
                                   try {
                                     const date = new Date(
-                                      comment.created_at || comment.createdAt
+                                      (comment as any).created_at ||
+                                        comment.createdAt
                                     );
                                     return isNaN(date.getTime())
                                       ? "Just now"
@@ -5263,7 +5257,9 @@ export default function ChatWindow({
                                 (msg) => msg.id === `post-${selectedPostId}`
                               )?.senderId === currentUser?.id) && (
                               <button
-                                onClick={() => handleDeleteComment(comment.id)}
+                                onClick={() =>
+                                  handleDeleteComment(Number(comment.id))
+                                }
                                 className="p-1 rounded text-red-500 hover:bg-red-50 transition-colors"
                                 title="Delete comment"
                               >
@@ -5322,7 +5318,9 @@ export default function ChatWindow({
                           <div className="flex items-center gap-4 text-xs">
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handleVoteComment(comment.id, 1)}
+                                onClick={() =>
+                                  handleVoteComment(Number(comment.id), 1)
+                                }
                                 className={`flex items-center justify-center w-6 h-5 rounded-lg transition-all duration-200 hover:scale-110 ${
                                   comment.userVote === 1
                                     ? "bg-green-100 text-green-600"
@@ -5345,7 +5343,7 @@ export default function ChatWindow({
                               </span>
                               <button
                                 onClick={() =>
-                                  handleVoteComment(comment.id, -1)
+                                  handleVoteComment(Number(comment.id), -1)
                                 }
                                 className={`flex items-center justify-center w-6 h-5 rounded-lg transition-all duration-200 hover:scale-110 ${
                                   comment.userVote === -1

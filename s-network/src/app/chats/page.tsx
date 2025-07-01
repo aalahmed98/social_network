@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { flushSync } from "react-dom";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion } from "framer-motion";
 import { FaBars, FaTimes, FaArrowLeft } from "react-icons/fa";
@@ -46,6 +47,14 @@ export default function ChatPage() {
 
   // Debouncing for conversation updates
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // WebSocket for real-time chat list updates
+  const chatListSocketRef = useRef<WebSocket | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    id: number | string;
+    firstName: string;
+    lastName: string;
+  } | null>(null);
 
   // Enhanced device detection for optimal experience
   useEffect(() => {
@@ -92,6 +101,36 @@ export default function ChatPage() {
     window.addEventListener("resize", checkDevice);
     return () => window.removeEventListener("resize", checkDevice);
   }, [selectedChat]);
+
+  // Fetch current user information for WebSocket
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      if (!isLoggedIn) return;
+
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const response = await fetch(`${backendUrl}/api/auth/me`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          console.log(
+            "💬 Current user loaded for chat list:",
+            userData.id,
+            userData.first_name
+          );
+          setCurrentUser(userData);
+        }
+      } catch (error) {
+        console.error("Error fetching current user for chat list:", error);
+      }
+    };
+
+    fetchCurrentUser();
+  }, [isLoggedIn]);
 
   useEffect(() => {
     // If not logged in, redirect to login
@@ -377,6 +416,147 @@ export default function ChatPage() {
     }
     // Desktop: No change needed
   };
+
+  // WebSocket for real-time chat list updates
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser) {
+      // Clean up existing socket if logged out
+      if (chatListSocketRef.current) {
+        console.log("💬 Cleaning up chat list WebSocket connection");
+        chatListSocketRef.current.close();
+        chatListSocketRef.current = null;
+      }
+      return;
+    }
+
+    console.log("💬 Setting up chat list WebSocket for user:", currentUser.id);
+
+    const backendUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${backendUrl.replace(
+      /^https?:\/\//,
+      ""
+    )}/ws/chat`;
+
+    console.log("💬 Connecting chat list to WebSocket:", wsUrl);
+
+    const socket = new WebSocket(wsUrl);
+    chatListSocketRef.current = socket;
+
+    socket.onopen = () => {
+      console.log("💬 Chat list WebSocket connection established");
+
+      // Register for global chat updates
+      if (socket.readyState === WebSocket.OPEN) {
+        const registrationMessage = {
+          type: "register_global",
+          user_id: currentUser.id,
+        };
+        console.log(
+          "💬 Sending chat list global registration:",
+          registrationMessage
+        );
+        socket.send(JSON.stringify(registrationMessage));
+      }
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("💬 Received chat list message:", data);
+
+        // Handle registration confirmation
+        if (data.type === "registered_global") {
+          console.log(
+            "✅ Chat list global registration confirmed for user:",
+            data.user_id
+          );
+          return;
+        }
+
+        // Handle connection confirmation
+        if (data.type === "connected") {
+          console.log(
+            "✅ Chat list WebSocket connection established:",
+            data.status
+          );
+          return;
+        }
+
+        // Handle new messages - update the chat list
+        if (data.type === "chat_message") {
+          console.log(
+            "💬 Received message for chat list update:",
+            data.conversation_id
+          );
+
+          // Update the conversation in the list with new message info
+          const conversationId = data.conversation_id?.toString();
+          if (conversationId) {
+            const messageDate = new Date();
+            const timeString = messageDate.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+
+            const updates: Partial<Chat> = {
+              lastMessage: data.content,
+              lastMessageTime: timeString,
+            };
+
+            // Update the conversation in both lists
+            flushSync(() => {
+              updateConversationInList(conversationId, updates);
+            });
+          }
+        }
+
+        // Handle new conversation creation
+        if (data.type === "conversation_created") {
+          console.log("💬 New conversation created:", data);
+
+          // Refresh the chat list to include the new conversation
+          setTimeout(() => {
+            fetchChats();
+          }, 500); // Small delay to ensure backend has processed the conversation
+        }
+      } catch (error) {
+        console.error("Error parsing chat list message:", error);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("💬 Chat list WebSocket error:", error);
+    };
+
+    socket.onclose = (event) => {
+      console.log(
+        "💬 Chat list WebSocket connection closed, clean:",
+        event.wasClean,
+        "code:",
+        event.code
+      );
+      chatListSocketRef.current = null;
+
+      // Attempt to reconnect after 3 seconds if not a clean close
+      if (!event.wasClean && isLoggedIn && currentUser) {
+        setTimeout(() => {
+          console.log("💬 Attempting to reconnect chat list WebSocket");
+          // Trigger reconnection by updating state
+          setCurrentUser((prev) => (prev ? { ...prev } : null));
+        }, 3000);
+      }
+    };
+
+    // Cleanup function
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        console.log("💬 Closing chat list WebSocket connection on cleanup");
+        socket.close(1000, "Component unmounting");
+      }
+    };
+  }, [isLoggedIn, currentUser, updateConversationInList, fetchChats]);
 
   return (
     <div className="flex h-[calc(100vh-70px)] bg-gradient-to-br from-slate-50 to-blue-50 relative overflow-hidden">

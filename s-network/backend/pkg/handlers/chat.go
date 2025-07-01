@@ -167,7 +167,24 @@ func (h *ChatHub) Run() {
 					h.removeClientFromUser(client)
 				}
 			}
-			log.Printf("Successfully sent message to %d clients", sentCount)
+			
+			// Also send to globally registered users (but not the sender)
+			for client := range h.clients {
+				if client.ConversationID == 0 && client.UserID != message.SenderID {
+					select {
+					case client.Send <- messageData:
+						sentCount++
+						log.Printf("Sent global notification to user %d", client.UserID)
+					default:
+						log.Printf("Failed to send global notification to client %d, removing", client.UserID)
+						close(client.Send)
+						delete(h.clients, client)
+						h.removeClientFromUser(client)
+					}
+				}
+			}
+			
+			log.Printf("Successfully sent message to %d clients (conversation + global)", sentCount)
 			h.mutex.Unlock()
 			
 			// Create notifications for offline users if not a group chat
@@ -373,6 +390,30 @@ func (c *Client) readPump(hub *ChatHub) {
 		
 		// Handle different message types
 		switch chatMessage.Type {
+		case "register_global":
+			// Register for global notifications (all notifications for this user)
+			log.Printf("User %d registering for global notifications", c.UserID)
+			
+			// Remove from old conversation if any
+			if c.ConversationID > 0 {
+				hub.mutex.Lock()
+				hub.removeClientFromConversation(c)
+				log.Printf("Removed user %d from old conversation %d for global registration", c.UserID, c.ConversationID)
+				hub.mutex.Unlock()
+			}
+			
+			// Set conversation ID to 0 to indicate global registration
+			c.ConversationID = 0
+			
+			// Send registration confirmation
+			response := map[string]interface{}{
+				"type": "registered_global",
+				"user_id": c.UserID,
+				"status": "success",
+			}
+			responseData, _ := json.Marshal(response)
+			c.Send <- responseData
+			
 		case "register":
 			// Update client's conversation ID
 			if chatMessage.ConversationID > 0 {
