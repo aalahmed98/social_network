@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import Image from "next/image";
-import { getImageUrl, createAvatarFallback } from "@/utils/image";
+import { Avatar, ConfirmDialog } from "@/components/ui";
+import { getImageUrl } from "@/utils/image";
+import { useToast } from "@/context/ToastContext";
 
 // Basic types
 interface Post {
@@ -32,11 +33,14 @@ interface Post {
 export default function Home() {
   const router = useRouter();
   const { isLoggedIn } = useAuth();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [voting, setVoting] = useState<{ [postId: number]: boolean }>({});
   const [postsLoading, setPostsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<number | null>(null);
 
   useEffect(() => {
     // Fetch posts only if user is logged in and hasn't fetched yet
@@ -81,20 +85,23 @@ export default function Home() {
     }
   };
 
-  // Delete a post
-  const handleDeletePost = async (postId: number, event: React.MouseEvent) => {
+  // Show delete confirmation
+  const showDeletePost = (postId: number, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent navigation to post detail
+    setPostToDelete(postId);
+    setShowDeleteConfirm(true);
+  };
 
-    if (!window.confirm("Are you sure you want to delete this post?")) {
-      return;
-    }
+  // Delete a post
+  const handleDeletePost = async () => {
+    if (!postToDelete) return;
 
     setDeleting(true);
 
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/posts/${postId}`, {
+      const response = await fetch(`${backendUrl}/api/posts/${postToDelete}`, {
         method: "DELETE",
         credentials: "include",
         headers: {
@@ -104,7 +111,7 @@ export default function Home() {
 
       if (response.ok) {
         // Remove the post from the state
-        setPosts(posts.filter((post) => post.id !== postId));
+        setPosts(posts.filter((post) => post.id !== postToDelete));
       } else {
         const errorText = await response.text();
         let errorMessage = "Unknown error";
@@ -114,14 +121,16 @@ export default function Home() {
         } catch (e) {
           errorMessage = errorText || errorMessage;
         }
-        alert(`Failed to delete post: ${errorMessage}`);
+        showError("Delete Failed", `Failed to delete post: ${errorMessage}`);
         console.error("Failed to delete post:", errorText);
       }
     } catch (error) {
       console.error("Error deleting post:", error);
-      alert("An error occurred while deleting the post.");
+      showError("Delete Error", "An error occurred while deleting the post.");
     } finally {
       setDeleting(false);
+      setShowDeleteConfirm(false);
+      setPostToDelete(null);
     }
   };
 
@@ -320,28 +329,13 @@ export default function Home() {
                           <div className="flex items-center mb-3">
                             {/* User avatar */}
                             <div className="flex-shrink-0 mr-3">
-                              {post.author.avatar ? (
-                                <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-gray-100">
-                                  <Image
-                                    src={getImageUrl(post.author.avatar)}
-                                    alt={`${post.author.first_name} ${post.author.last_name}`}
-                                    width={40}
-                                    height={40}
-                                    className="object-cover"
-                                    onError={(e) =>
-                                      createAvatarFallback(
-                                        e.target as HTMLImageElement,
-                                        post.author.first_name.charAt(0),
-                                        "text-sm"
-                                      )
-                                    }
-                                  />
-                                </div>
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
-                                  {post.author.first_name.charAt(0)}
-                                </div>
-                              )}
+                              <Avatar
+                                avatar={post.author.avatar}
+                                firstName={post.author.first_name}
+                                lastName={post.author.last_name}
+                                size="md"
+                                className="border-2 border-gray-100"
+                              />
                             </div>
 
                             {/* Post metadata */}
@@ -351,11 +345,6 @@ export default function Home() {
                                   {post.author.first_name}{" "}
                                   {post.author.last_name}
                                 </span>
-                                {post.is_author && (
-                                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full mr-2">
-                                    Author
-                                  </span>
-                                )}
                               </div>
                               <div className="flex items-center text-xs text-gray-500">
                                 <span>{formatDate(post.created_at)}</span>
@@ -424,8 +413,7 @@ export default function Home() {
                             {post.is_author && (
                               <button
                                 onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeletePost(post.id, e);
+                                  showDeletePost(post.id, e);
                                 }}
                                 disabled={deleting}
                                 className="ml-auto text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
@@ -514,11 +502,18 @@ export default function Home() {
                                     window.location.origin + `/posts/${post.id}`
                                   )
                                   .then(() =>
-                                    alert("Link copied to clipboard!")
+                                    showSuccess(
+                                      "Link Copied",
+                                      "Link copied to clipboard!"
+                                    )
                                   )
-                                  .catch((err) =>
-                                    console.error("Failed to copy: ", err)
-                                  );
+                                  .catch((err) => {
+                                    console.error("Failed to copy: ", err);
+                                    showError(
+                                      "Copy Failed",
+                                      "Failed to copy link to clipboard"
+                                    );
+                                  });
                               }}
                             >
                               <svg
@@ -588,6 +583,21 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Delete Post Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setPostToDelete(null);
+        }}
+        onConfirm={handleDeletePost}
+        title="Delete Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        confirmText="Delete Post"
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }

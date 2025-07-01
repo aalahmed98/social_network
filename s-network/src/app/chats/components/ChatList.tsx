@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Chat } from "../page";
+import { ChatAvatar } from "@/components/ui/Avatar";
+import { FaUsers, FaSearch } from "react-icons/fa";
 import { IoSearch } from "react-icons/io5";
-import { FaPlus, FaUser } from "react-icons/fa";
+import { FaPlus } from "react-icons/fa";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 
@@ -23,6 +25,9 @@ interface ChatListProps {
   error: string | null;
   contacts: Contact[];
   onStartNewChat: (userId: number) => Promise<string | null>;
+  isMobile?: boolean;
+  isTablet?: boolean;
+  deviceType?: "phone" | "tablet" | "desktop";
 }
 
 export default function ChatList({
@@ -33,6 +38,9 @@ export default function ChatList({
   error,
   contacts,
   onStartNewChat,
+  isMobile = false,
+  isTablet = false,
+  deviceType = "desktop",
 }: ChatListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
@@ -63,27 +71,45 @@ export default function ChatList({
 
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-slate-50 to-blue-50">
-      {/* Modern Search and Actions Section */}
-      <div className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-slate-200/60">
+      {/* Enhanced Search and Actions Section - Device Responsive */}
+      <div
+        className={`bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-slate-200/60 ${
+          deviceType === "phone"
+            ? "p-3"
+            : deviceType === "tablet"
+            ? "p-4"
+            : "p-4"
+        }`}
+      >
         <div className="relative mb-4">
           <input
             type="text"
-            placeholder="Search conversations..."
-            className="w-full pl-10 pr-4 py-3 bg-white/80 backdrop-blur-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-slate-200 shadow-md transition-all duration-200 placeholder-slate-400 font-medium"
+            placeholder={
+              deviceType === "phone" ? "Search..." : "Search conversations..."
+            }
+            className={`w-full pl-10 pr-4 bg-white/80 backdrop-blur-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-slate-200 shadow-md transition-all duration-200 placeholder-slate-400 font-medium ${
+              deviceType === "phone" ? "py-2.5 text-sm" : "py-3 text-sm"
+            }`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           <IoSearch
-            className="absolute left-3 top-3.5 text-slate-400"
-            size={18}
+            className={`absolute text-slate-400 ${
+              deviceType === "phone" ? "left-3 top-3" : "left-3 top-3.5"
+            }`}
+            size={deviceType === "phone" ? 16 : 18}
           />
         </div>
         <button
-          className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+          className={`w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+            deviceType === "phone" ? "py-2.5 text-xs" : "py-3 text-sm"
+          }`}
           onClick={() => setShowNewChatDialog(true)}
         >
-          <FaPlus size={14} />
-          <span>New Conversation</span>
+          <FaPlus size={deviceType === "phone" ? 12 : 14} />
+          <span>
+            {deviceType === "phone" ? "New Chat" : "New Conversation"}
+          </span>
         </button>
       </div>
 
@@ -106,59 +132,51 @@ export default function ChatList({
             </div>
           </div>
         ) : filteredChats.length > 0 ? (
-          <div className="p-2">
+          <div className={`${deviceType === "phone" ? "p-1" : "p-2"}`}>
             {filteredChats.map((chat) => (
               <div
                 key={chat.id}
-                className={`flex items-start p-4 rounded-2xl transition-all duration-200 cursor-pointer group mb-2 border ${
+                className={`flex items-start rounded-2xl transition-all duration-200 cursor-pointer group mb-2 border touch-manipulation ${
+                  deviceType === "phone" ? "p-3" : "p-4"
+                } ${
                   selectedChatId === chat.id
                     ? "bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200 shadow-md"
-                    : "bg-white/60 backdrop-blur-sm hover:bg-white/80 border-slate-200/60 hover:shadow-lg hover:border-blue-200"
+                    : "bg-white/60 backdrop-blur-sm hover:bg-white/80 border-slate-200/60 hover:shadow-lg hover:border-blue-200 active:bg-white/90"
                 }`}
                 onClick={() => onSelectChat(chat)}
               >
                 <div className="relative">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 overflow-hidden flex items-center justify-center text-white shadow-lg ring-2 ring-white">
-                    {chat.avatar &&
-                    chat.avatar !== "/uploads/avatars/default.jpg" ? (
-                      <img
-                        src={getImageUrl(chat.avatar)}
-                        alt={chat.name}
-                        className="h-full w-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="white"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="w-6 h-6"
-                        >
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                          <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                      </div>
-                    )}
-                  </div>
+                  <ChatAvatar
+                    avatar={chat.avatar}
+                    fullName={chat.name}
+                    size={deviceType === "phone" ? "sm" : "md"}
+                    className="shadow-lg ring-2 ring-white"
+                    fallbackIcon={
+                      chat.isGroup ? (
+                        <FaUsers size={deviceType === "phone" ? 14 : 16} />
+                      ) : undefined
+                    }
+                  />
                 </div>
 
-                <div className="ml-4 flex-1 overflow-hidden">
+                <div className="ml-3 flex-1 overflow-hidden min-w-0">
                   <div className="flex justify-between items-baseline">
-                    <h3 className="font-bold text-slate-800 truncate">
+                    <h3
+                      className={`font-bold text-slate-800 truncate ${
+                        deviceType === "phone" ? "text-sm" : "text-base"
+                      }`}
+                    >
                       {chat.name}
                     </h3>
-                    <span className="text-xs text-slate-500 font-medium">
+                    <span className="text-xs text-slate-500 font-medium flex-shrink-0 ml-2">
                       {chat.lastMessageTime}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-600 truncate leading-relaxed">
+                  <p
+                    className={`text-slate-600 truncate leading-relaxed ${
+                      deviceType === "phone" ? "text-xs" : "text-sm"
+                    }`}
+                  >
                     {chat.lastMessage || "Start a conversation..."}
                   </p>
                 </div>
@@ -196,8 +214,20 @@ export default function ChatList({
       <Dialog.Root open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-6 w-full max-w-md z-50 border border-slate-200/60">
-            <Dialog.Title className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-2">
+          <Dialog.Content
+            className={`fixed z-50 bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 ${
+              deviceType === "phone"
+                ? "inset-4 p-4 max-h-[calc(100vh-2rem)]"
+                : deviceType === "tablet"
+                ? "top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-sm p-5 max-h-[80vh]"
+                : "top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md p-6 max-h-[80vh]"
+            }`}
+          >
+            <Dialog.Title
+              className={`font-bold mb-6 text-slate-800 flex items-center gap-2 ${
+                deviceType === "phone" ? "text-lg" : "text-xl"
+              }`}
+            >
               <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
               Start New Conversation
             </Dialog.Title>
@@ -251,37 +281,12 @@ export default function ChatList({
                       }
                     >
                       <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 overflow-hidden flex items-center justify-center shadow-lg ring-2 ring-white">
-                          {contact.avatar &&
-                          contact.avatar !== "/uploads/avatars/default.jpg" ? (
-                            <img
-                              src={getImageUrl(contact.avatar)}
-                              alt={contact.name}
-                              className="object-cover w-full h-full"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display =
-                                  "none";
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="white"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="w-5 h-5"
-                              >
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="12" cy="7" r="4"></circle>
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-green-500 border-2 border-white rounded-full"></div>
+                        <ChatAvatar
+                          avatar={contact.avatar}
+                          fullName={contact.name}
+                          size="md"
+                          className="shadow-lg ring-2 ring-white"
+                        />
                       </div>
 
                       <div className="ml-3 flex-1">

@@ -3,11 +3,9 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { SearchProvider, useSearch } from "@/context/SearchContext";
-import Navbar from "@/app/components/Navbar";
-import Sidebar from "@/app/components/Sidebar";
-import MinimalSidebar from "@/app/components/MinimalSidebar";
-import SearchSidebar from "@/app/components/SearchSidebar";
-import NotificationSidebar from "@/app/components/NotificationSidebar";
+import { Navbar, Sidebar, MinimalSidebar } from "@/components/layout";
+import { SearchSidebar } from "@/components/features/search";
+import { NotificationSidebar } from "@/components/features/notifications";
 import {
   NotificationProvider,
   useNotifications,

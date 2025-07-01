@@ -105,6 +105,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     } else {
       setNotifications([]);
       setUnreadCount(0);
+      // Return undefined explicitly for other cases
+      return undefined;
     }
   }, [isLoggedIn]);
 

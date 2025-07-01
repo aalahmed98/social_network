@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
+import { useToast } from "@/context/ToastContext";
 
 // Post type definition
 interface Post {
@@ -45,6 +46,7 @@ interface Follower {
 
 export default function Posts() {
   const router = useRouter();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [privacy, setPrivacy] = useState("public");
@@ -120,7 +122,7 @@ export default function Posts() {
     e.preventDefault();
 
     if (!title.trim()) {
-      alert("Please enter a title for your post.");
+      showWarning("Title Required", "Please enter a title for your post.");
       return;
     }
 
@@ -158,7 +160,8 @@ export default function Posts() {
         setSelectedFollowers([]);
         setShowFollowerSelect(false);
 
-        // Redirect to home page after successful post
+        // Show success message and redirect to home page
+        showSuccess("Post Created", "Your post has been created successfully!");
         router.push("/");
       } else {
         const errorText = await response.text();
@@ -169,12 +172,18 @@ export default function Posts() {
         } catch (e) {
           errorMessage = errorText || errorMessage;
         }
-        alert(`Failed to create post: ${errorMessage}`);
+        showError(
+          "Post Creation Failed",
+          `Failed to create post: ${errorMessage}`
+        );
         console.error("Failed to create post:", errorText);
       }
     } catch (error) {
       console.error("Error creating post:", error);
-      alert("An error occurred while creating the post.");
+      showError(
+        "Post Creation Error",
+        "An error occurred while creating the post."
+      );
     } finally {
       setLoading(false);
     }

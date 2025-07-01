@@ -17,6 +17,8 @@ export default function ErrorNotification() {
 
       return () => clearTimeout(timer);
     }
+    // Return undefined explicitly for other cases
+    return undefined;
   }, [authError]);
 
   if (!authError || !visible) return null;

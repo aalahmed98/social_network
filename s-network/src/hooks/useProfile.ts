@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logger } from "@/utils/logger";
 
 interface User {
   id: number;
@@ -91,7 +92,15 @@ export function useProfile(): UseProfileReturn {
       setError(
         err instanceof Error ? err.message : "An unknown error occurred"
       );
-      console.error("Profile error:", err);
+      logger.error(
+        "Failed to fetch user profile",
+        {
+          component: "useProfile",
+          action: "fetchProfile",
+          userId: user?.id,
+        },
+        err
+      );
     } finally {
       setLoading(false);
     }
@@ -109,7 +118,15 @@ export function useProfile(): UseProfileReturn {
         setFollowers(followersData.followers || []);
       }
     } catch (err) {
-      console.error("Error fetching followers:", err);
+      logger.error(
+        "Failed to fetch followers",
+        {
+          component: "useProfile",
+          action: "fetchFollowers",
+          userId: user?.id,
+        },
+        err
+      );
     }
   };
 
@@ -127,7 +144,15 @@ export function useProfile(): UseProfileReturn {
         setFollowing(followingData.followings || []);
       }
     } catch (err) {
-      console.error("Error fetching following:", err);
+      logger.error(
+        "Failed to fetch following list",
+        {
+          component: "useProfile",
+          action: "fetchFollowing",
+          userId: user?.id,
+        },
+        err
+      );
     }
   };
 
@@ -144,7 +169,15 @@ export function useProfile(): UseProfileReturn {
 
       return await response.json();
     } catch (err) {
-      console.error("Error fetching profile by ID:", err);
+      logger.error(
+        "Failed to fetch profile by ID",
+        {
+          component: "useProfile",
+          action: "fetchProfileById",
+          userId: userId,
+        },
+        err
+      );
       return null;
     }
   };

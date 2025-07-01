@@ -3,6 +3,7 @@
 import React, { useState, FormEvent, ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { validatePasswordStrength } from "@/utils/security";
 
 export default function Register() {
   const router = useRouter();
@@ -18,12 +19,24 @@ export default function Register() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passwordValidation, setPasswordValidation] = useState({
+    isValid: false,
+    score: 0,
+    feedback: [] as string[],
+  });
+  const [showPasswordHelp, setShowPasswordHelp] = useState(false);
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Validate password in real-time
+    if (name === "password") {
+      const validation = validatePasswordStrength(value);
+      setPasswordValidation(validation);
+    }
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -46,6 +59,15 @@ export default function Register() {
       !formData.dob
     ) {
       setError("Please fill in all required fields");
+      setLoading(false);
+      return;
+    }
+
+    // Validate password strength
+    if (!passwordValidation.isValid) {
+      setError(
+        "Password does not meet security requirements. Please check the requirements below."
+      );
       setLoading(false);
       return;
     }
@@ -173,9 +195,125 @@ export default function Register() {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              onFocus={() => setShowPasswordHelp(true)}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 ${
+                formData.password
+                  ? passwordValidation.isValid
+                    ? "border-green-300"
+                    : "border-red-300"
+                  : "border-gray-300"
+              }`}
               required
             />
+
+            {/* Password strength indicator */}
+            {formData.password && (
+              <div className="mt-2">
+                <div className="flex items-center space-x-2">
+                  <div className="flex-1 bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        passwordValidation.score <= 1
+                          ? "bg-red-500 w-1/4"
+                          : passwordValidation.score <= 2
+                          ? "bg-yellow-500 w-2/4"
+                          : passwordValidation.score <= 3
+                          ? "bg-blue-500 w-3/4"
+                          : "bg-green-500 w-full"
+                      }`}
+                    ></div>
+                  </div>
+                  <span
+                    className={`text-sm font-medium ${
+                      passwordValidation.isValid
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {passwordValidation.isValid ? "Strong" : "Weak"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Password requirements */}
+            {(showPasswordHelp || formData.password) && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Password Requirements:
+                </p>
+                <ul className="text-xs space-y-1">
+                  <li
+                    className={`flex items-center ${
+                      formData.password.length >= 8
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    <span className="mr-2">
+                      {formData.password.length >= 8 ? "✓" : "✗"}
+                    </span>
+                    At least 8 characters long
+                  </li>
+                  <li
+                    className={`flex items-center ${
+                      /[A-Z]/.test(formData.password)
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    <span className="mr-2">
+                      {/[A-Z]/.test(formData.password) ? "✓" : "✗"}
+                    </span>
+                    One uppercase letter (A-Z)
+                  </li>
+                  <li
+                    className={`flex items-center ${
+                      /[a-z]/.test(formData.password)
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    <span className="mr-2">
+                      {/[a-z]/.test(formData.password) ? "✓" : "✗"}
+                    </span>
+                    One lowercase letter (a-z)
+                  </li>
+                  <li
+                    className={`flex items-center ${
+                      /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(
+                        formData.password
+                      )
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    <span className="mr-2">
+                      {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(
+                        formData.password
+                      )
+                        ? "✓"
+                        : "✗"}
+                    </span>
+                    One special character (!@#$%^&*)
+                  </li>
+                  <li
+                    className={`flex items-center ${
+                      !/\s/.test(formData.password) && formData.password
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    <span className="mr-2">
+                      {!/\s/.test(formData.password) && formData.password
+                        ? "✓"
+                        : "✗"}
+                    </span>
+                    No spaces allowed
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
 
           <div>
@@ -250,9 +388,11 @@ export default function Register() {
           <div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !passwordValidation.isValid}
               className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                loading ? "bg-indigo-400" : "bg-indigo-600 hover:bg-indigo-700"
+                loading || !passwordValidation.isValid
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700"
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
             >
               {loading ? "Registering..." : "Register"}

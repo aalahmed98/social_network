@@ -380,10 +380,6 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get form values
 	content := r.FormValue("content")
-	if content == "" {
-		http.Error(w, "Content is required", http.StatusBadRequest)
-		return
-	}
 
 	// Handle file upload
 	var imageURL string
@@ -413,6 +409,12 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to save image", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	// Validate that we have either content or an image
+	if content == "" && imageURL == "" {
+		http.Error(w, "Either content or image is required", http.StatusBadRequest)
+		return
 	}
 
 	// Add comment to the database

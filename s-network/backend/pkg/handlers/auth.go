@@ -17,6 +17,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"s-network/backend/pkg/db/sqlite"
+	"s-network/backend/pkg/utils"
 )
 
 var (
@@ -153,11 +154,79 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		req.AboutMe = r.FormValue("aboutMe")
 		
 		// Handle avatar file if present
-		file, _, err := r.FormFile("avatar")
+		file, header, err := r.FormFile("avatar")
 		if err == nil {
 			defer file.Close()
-			// Handle file upload (for now just store a placeholder)
-			req.Avatar = "avatar_placeholder.jpg"
+			
+			// Validate file type and size
+			allowedTypes := map[string]bool{
+				"image/jpeg": true,
+				"image/jpg":  true,
+				"image/png":  true,
+				"image/gif":  true,
+			}
+			
+			contentType := header.Header.Get("Content-Type")
+			if !allowedTypes[contentType] {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "Invalid file type. Only JPEG, PNG, and GIF are allowed.",
+				})
+				return
+			}
+			
+			// Check file size (max 10MB)
+			const maxSize = 10 * 1024 * 1024 // 10MB
+			if header.Size > maxSize {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "File size too large. Maximum size is 10MB.",
+				})
+				return
+			}
+			
+			// Generate unique filename
+			ext := filepath.Ext(header.Filename)
+			filename := fmt.Sprintf("avatar_%s_%d%s", uuid.New().String(), time.Now().Unix(), ext)
+			
+			// Create uploads directory if it doesn't exist
+			uploadsDir := "./uploads/avatars"
+			if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "Failed to create upload directory",
+				})
+				return
+			}
+			
+			// Save file
+			filePath := filepath.Join(uploadsDir, filename)
+			dst, err := os.Create(filePath)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "Failed to save uploaded file",
+				})
+				return
+			}
+			defer dst.Close()
+			
+			_, err = io.Copy(dst, file)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "Failed to save uploaded file",
+				})
+				return
+			}
+			
+			// Set the avatar path in the request
+			req.Avatar = fmt.Sprintf("uploads/avatars/%s", filename)
 		}
 	} else {
 		// Handle URL-encoded form data
@@ -186,6 +255,18 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "Missing required fields",
+		})
+		return
+	}
+
+	// Validate password strength
+	passwordValidation := utils.ValidatePassword(req.Password)
+	if !passwordValidation.IsValid {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Password does not meet security requirements: " + strings.Join(passwordValidation.Errors, ", "),
+			"password_errors": passwordValidation.Errors,
 		})
 		return
 	}
@@ -684,6 +765,21 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		updateData["avatar"] = uploadPath
 	}
 
+	// Get current user data to check if privacy status is changing
+	currentUser, err := db.GetUserById(userID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Failed to retrieve current profile",
+		})
+		return
+	}
+
+	// Check if user is changing from private to public
+	wasPrivate := !currentUser["is_public"].(bool)
+	becomingPublic := isPublic
+
 	// Update user in database
 	err = db.UpdateUser(userID, updateData)
 	if err != nil {
@@ -693,6 +789,15 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			"error": "Failed to update profile: " + err.Error(),
 		})
 		return
+	}
+
+	// If user changed from private to public, automatically approve all pending follow requests
+	if wasPrivate && becomingPublic {
+		err = db.AutoApproveFollowRequests(int64(userID))
+		if err != nil {
+			// Log the error but don't fail the profile update
+			fmt.Printf("Warning: Failed to auto-approve follow requests for user %d: %v\n", userID, err)
+		}
 	}
 
 	// Get updated user info

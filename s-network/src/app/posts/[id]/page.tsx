@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
+import { useToast } from "@/context/ToastContext";
+import { ConfirmDialog, Avatar } from "@/components/ui";
 
 // Post type definition
 interface Post {
@@ -50,6 +52,7 @@ interface Comment {
 export default function PostDetail() {
   const router = useRouter();
   const params = useParams();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const [post, setPost] = useState<Post | null>(null);
   const [commentContent, setCommentContent] = useState("");
   const [commentImage, setCommentImage] = useState<File | null>(null);
@@ -59,6 +62,10 @@ export default function PostDetail() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [voting, setVoting] = useState(false);
+  const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
+  const [showDeleteCommentConfirm, setShowDeleteCommentConfirm] =
+    useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
 
   // Get post ID from URL params
   const postId = params?.id as string;
@@ -125,10 +132,6 @@ export default function PostDetail() {
 
   // Handle delete post
   const handleDeletePost = async () => {
-    if (!window.confirm("Are you sure you want to delete this post?")) {
-      return;
-    }
-
     setDeleting(true);
 
     try {
@@ -159,33 +162,37 @@ export default function PostDetail() {
         } catch (e) {
           errorMessage = errorText || errorMessage;
         }
-        alert(`Failed to delete post: ${errorMessage}`);
+        showError("Delete Failed", `Failed to delete post: ${errorMessage}`);
         console.error("Failed to delete post:", errorText);
       }
     } catch (error) {
       console.error("Error details:", error);
-      alert("An error occurred while deleting the post.");
+      showError("Delete Error", "An error occurred while deleting the post.");
     } finally {
       setDeleting(false);
     }
   };
 
+  // Show delete comment confirmation
+  const showDeleteComment = (commentId: number) => {
+    setCommentToDelete(commentId);
+    setShowDeleteCommentConfirm(true);
+  };
+
   // Handle delete comment
-  const handleDeleteComment = async (commentId: number) => {
-    if (!window.confirm("Are you sure you want to delete this comment?")) {
-      return;
-    }
+  const handleDeleteComment = async () => {
+    if (!commentToDelete) return;
 
     setDeleting(true);
 
     try {
       console.log(
-        `Attempting to delete comment with ID: ${commentId} from post: ${postId}`
+        `Attempting to delete comment with ID: ${commentToDelete} from post: ${postId}`
       );
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(
-        `${backendUrl}/api/posts/${postId}/comments/${commentId}`,
+        `${backendUrl}/api/posts/${postId}/comments/${commentToDelete}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -220,14 +227,19 @@ export default function PostDetail() {
         } catch (e) {
           errorMessage = errorText || errorMessage;
         }
-        alert(`Failed to delete comment: ${errorMessage}`);
+        showError("Delete Failed", `Failed to delete comment: ${errorMessage}`);
         console.error("Failed to delete comment:", errorText);
       }
     } catch (error) {
       console.error("Error details:", error);
-      alert("An error occurred while deleting the comment.");
+      showError(
+        "Delete Error",
+        "An error occurred while deleting the comment."
+      );
     } finally {
       setDeleting(false);
+      setShowDeleteCommentConfirm(false);
+      setCommentToDelete(null);
     }
   };
 
@@ -244,8 +256,11 @@ export default function PostDetail() {
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!commentContent.trim()) {
-      alert("Please enter a comment.");
+    if (!commentContent.trim() && !commentImage) {
+      showWarning(
+        "Comment Required",
+        "Please enter a comment or add an image."
+      );
       return;
     }
 
@@ -296,12 +311,12 @@ export default function PostDetail() {
         } catch (e) {
           errorMessage = errorText || errorMessage;
         }
-        alert(`Failed to add comment: ${errorMessage}`);
+        showError("Comment Failed", `Failed to add comment: ${errorMessage}`);
         console.error("Failed to add comment:", errorText);
       }
     } catch (error) {
       console.error("Error adding comment:", error);
-      alert("An error occurred while adding the comment.");
+      showError("Comment Error", "An error occurred while adding the comment.");
     } finally {
       setLoading(false);
     }
@@ -466,28 +481,13 @@ export default function PostDetail() {
           <div className="flex items-center px-6 pt-4 pb-2 border-b border-gray-100">
             {/* Author avatar */}
             <div className="flex-shrink-0 mr-3">
-              {post?.author.avatar ? (
-                <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-gray-100">
-                  <Image
-                    src={getImageUrl(post.author.avatar)}
-                    alt={`${post.author.first_name} ${post.author.last_name}`}
-                    width={40}
-                    height={40}
-                    className="object-cover"
-                    onError={(e) =>
-                      createAvatarFallback(
-                        e.target as HTMLImageElement,
-                        post.author.first_name.charAt(0),
-                        "text-sm"
-                      )
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
-                  {post?.author.first_name.charAt(0)}
-                </div>
-              )}
+              <Avatar
+                avatar={post?.author.avatar}
+                firstName={post?.author.first_name}
+                lastName={post?.author.last_name}
+                size="md"
+                className="border-2 border-gray-100"
+              />
             </div>
 
             {/* Post metadata */}
@@ -561,7 +561,7 @@ export default function PostDetail() {
             {/* Delete button for post owner */}
             {post.is_author && (
               <button
-                onClick={handleDeletePost}
+                onClick={() => setShowDeletePostConfirm(true)}
                 disabled={deleting}
                 className="ml-auto text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
                 title="Delete post"
@@ -712,8 +712,16 @@ export default function PostDetail() {
                   onClick={() => {
                     navigator.clipboard
                       .writeText(window.location.href)
-                      .then(() => alert("Link copied to clipboard!"))
-                      .catch((err) => console.error("Failed to copy: ", err));
+                      .then(() =>
+                        showSuccess("Link Copied", "Link copied to clipboard!")
+                      )
+                      .catch((err) => {
+                        console.error("Failed to copy: ", err);
+                        showError(
+                          "Copy Failed",
+                          "Failed to copy link to clipboard"
+                        );
+                      });
                   }}
                   className="hover:text-blue-600 transition-colors font-medium"
                 >
@@ -743,14 +751,22 @@ export default function PostDetail() {
             </svg>
             Add a Comment
           </h2>
-          <form onSubmit={handleAddComment}>
+
+          <form onSubmit={handleAddComment} noValidate>
             <div className="mb-4">
               <textarea
                 className="w-full border border-gray-300 rounded-lg p-3 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                placeholder="What are your thoughts?"
+                placeholder="What are your thoughts? (text, image, or both)"
                 value={commentContent}
                 onChange={(e) => setCommentContent(e.target.value)}
-                required
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if ((commentContent.trim() || commentImage) && !loading) {
+                      handleAddComment(e);
+                    }
+                  }
+                }}
               />
             </div>
 
@@ -794,7 +810,7 @@ export default function PostDetail() {
             )}
 
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex items-center gap-3">
                 <label className="cursor-pointer flex items-center text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-colors">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -822,10 +838,10 @@ export default function PostDetail() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (!commentContent.trim() && !commentImage)}
                 className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
-                  loading
-                    ? "bg-gray-300 text-gray-500"
+                  loading || (!commentContent.trim() && !commentImage)
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                     : "bg-blue-500 hover:bg-blue-600 text-white shadow-sm hover:shadow"
                 }`}
               >
@@ -892,44 +908,19 @@ export default function PostDetail() {
                 >
                   <div className="flex">
                     <div className="flex-shrink-0 mr-3">
-                      {comment.author.avatar ? (
-                        <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-gray-100">
-                          <Image
-                            src={getImageUrl(comment.author.avatar)}
-                            alt={`${comment.author.first_name} ${comment.author.last_name}`}
-                            width={32}
-                            height={32}
-                            className="object-cover"
-                            onError={(e) =>
-                              createAvatarFallback(
-                                e.target as HTMLImageElement,
-                                comment.author.first_name.charAt(0),
-                                "text-xs"
-                              )
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold text-white shadow-sm">
-                          {comment.author.first_name.charAt(0)}
-                        </div>
-                      )}
+                      <Avatar
+                        avatar={comment.author.avatar}
+                        firstName={comment.author.first_name}
+                        lastName={comment.author.last_name}
+                        size="sm"
+                        className="border-2 border-gray-100"
+                      />
                     </div>
                     <div className="flex-1 -mt-0.5">
                       <div className="flex items-center mb-1">
                         <span className="text-sm font-medium text-gray-900 mr-2">
                           {comment.author.first_name} {comment.author.last_name}
                         </span>
-                        {comment.is_author && (
-                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full mr-2">
-                            Author
-                          </span>
-                        )}
-                        {comment.is_post_author && !comment.is_author && (
-                          <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded-full mr-2">
-                            OP
-                          </span>
-                        )}
                         <span className="text-xs text-gray-500">
                           {formatDate(comment.created_at)}
                         </span>
@@ -939,7 +930,7 @@ export default function PostDetail() {
                           comment.is_post_author ||
                           post.is_author) && (
                           <button
-                            onClick={() => handleDeleteComment(comment.id)}
+                            onClick={() => showDeleteComment(comment.id)}
                             disabled={deleting}
                             className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100 transition-colors"
                             title="Delete comment"
@@ -1062,6 +1053,36 @@ export default function PostDetail() {
           )}
         </div>
       </div>
+
+      {/* Delete Post Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeletePostConfirm}
+        onClose={() => setShowDeletePostConfirm(false)}
+        onConfirm={() => {
+          setShowDeletePostConfirm(false);
+          handleDeletePost();
+        }}
+        title="Delete Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        confirmText="Delete Post"
+        variant="danger"
+        isLoading={deleting}
+      />
+
+      {/* Delete Comment Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteCommentConfirm}
+        onClose={() => {
+          setShowDeleteCommentConfirm(false);
+          setCommentToDelete(null);
+        }}
+        onConfirm={handleDeleteComment}
+        title="Delete Comment"
+        message="Are you sure you want to delete this comment? This action cannot be undone."
+        confirmText="Delete Comment"
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }

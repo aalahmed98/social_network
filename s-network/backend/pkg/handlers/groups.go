@@ -1022,6 +1022,20 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	// Send WebSocket notification to group members about new post
+	go func() {
+		notificationMessage := map[string]interface{}{
+			"type":       "post_created",
+			"post_id":    postID,
+			"group_id":   groupID,
+			"created_by": userID,
+		}
+		
+		if err := broadcastToGroupMembers(groupID, notificationMessage); err != nil {
+			log.Printf("Error broadcasting post creation: %v", err)
+		}
+	}()
+
 	log.Printf("CreateGroupPost: Sending response")
 	err = json.NewEncoder(w).Encode(createdPost)
 	if err != nil {
@@ -1099,6 +1113,13 @@ func LikeGroupPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if post exists
+	post, err := db.GetGroupPost(postID, int64(userID))
+	if err != nil || post == nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
+		return
+	}
+
 	// Check if user already liked the post
 	if db.HasUserLikedGroupPost(postID, int64(userID)) {
 		// Unlike the post
@@ -1117,7 +1138,7 @@ func LikeGroupPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get updated post
-	post, err := db.GetGroupPost(postID, int64(userID))
+	post, err = db.GetGroupPost(postID, int64(userID))
 	if err != nil {
 		http.Error(w, "Failed to get updated post", http.StatusInternalServerError)
 		return
@@ -1143,25 +1164,127 @@ func CreateGroupPostComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var requestData struct {
-		Content string `json:"content"`
+	var content string
+	var imagePath string
+
+	// Check if this is a multipart form request (has image)
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "multipart/form-data") {
+		// Parse multipart form
+		err := r.ParseMultipartForm(10 << 20) // 10MB limit
+		if err != nil {
+			http.Error(w, "Failed to parse multipart form", http.StatusBadRequest)
+			return
+		}
+
+		// Get text content (optional)
+		content = r.FormValue("content")
+
+		// Handle image upload
+		file, header, err := r.FormFile("image")
+		if err != nil && err != http.ErrMissingFile {
+			http.Error(w, "Error retrieving image file", http.StatusBadRequest)
+			return
+		}
+
+		if file != nil {
+			defer file.Close()
+
+			// Validate file type
+			allowedTypes := map[string]bool{
+				"image/jpeg": true,
+				"image/jpg":  true,
+				"image/png":  true,
+				"image/gif":  true,
+			}
+
+			// Get file type
+			fileHeader := make([]byte, 512)
+			_, err = file.Read(fileHeader)
+			if err != nil {
+				http.Error(w, "Error reading file", http.StatusBadRequest)
+				return
+			}
+
+			fileType := http.DetectContentType(fileHeader)
+			if !allowedTypes[fileType] {
+				http.Error(w, "Invalid file type. Only JPEG, PNG, and GIF are allowed", http.StatusBadRequest)
+				return
+			}
+
+			// Reset file pointer
+			file.Seek(0, 0)
+
+			// Validate file size (10MB limit)
+			if header.Size > 10*1024*1024 {
+				http.Error(w, "File too large. Maximum size is 10MB", http.StatusBadRequest)
+				return
+			}
+
+			// Generate unique filename
+			ext := filepath.Ext(header.Filename)
+			filename := fmt.Sprintf("comment_%d_%s%s", userID, uuid.New().String(), ext)
+
+			// Create uploads directory if it doesn't exist
+			uploadsDir := "uploads/comments"
+			if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+				log.Printf("Error creating uploads directory: %v", err)
+				http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
+				return
+			}
+
+			// Save file
+			filePath := filepath.Join(uploadsDir, filename)
+			dst, err := os.Create(filePath)
+			if err != nil {
+				log.Printf("Error creating file: %v", err)
+				http.Error(w, "Failed to save file", http.StatusInternalServerError)
+				return
+			}
+			defer dst.Close()
+
+			_, err = io.Copy(dst, file)
+			if err != nil {
+				log.Printf("Error copying file: %v", err)
+				http.Error(w, "Failed to save file", http.StatusInternalServerError)
+				return
+			}
+
+			imagePath = "/" + filePath
+		}
+	} else {
+		// Handle JSON request
+		var requestData struct {
+			Content string `json:"content"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		content = requestData.Content
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	// Validate that we have either content or an image
+	if content == "" && imagePath == "" {
+		http.Error(w, "Either content or image is required", http.StatusBadRequest)
 		return
 	}
 
-	if requestData.Content == "" {
-		http.Error(w, "Content is required", http.StatusBadRequest)
+	// Check if post exists
+	post, err := db.GetGroupPost(postID, int64(userID))
+	if err != nil || post == nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
 		return
 	}
 
 	// Create comment
 	comment := &sqlite.GroupPostComment{
-		PostID:   postID,
-		AuthorID: int64(userID),
-		Content:  requestData.Content,
+		PostID:    postID,
+		AuthorID:  int64(userID),
+		Content:   content,
+		ImagePath: imagePath,
 	}
 
 	commentID, err := db.CreateGroupPostComment(comment)
@@ -1170,19 +1293,31 @@ func CreateGroupPostComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get all comments for the post
-	comments, err := db.GetGroupPostComments(postID)
+	// Get the created comment with user details
+	createdComment, err := db.GetGroupPostComment(commentID, int64(userID))
 	if err != nil {
-		http.Error(w, "Failed to get comments", http.StatusInternalServerError)
+		http.Error(w, "Failed to get created comment", http.StatusInternalServerError)
 		return
 	}
 
+	// Send WebSocket notification to group members about new comment
+	go func() {
+		notificationMessage := map[string]interface{}{
+			"type":       "comment_created",
+			"comment_id": commentID,
+			"post_id":    postID,
+			"group_id":   post.GroupID,
+			"created_by": userID,
+		}
+		
+		if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
+			log.Printf("Error broadcasting comment creation: %v", err)
+		}
+	}()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":       commentID,
-		"comments": comments,
-	})
+	json.NewEncoder(w).Encode(createdComment)
 }
 
 // GetGroupPostComments retrieves all comments for a group post
@@ -1215,43 +1350,22 @@ func GetGroupPostComments(w http.ResponseWriter, r *http.Request) {
 
 // CreateGroupEvent creates a new event in a group
 func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
-	log.Printf("=== CreateGroupEvent Handler Start ===")
-
-	// Check if database is initialized
-	if db == nil {
-		log.Printf("CreateGroupEvent: CRITICAL ERROR - database is nil")
-		http.Error(w, "Database not initialized", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("CreateGroupEvent: Database connection OK")
-
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
-		log.Printf("CreateGroupEvent: getUserIDFromSession error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	log.Printf("CreateGroupEvent: User ID: %d", userID)
 
 	vars := mux.Vars(r)
 	groupIDStr := vars["id"]
-	log.Printf("CreateGroupEvent: Group ID string: %s", groupIDStr)
-
 	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
 	if err != nil {
-		log.Printf("CreateGroupEvent: ParseInt error: %v", err)
 		http.Error(w, "Invalid group ID", http.StatusBadRequest)
 		return
 	}
-	log.Printf("CreateGroupEvent: Parsed Group ID: %d", groupID)
 
 	// Check if user is a member of the group
-	log.Printf("CreateGroupEvent: Checking if user %d is member of group %d", userID, groupID)
-	isMember := db.IsGroupMember(groupID, int64(userID))
-	log.Printf("CreateGroupEvent: Is member check result: %t", isMember)
-
-	if !isMember {
-		log.Printf("CreateGroupEvent: Access denied - user %d is not a member of group %d", userID, groupID)
+	if !db.IsGroupMember(groupID, int64(userID)) {
 		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
@@ -1263,31 +1377,23 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 		Time        string `json:"time"`
 	}
 
-	log.Printf("CreateGroupEvent: Decoding request body")
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-		log.Printf("CreateGroupEvent: JSON decode error: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	log.Printf("CreateGroupEvent: Request data: %+v", requestData)
 
 	if requestData.Title == "" || requestData.Date == "" || requestData.Time == "" {
-		log.Printf("CreateGroupEvent: Missing required fields - Title: %s, Date: %s, Time: %s",
-			requestData.Title, requestData.Date, requestData.Time)
 		http.Error(w, "Title, date, and time are required", http.StatusBadRequest)
 		return
 	}
 
 	// Parse date and time
 	dateTimeStr := requestData.Date + " " + requestData.Time
-	log.Printf("CreateGroupEvent: Parsing datetime string: %s", dateTimeStr)
 	eventDate, err := time.Parse("2006-01-02 15:04", dateTimeStr)
 	if err != nil {
-		log.Printf("CreateGroupEvent: Time parse error: %v", err)
 		http.Error(w, "Invalid date/time format", http.StatusBadRequest)
 		return
 	}
-	log.Printf("CreateGroupEvent: Parsed event date: %v", eventDate)
 
 	// Create event
 	event := &sqlite.GroupEvent{
@@ -1297,49 +1403,81 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 		Description: requestData.Description,
 		EventDate:   eventDate,
 	}
-	log.Printf("CreateGroupEvent: Creating event struct: %+v", event)
 
-	log.Printf("CreateGroupEvent: Calling db.CreateGroupEvent")
 	eventID, err := db.CreateGroupEvent(event)
 	if err != nil {
-		log.Printf("CreateGroupEvent: db.CreateGroupEvent error: %v", err)
-		log.Printf("CreateGroupEvent: Database error details - Type: %T, Message: %s", err, err.Error())
-
-		// Return more specific error information
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":   "Failed to create event",
-			"details": err.Error(),
-		})
+		log.Printf("Error creating event: %v", err)
+		http.Error(w, "Failed to create event", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("CreateGroupEvent: Event created with ID: %d", eventID)
 
 	// Get the created event
-	log.Printf("CreateGroupEvent: Getting created event details")
 	createdEvent, err := db.GetGroupEvent(eventID, int64(userID))
 	if err != nil {
-		log.Printf("CreateGroupEvent: db.GetGroupEvent error: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":   "Failed to retrieve created event",
-			"details": err.Error(),
-		})
+		log.Printf("Error retrieving created event: %v", err)
+		http.Error(w, "Failed to retrieve created event", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("CreateGroupEvent: Retrieved event: %+v", createdEvent)
+
+	// Send notifications to all group members about the new event
+	go func() {
+		members, err := db.GetGroupMembers(groupID)
+		if err != nil {
+			log.Printf("CreateGroupEvent: Failed to get group members for notifications: %v", err)
+			return
+		}
+
+		// Get group details for notification
+		group, err := db.GetGroup(groupID)
+		if err != nil {
+			log.Printf("CreateGroupEvent: Failed to get group details for notifications: %v", err)
+			return
+		}
+
+		// Get creator details
+		creator, err := db.GetUserById(userID)
+		if err != nil {
+			log.Printf("CreateGroupEvent: Failed to get creator details for notifications: %v", err)
+			return
+		}
+
+		// Send notification to all group members except the creator
+		for _, member := range members {
+			if member.UserID != int64(userID) { // Don't notify the creator
+				notification := &sqlite.Notification{
+					ReceiverID:  member.UserID,
+					SenderID:    int64(userID),
+					Type:        "event_created",
+					Content:     fmt.Sprintf("%s %s created a new event \"%s\" in %s", creator["first_name"], creator["last_name"], requestData.Title, group.Name),
+					ReferenceID: eventID,
+					IsRead:      false,
+				}
+
+				_, err := db.CreateNotification(notification)
+				if err != nil {
+					log.Printf("CreateGroupEvent: Failed to create notification for user %d: %v", member.UserID, err)
+				}
+			}
+		}
+	}()
+
+	// Send WebSocket notification to group members about new event
+	go func() {
+		notificationMessage := map[string]interface{}{
+			"type":       "event_created",
+			"event_id":   eventID,
+			"group_id":   groupID,
+			"created_by": userID,
+		}
+		
+		if err := broadcastToGroupMembers(groupID, notificationMessage); err != nil {
+			log.Printf("Error broadcasting event creation: %v", err)
+		}
+	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	log.Printf("CreateGroupEvent: Sending response")
-	err = json.NewEncoder(w).Encode(createdEvent)
-	if err != nil {
-		log.Printf("CreateGroupEvent: json.Encode error: %v", err)
-	}
-
-	log.Printf("=== CreateGroupEvent Handler End ===")
+	json.NewEncoder(w).Encode(createdEvent)
 }
 
 // GetGroupEvents retrieves all events for a group
@@ -1401,8 +1539,15 @@ func RespondToGroupEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if requestData.Response != "going" && requestData.Response != "not_going" {
-		http.Error(w, "Response must be 'going' or 'not_going'", http.StatusBadRequest)
+	if requestData.Response != "going" && requestData.Response != "not_going" && requestData.Response != "remove" {
+		http.Error(w, "Response must be 'going', 'not_going', or 'remove'", http.StatusBadRequest)
+		return
+	}
+
+	// Check if event exists before responding
+	event, err := db.GetGroupEvent(eventID, int64(userID))
+	if err != nil || event == nil {
+		http.Error(w, "Event not found", http.StatusNotFound)
 		return
 	}
 
@@ -1414,7 +1559,7 @@ func RespondToGroupEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get updated event
-	event, err := db.GetGroupEvent(eventID, int64(userID))
+	event, err = db.GetGroupEvent(eventID, int64(userID))
 	if err != nil {
 		http.Error(w, "Failed to get updated event", http.StatusInternalServerError)
 		return
@@ -1422,6 +1567,77 @@ func RespondToGroupEvent(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(event)
+}
+
+// DeleteGroupEvent deletes an event (creator or group admin only)
+func DeleteGroupEvent(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserIDFromSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	eventIDStr := vars["eventId"]
+	eventID, err := strconv.ParseInt(eventIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid event ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get the event to check permissions
+	event, err := db.GetGroupEvent(eventID, int64(userID))
+	if err != nil {
+		http.Error(w, "Failed to get event", http.StatusInternalServerError)
+		return
+	}
+	if event == nil {
+		http.Error(w, "Event not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if user is the event creator
+	if event.CreatorID == int64(userID) {
+		// User is the event creator, allow deletion
+	} else {
+		// Check if user is the group admin/creator
+		group, err := db.GetGroup(event.GroupID)
+		if err != nil || group == nil {
+			http.Error(w, "Group not found", http.StatusNotFound)
+			return
+		}
+		
+		if group.CreatorID != int64(userID) {
+			http.Error(w, "Only event creator or group admin can delete events", http.StatusForbidden)
+			return
+		}
+	}
+
+	// Delete the event
+	err = db.DeleteGroupEvent(eventID)
+	if err != nil {
+		http.Error(w, "Failed to delete event", http.StatusInternalServerError)
+		return
+	}
+
+	// Send WebSocket notification to group members about event deletion
+	go func() {
+		notificationMessage := map[string]interface{}{
+			"type":       "event_deleted",
+			"event_id":   eventID,
+			"group_id":   event.GroupID,
+			"deleted_by": userID,
+		}
+		
+		if err := broadcastToGroupMembers(event.GroupID, notificationMessage); err != nil {
+			log.Printf("Error broadcasting event deletion: %v", err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Event deleted successfully",
+	})
 }
 
 // GetGroupMembers retrieves all members of a group
@@ -1979,10 +2195,130 @@ func DeleteGroupPostComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send WebSocket notification to group members about comment deletion
+	go func() {
+		notificationMessage := map[string]interface{}{
+			"type":       "comment_deleted",
+			"comment_id": commentID,
+			"post_id":    comment.PostID,
+			"group_id":   post.GroupID,
+			"deleted_by": userID,
+		}
+		
+		if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
+			log.Printf("Error broadcasting comment deletion: %v", err)
+		}
+	}()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Comment deleted successfully",
 	})
+}
+
+// DeleteGroupPost deletes a group post (only by post author or group admin)
+func DeleteGroupPost(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserIDFromSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	postIDStr := vars["postId"]
+	postID, err := strconv.ParseInt(postIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid post ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get the post to check ownership and group info
+	post, err := db.GetGroupPost(postID, int64(userID))
+	if err != nil || post == nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
+		return
+	}
+
+	// Check permissions: user must be either the post author or the group admin
+	if post.AuthorID != int64(userID) {
+		// Check if user is the group admin/creator
+		group, err := db.GetGroup(post.GroupID)
+		if err != nil || group == nil {
+			http.Error(w, "Group not found", http.StatusNotFound)
+			return
+		}
+		
+		if group.CreatorID != int64(userID) {
+			http.Error(w, "Access denied: you can only delete your own posts or posts in groups you admin", http.StatusForbidden)
+			return
+		}
+	}
+
+	// Delete the post
+	err = db.DeleteGroupPost(postID)
+	if err != nil {
+		log.Printf("Error deleting group post: %v", err)
+		http.Error(w, "Failed to delete post", http.StatusInternalServerError)
+		return
+	}
+
+	// Send WebSocket notification to group members about post deletion
+	go func() {
+		notificationMessage := map[string]interface{}{
+			"type":       "post_deleted",
+			"post_id":    postID,
+			"group_id":   post.GroupID,
+			"deleted_by": userID,
+		}
+		
+			if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
+		log.Printf("Error broadcasting post deletion: %v", err)
+	}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Post deleted successfully",
+		"post_id": postID,
+		"group_id": post.GroupID,
+	})
+}
+
+// broadcastToGroupMembers sends a WebSocket message to all members of a group
+func broadcastToGroupMembers(groupID int64, message map[string]interface{}) error {
+	if chatHub == nil {
+		return fmt.Errorf("chat hub not initialized")
+	}
+
+	// Get group conversation
+	conversation, err := db.GetGroupConversation(groupID)
+	if err != nil || conversation == nil {
+		log.Printf("No conversation found for group %d", groupID)
+		return nil // Not an error, group might not have chat enabled
+	}
+
+	// Convert message to JSON
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %v", err)
+	}
+
+	// Send to all clients in the group conversation
+	chatHub.mutex.Lock()
+	clients := chatHub.conversations[conversation.ID]
+	sentCount := 0
+	for _, client := range clients {
+		select {
+		case client.Send <- messageBytes:
+			sentCount++
+		default:
+			log.Printf("Failed to send broadcast to client %d", client.UserID)
+		}
+	}
+	chatHub.mutex.Unlock()
+
+	log.Printf("Broadcast sent to %d clients in group %d", sentCount, groupID)
+	return nil
 }
 
 // RegisterGroupRoutes registers all group-related routes
@@ -2021,11 +2357,13 @@ func RegisterGroupRoutes(router *mux.Router) {
 	router.HandleFunc("/groups/posts/{postId}/comments", CreateGroupPostComment).Methods("POST", "OPTIONS")
 	router.HandleFunc("/groups/posts/{postId}/comments/{commentId}/vote", VoteGroupPostComment).Methods("POST", "OPTIONS")
 	router.HandleFunc("/groups/posts/{postId}/comments/{commentId}", DeleteGroupPostComment).Methods("DELETE", "OPTIONS")
+	router.HandleFunc("/groups/posts/{postId}", DeleteGroupPost).Methods("DELETE", "OPTIONS")
 
 	// Group events
 	router.HandleFunc("/groups/{id}/events", GetGroupEvents).Methods("GET", "OPTIONS")
 	router.HandleFunc("/groups/{id}/events", CreateGroupEvent).Methods("POST", "OPTIONS")
 	router.HandleFunc("/groups/events/{eventId}/respond", RespondToGroupEvent).Methods("POST", "OPTIONS")
+	router.HandleFunc("/groups/events/{eventId}", DeleteGroupEvent).Methods("DELETE", "OPTIONS")
 }
 
 // Helper function to delete group invitation notifications

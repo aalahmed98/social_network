@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import Link from 'next/link';
-import { FaHome, FaSyncAlt, FaExclamationTriangle } from 'react-icons/fa';
+import { useEffect } from "react";
+// Link import removed as it's not used
+import { FaHome, FaSyncAlt, FaExclamationTriangle } from "react-icons/fa";
 
 interface GlobalErrorProps {
   error: Error & { digest?: string };
@@ -12,7 +12,7 @@ interface GlobalErrorProps {
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
     // Log the error to an error reporting service
-    console.error('Global application error:', error);
+    console.error("Global application error:", error);
   }, [error]);
 
   return (
@@ -31,12 +31,12 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             {/* Error Description */}
             <div className="mb-8">
               <p className="text-gray-300 mb-4">
-                A critical error occurred that prevented the application from loading properly.
-                This is usually a temporary issue.
+                A critical error occurred that prevented the application from
+                loading properly. This is usually a temporary issue.
               </p>
-              
+
               {/* Error Details (in development) */}
-              {process.env.NODE_ENV === 'development' && (
+              {process.env.NODE_ENV === "development" && (
                 <details className="mt-4 p-4 bg-red-900/30 rounded-lg text-left border border-red-700">
                   <summary className="cursor-pointer text-red-300 font-medium">
                     Technical Details
@@ -62,9 +62,9 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
                 <FaSyncAlt className="mr-2" />
                 Reload Application
               </button>
-              
+
               <button
-                onClick={() => window.location.href = '/'}
+                onClick={() => (window.location.href = "/")}
                 className="inline-flex items-center justify-center w-full px-6 py-3 bg-gray-700 text-white font-medium rounded-lg hover:bg-gray-600 transition-colors"
               >
                 <FaHome className="mr-2" />
@@ -81,4 +81,4 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
       </body>
     </html>
   );
-} 
+}

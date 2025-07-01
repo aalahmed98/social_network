@@ -101,6 +101,7 @@ type GroupPostComment struct {
 	PostID    int64     `json:"post_id"`
 	AuthorID  int64     `json:"author_id"`
 	Content   string    `json:"content"`
+	ImagePath string    `json:"image_path"`
 	VoteCount int       `json:"vote_count"`
 	Upvotes   int       `json:"upvotes"`
 	Downvotes int       `json:"downvotes"`
@@ -813,10 +814,10 @@ func (db *DB) HasUserLikedGroupPost(postID, userID int64) bool {
 
 // CreateGroupPostComment adds a comment to a group post
 func (db *DB) CreateGroupPostComment(comment *GroupPostComment) (int64, error) {
-	query := `INSERT INTO group_post_comments (post_id, author_id, content) 
-	          VALUES (?, ?, ?)`
+	query := `INSERT INTO group_post_comments (post_id, author_id, content, image_path) 
+	          VALUES (?, ?, ?, ?)`
 
-	result, err := db.Exec(query, comment.PostID, comment.AuthorID, comment.Content)
+	result, err := db.Exec(query, comment.PostID, comment.AuthorID, comment.Content, comment.ImagePath)
 	if err != nil {
 		return 0, err
 	}
@@ -835,7 +836,7 @@ func (db *DB) CreateGroupPostComment(comment *GroupPostComment) (int64, error) {
 
 // GetGroupPostComments retrieves all comments for a group post
 func (db *DB) GetGroupPostComments(postID int64) ([]*GroupPostComment, error) {
-	query := `SELECT gpc.id, gpc.post_id, gpc.author_id, gpc.content, gpc.vote_count, gpc.upvotes, gpc.downvotes, gpc.created_at,
+	query := `SELECT gpc.id, gpc.post_id, gpc.author_id, gpc.content, gpc.image_path, gpc.vote_count, gpc.upvotes, gpc.downvotes, gpc.created_at,
 	                 u.first_name || ' ' || u.last_name as author_name, u.avatar as author_avatar
 	          FROM group_post_comments gpc
 	          JOIN users u ON gpc.author_id = u.id
@@ -852,7 +853,7 @@ func (db *DB) GetGroupPostComments(postID int64) ([]*GroupPostComment, error) {
 	for rows.Next() {
 		var comment GroupPostComment
 		if err := rows.Scan(
-			&comment.ID, &comment.PostID, &comment.AuthorID, &comment.Content, &comment.VoteCount, &comment.Upvotes, &comment.Downvotes, &comment.CreatedAt,
+			&comment.ID, &comment.PostID, &comment.AuthorID, &comment.Content, &comment.ImagePath, &comment.VoteCount, &comment.Upvotes, &comment.Downvotes, &comment.CreatedAt,
 			&comment.AuthorName, &comment.AuthorAvatar,
 		); err != nil {
 			return nil, err
@@ -883,7 +884,7 @@ func (db *DB) GetGroupPostCommentsWithUserVotes(postID int64, userID int64) ([]*
 
 // GetGroupPostComment retrieves a specific group post comment by ID
 func (db *DB) GetGroupPostComment(commentID int64, userID int64) (*GroupPostComment, error) {
-	query := `SELECT gpc.id, gpc.post_id, gpc.author_id, gpc.content, gpc.vote_count, gpc.upvotes, gpc.downvotes, gpc.created_at,
+	query := `SELECT gpc.id, gpc.post_id, gpc.author_id, gpc.content, gpc.image_path, gpc.vote_count, gpc.upvotes, gpc.downvotes, gpc.created_at,
 	                 u.first_name || ' ' || u.last_name as author_name, u.avatar as author_avatar
 	          FROM group_post_comments gpc
 	          JOIN users u ON gpc.author_id = u.id
@@ -891,7 +892,7 @@ func (db *DB) GetGroupPostComment(commentID int64, userID int64) (*GroupPostComm
 
 	var comment GroupPostComment
 	err := db.QueryRow(query, commentID).Scan(
-		&comment.ID, &comment.PostID, &comment.AuthorID, &comment.Content, &comment.VoteCount, &comment.Upvotes, &comment.Downvotes, &comment.CreatedAt,
+		&comment.ID, &comment.PostID, &comment.AuthorID, &comment.Content, &comment.ImagePath, &comment.VoteCount, &comment.Upvotes, &comment.Downvotes, &comment.CreatedAt,
 		&comment.AuthorName, &comment.AuthorAvatar,
 	)
 
@@ -1040,12 +1041,19 @@ func (db *DB) GetGroupEvent(eventID int64, userID int64) (*GroupEvent, error) {
 	return &event, nil
 }
 
-// RespondToEvent adds or updates a user's response to an event
+// RespondToEvent adds, updates, or removes a user's response to an event
 func (db *DB) RespondToEvent(eventID, userID int64, response string) error {
 	// Check if response already exists
 	var existingResponse string
 	query := `SELECT response FROM group_event_responses WHERE event_id = ? AND user_id = ?`
 	err := db.QueryRow(query, eventID, userID).Scan(&existingResponse)
+
+	if response == "remove" {
+		// Remove the user's response
+		deleteQuery := `DELETE FROM group_event_responses WHERE event_id = ? AND user_id = ?`
+		_, err = db.Exec(deleteQuery, eventID, userID)
+		return err
+	}
 
 	switch err {
 	case sql.ErrNoRows:
@@ -1110,6 +1118,31 @@ func (db *DB) GetEventResponses(eventID int64) ([]*GroupEventResponse, error) {
 	}
 
 	return responses, rows.Err()
+}
+
+// DeleteGroupEvent deletes an event and all its responses
+func (db *DB) DeleteGroupEvent(eventID int64) error {
+	// Start a transaction to ensure both event and responses are deleted
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete all event responses first
+	_, err = tx.Exec(`DELETE FROM group_event_responses WHERE event_id = ?`, eventID)
+	if err != nil {
+		return err
+	}
+
+	// Delete the event itself
+	_, err = tx.Exec(`DELETE FROM group_events WHERE id = ?`, eventID)
+	if err != nil {
+		return err
+	}
+
+	// Commit the transaction
+	return tx.Commit()
 }
 
 // Group Chat Functions
@@ -1222,4 +1255,42 @@ func (db *DB) RemoveMemberFromGroupConversation(groupID, userID int64) error {
 	query := `DELETE FROM chat_participants WHERE conversation_id = ? AND user_id = ?`
 	_, err = db.Exec(query, conv.ID, userID)
 	return err
+}
+
+// DeleteGroupPost removes a group post and all its associated data
+func (db *DB) DeleteGroupPost(postID int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Delete all comments associated with the post
+	_, err = tx.Exec("DELETE FROM group_post_comments WHERE post_id = ?", postID)
+	if err != nil {
+		return fmt.Errorf("failed to delete post comments: %v", err)
+	}
+
+	// Delete all likes/votes associated with the post
+	_, err = tx.Exec("DELETE FROM group_post_likes WHERE post_id = ?", postID)
+	if err != nil {
+		return fmt.Errorf("failed to delete post likes: %v", err)
+	}
+
+	// Delete the post itself
+	result, err := tx.Exec("DELETE FROM group_posts WHERE id = ?", postID)
+	if err != nil {
+		return fmt.Errorf("failed to delete post: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("post not found")
+	}
+
+	return tx.Commit()
 }

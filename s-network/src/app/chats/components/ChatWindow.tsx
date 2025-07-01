@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Chat } from "../page";
 import { IoSend, IoInformationCircle, IoAddCircle } from "react-icons/io5";
 import {
@@ -10,11 +11,31 @@ import {
   FaTimes,
   FaUserPlus,
   FaTrash,
+  FaCog,
+  FaEdit,
+  FaArrowLeft,
 } from "react-icons/fa";
-import { getImageUrl, createAvatarFallback } from "@/utils/image";
+import { getImageUrl } from "@/utils/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import Avatar, { ChatAvatar } from "@/components/ui/Avatar";
+
+interface Comment {
+  id: string | number;
+  content: string;
+  image_path?: string; // Backend field name
+  imagePath?: string; // Frontend field name for compatibility
+  authorId: number;
+  authorName: string;
+  authorAvatar?: string;
+  created_at?: string; // Backend field name
+  createdAt?: string; // Frontend field name for compatibility
+  upvotes: number;
+  downvotes: number;
+  userVote: number;
+}
 
 interface Message {
   id: string;
@@ -39,27 +60,42 @@ interface Message {
     title?: string;
     description?: string;
     eventDate?: string;
-    goingCount?: number;
-    notGoingCount?: number;
-    userResponse?: string;
+    going_count?: number;
+    not_going_count?: number;
+    user_response?: string | null;
   };
 }
 
 interface ChatWindowProps {
   chat: Chat;
-  onConversationUpdated: () => Promise<void>;
+  onConversationUpdated: (lastMessage?: string) => Promise<void>;
+  isMobile?: boolean;
+  isTablet?: boolean;
+  deviceType?: "phone" | "tablet" | "desktop";
+  onBackClick?: () => void;
 }
 
 export default function ChatWindow({
   chat,
   onConversationUpdated,
+  isMobile = false,
+  isTablet = false,
+  deviceType = "desktop",
+  onBackClick,
 }: ChatWindowProps) {
   const { isLoggedIn } = useAuth();
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
+  const [currentUser, setCurrentUser] = useState<{
+    id: number | string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    avatar?: string;
+  } | null>(null);
 
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [showInfo, setShowInfo] = useState(false);
+  const [showChatInfo, setShowChatInfo] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
   const [showEventsPanel, setShowEventsPanel] = useState(chat.isGroup || false);
@@ -73,8 +109,36 @@ export default function ChatWindow({
     content: "",
     image: null as File | null,
   });
-  const [groupEvents, setGroupEvents] = useState<any[]>([]);
-  const [groupPosts, setGroupPosts] = useState<any[]>([]);
+  const [groupEvents, setGroupEvents] = useState<
+    {
+      id: number;
+      title: string;
+      description: string;
+      eventDate: string;
+      createdAt: string;
+      creator_id: number;
+      going_count?: number;
+      not_going_count?: number;
+      user_response?: string | null;
+    }[]
+  >([]);
+  const [groupPosts, setGroupPosts] = useState<
+    {
+      id: number;
+      content: string;
+      imagePath?: string;
+      createdAt: string;
+      authorId: number;
+      authorName: string;
+      authorAvatar?: string;
+      likesCount?: number;
+      commentsCount?: number;
+      isLiked?: boolean;
+      upvotes?: number;
+      downvotes?: number;
+      userVote?: number;
+    }[]
+  >([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,10 +148,32 @@ export default function ChatWindow({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [groupInfo, setGroupInfo] = useState<any>(null);
+  const [groupInfo, setGroupInfo] = useState<{
+    id: number;
+    name: string;
+    description?: string;
+    creatorId: number;
+    members: {
+      id: number;
+      firstName: string;
+      lastName: string;
+      email?: string;
+      avatar?: string;
+    }[];
+    memberCount: number;
+    isPrivate: boolean;
+  } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-  const [followingUsers, setFollowingUsers] = useState<any[]>([]);
+  const [followingUsers, setFollowingUsers] = useState<
+    {
+      id: number;
+      firstName: string;
+      lastName: string;
+      email?: string;
+      avatar?: string;
+    }[]
+  >([]);
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
   const [isLoadingFollowing, setIsLoadingFollowing] = useState(false);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
@@ -95,12 +181,26 @@ export default function ChatWindow({
   // Group post interactions
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
-  const [postComments, setPostComments] = useState<any[]>([]);
+  const [postComments, setPostComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
+  const [newCommentImage, setNewCommentImage] = useState<File | null>(null);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to create toast notifications
+  const createNotification = (message: string, color: string) => {
+    const notification = document.createElement("div");
+    notification.className = `fixed top-4 right-4 ${color} text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
+    }, 3000);
+  };
 
   // Fetch current user information
   useEffect(() => {
@@ -157,25 +257,6 @@ export default function ChatWindow({
     )}/ws/chat`;
 
     console.log("🔌 Attempting WebSocket connection to:", wsUrl);
-    console.log("🌐 Current location:", window.location.href);
-    console.log("🔒 Protocol:", window.location.protocol);
-
-    // Test server connectivity first
-    const testServerConnectivity = async () => {
-      try {
-        const testResponse = await fetch(`${backendUrl}/health`, {
-          credentials: "include",
-        });
-        console.log(
-          "🏥 Server health check:",
-          testResponse.ok ? "✅ OK" : "❌ Failed"
-        );
-      } catch (error) {
-        console.error("🏥 Server health check failed:", error);
-      }
-    };
-
-    testServerConnectivity();
 
     const newSocket = new WebSocket(wsUrl);
 
@@ -222,8 +303,28 @@ export default function ChatWindow({
           data.conversation_id.toString() === chat.id
         ) {
           // Format incoming message
+          const isMeCheck1 = String(data.sender_id) === String(currentUser?.id);
+          const isMeCheck2 = Number(data.sender_id) === Number(currentUser?.id);
+          const finalIsMe = isMeCheck1 || isMeCheck2;
+
+          console.log("📨 Formatting incoming WebSocket message:", {
+            messageId: data.id,
+            senderIdFromWS: data.sender_id,
+            senderIdType: typeof data.sender_id,
+            currentUserId: currentUser?.id,
+            currentUserIdType: typeof currentUser?.id,
+            stringComparison: `"${String(data.sender_id)}" === "${String(
+              currentUser?.id
+            )}" = ${isMeCheck1}`,
+            numberComparison: `${Number(data.sender_id)} === ${Number(
+              currentUser?.id
+            )} = ${isMeCheck2}`,
+            finalIsMe,
+            content: data.content?.substring(0, 50),
+          });
+
           const newMessage: Message = {
-            id: data.id || Date.now().toString(),
+            id: data.id || `ws-${Date.now()}`,
             senderId: data.sender_id,
             senderName: data.sender_name || "Unknown",
             senderAvatar: data.sender_avatar,
@@ -232,44 +333,391 @@ export default function ChatWindow({
               data.timestamp || new Date().toISOString()
             ),
             timestampRaw: data.timestamp,
-            isMe:
-              String(data.sender_id) === String(currentUser?.id) ||
-              Number(data.sender_id) === Number(currentUser?.id),
+            isMe: finalIsMe,
           };
 
+          // Smart message merging - avoid full refresh and handle optimistic updates
           setMessages((prev) => {
-            // Check for duplicates by ID and content+timestamp combination
+            console.log("🔄 Processing WebSocket message:", {
+              newMessage: {
+                id: newMessage.id,
+                senderId: newMessage.senderId,
+                content: newMessage.content?.substring(0, 50),
+                isMe: newMessage.isMe,
+              },
+              currentUser: currentUser?.id,
+              existingMessageCount: prev.length,
+            });
+
+            // Check for duplicates ONLY by message ID (true network duplicates)
+            // Don't block repeated message content - users should be able to send the same message multiple times
             const isDuplicate = prev.some(
-              (existingMsg) =>
-                existingMsg.id === newMessage.id ||
-                (existingMsg.senderId === newMessage.senderId &&
-                  existingMsg.content === newMessage.content &&
-                  Math.abs(
-                    new Date(
-                      existingMsg.timestampRaw || existingMsg.timestamp
-                    ).getTime() -
-                      new Date(
-                        newMessage.timestampRaw || newMessage.timestamp
-                      ).getTime()
-                  ) < 5000) // Within 5 seconds
+              (existingMsg) => existingMsg.id === newMessage.id
             );
 
             if (isDuplicate) {
+              console.log(
+                "🔄 Skipping duplicate message (same ID):",
+                newMessage.id
+              );
               return prev; // Don't add duplicate
             }
 
-            // Add new message and sort all messages by timestamp
-            const allMessages = [...prev, newMessage];
-            allMessages.sort((a, b) => {
-              const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
-              const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
-              return timeA - timeB;
+            // Check if this is the real message for an optimistic message
+            const optimisticMessages = prev.filter(
+              (msg) => typeof msg.id === "string" && msg.id.startsWith("temp-")
+            );
+
+            console.log("🔍 Looking for optimistic message to replace:", {
+              optimisticCount: optimisticMessages.length,
+              optimisticMessages: optimisticMessages.map((msg) => ({
+                id: msg.id,
+                content: msg.content?.substring(0, 30),
+                senderId: msg.senderId,
+                senderIdType: typeof msg.senderId,
+                isMe: msg.isMe,
+              })),
+              newMessageContent: newMessage.content?.substring(0, 30),
+              newMessageSenderId: newMessage.senderId,
+              newMessageSenderIdType: typeof newMessage.senderId,
+              newMessageIsMe: newMessage.isMe,
             });
-            return allMessages;
+
+            // Try to find matching optimistic message with detailed debugging
+            let optimisticIndex = -1;
+            for (let i = 0; i < prev.length; i++) {
+              const msg = prev[i];
+              if (typeof msg.id === "string" && msg.id.startsWith("temp-")) {
+                const contentMatch = msg.content === newMessage.content;
+                const senderIdMatch =
+                  String(msg.senderId) === String(newMessage.senderId);
+
+                console.log(`🔍 Checking optimistic message ${i}:`, {
+                  optimisticId: msg.id,
+                  optimisticContent: `"${msg.content?.substring(0, 30)}"`,
+                  optimisticSenderId: msg.senderId,
+                  optimisticSenderIdStr: `"${String(msg.senderId)}"`,
+                  newMessageContent: `"${newMessage.content?.substring(
+                    0,
+                    30
+                  )}"`,
+                  newMessageSenderId: newMessage.senderId,
+                  newMessageSenderIdStr: `"${String(newMessage.senderId)}"`,
+                  contentMatch,
+                  senderIdMatch,
+                  WILL_MATCH: contentMatch && senderIdMatch,
+                });
+
+                if (contentMatch && senderIdMatch) {
+                  optimisticIndex = i;
+                  console.log(`🎯 PERFECT MATCH FOUND at index ${i}!`);
+                  break;
+                }
+              }
+            }
+
+            if (optimisticIndex !== -1) {
+              console.log(
+                "✅ Found optimistic message to replace at index:",
+                optimisticIndex
+              );
+
+              // Clear the timeout for the optimistic message
+              const optimisticMsg = prev[optimisticIndex] as any;
+              if (optimisticMsg.timeoutId) {
+                clearTimeout(optimisticMsg.timeoutId);
+                console.log(
+                  "✅ Cleared optimistic message timeout - real message arrived"
+                );
+              }
+
+              // Replace optimistic message with real message
+              const updatedMessages = [...prev];
+              updatedMessages[optimisticIndex] = newMessage;
+              console.log(
+                "✅ Successfully replaced optimistic message with real message"
+              );
+              return updatedMessages;
+            }
+
+            console.log(
+              "❌ NO OPTIMISTIC MESSAGE MATCH FOUND - Adding as new message (this may cause issues)"
+            );
+
+            // Add new message efficiently
+            const updatedMessages = [...prev, newMessage];
+
+            // Only sort if needed (if new message is not at the end chronologically)
+            const needsSort =
+              prev.length > 0 &&
+              new Date(
+                newMessage.timestampRaw || newMessage.timestamp
+              ).getTime() <
+                new Date(
+                  prev[prev.length - 1].timestampRaw ||
+                    prev[prev.length - 1].timestamp
+                ).getTime();
+
+            if (needsSort) {
+              updatedMessages.sort((a, b) => {
+                const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+                const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+                return timeA - timeB;
+              });
+            }
+
+            console.log(
+              "✅ Message processing complete, total messages:",
+              updatedMessages.length
+            );
+            return updatedMessages;
           });
 
           // Notify parent component that there's a new message (updates conversation list)
-          onConversationUpdated();
+          onConversationUpdated(newMessage.content);
+        } else if (
+          data.type === "post_deleted" &&
+          data.group_id === chat.groupId
+        ) {
+          // Handle post deletion notification - optimistic update
+          console.log("🗑️ Post deleted:", data.post_id);
+
+          // Remove from posts list without refresh
+          setGroupPosts((prevPosts) =>
+            prevPosts.filter((post) => post.id !== data.post_id)
+          );
+
+          // Remove from messages if it's displayed there
+          setMessages((prevMessages) =>
+            prevMessages.filter((msg) => msg.id !== `post-${data.post_id}`)
+          );
+
+          // Close comments modal if it's open for this post
+          if (selectedPostId === data.post_id) {
+            setShowCommentsModal(false);
+            setSelectedPostId(null);
+            setPostComments([]);
+            createNotification("This post was deleted", "bg-red-500");
+          }
+
+          // Show notification to user (if they weren't the one who deleted it)
+          if (data.deleted_by !== currentUser?.id) {
+            createNotification("🗑️ A post was deleted", "bg-red-500");
+          }
+        } else if (
+          data.type === "event_deleted" &&
+          data.group_id === chat.groupId
+        ) {
+          // Handle event deletion notification - optimistic update
+          console.log("🗑️ Event deleted:", data.event_id);
+
+          // Remove from events list without refresh
+          setGroupEvents((prevEvents) =>
+            prevEvents.filter((event) => event.id !== data.event_id)
+          );
+
+          // Show notification to user (if they weren't the one who deleted it)
+          if (data.deleted_by !== currentUser?.id) {
+            createNotification("🗑️ An event was deleted", "bg-red-500");
+          }
+        } else if (
+          data.type === "comment_deleted" &&
+          data.group_id === chat.groupId
+        ) {
+          // Handle comment deletion notification - comprehensive update
+          console.log(
+            "🗑️ Comment deleted:",
+            data.comment_id,
+            "from post:",
+            data.post_id
+          );
+
+          // Remove comment from current view if comments modal is open
+          if (showCommentsModal && selectedPostId === data.post_id) {
+            setPostComments((prevComments) =>
+              prevComments.filter((comment) => comment.id !== data.comment_id)
+            );
+          }
+
+          // Immediately update comment count for all affected posts (optimistic + server sync)
+          if (data.post_id) {
+            // Optimistic count update first
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id === `post-${data.post_id}` && msg.postData) {
+                  return {
+                    ...msg,
+                    postData: {
+                      ...msg.postData,
+                      commentsCount: Math.max(
+                        0,
+                        (msg.postData.commentsCount || 0) - 1
+                      ),
+                    },
+                  };
+                }
+                return msg;
+              })
+            );
+
+            setGroupPosts((prev) =>
+              prev.map((post) => {
+                if (post.id === data.post_id) {
+                  return {
+                    ...post,
+                    commentsCount: Math.max(0, (post.commentsCount || 0) - 1),
+                  };
+                }
+                return post;
+              })
+            );
+
+            // Then sync with server for accuracy
+            setTimeout(() => loadPostCommentsCount(data.post_id), 100);
+          }
+
+          // Show notification to user (if they weren't the one who deleted it)
+          if (data.deleted_by !== currentUser?.id) {
+            createNotification("🗑️ A comment was deleted", "bg-orange-500");
+          }
+        } else if (
+          data.type === "post_created" &&
+          data.group_id === chat.groupId
+        ) {
+          // Handle new post notification - add to state without full refresh
+          console.log("📝 New post created:", data.post_id);
+
+          if (data.created_by !== currentUser?.id) {
+            // Add new post optimistically instead of full refresh
+            if (data.post_data) {
+              const newPost = {
+                id: data.post_id,
+                content: data.post_data.content,
+                createdAt:
+                  data.post_data.created_at || new Date().toISOString(),
+                authorId: data.post_data.author_id,
+                authorName: data.post_data.author_name,
+                authorAvatar: data.post_data.author_avatar,
+                imagePath: data.post_data.image_path,
+                upvotes: data.post_data.upvotes || 0,
+                downvotes: data.post_data.downvotes || 0,
+                userVote: data.post_data.user_vote || 0,
+                commentsCount: 0,
+              };
+
+              setGroupPosts((prevPosts) => [newPost, ...prevPosts]);
+
+              // Add post to messages
+              const postMessage: Message = {
+                id: `post-${data.post_id}`,
+                senderId: data.post_data.author_id,
+                senderName: data.post_data.author_name,
+                senderAvatar: data.post_data.author_avatar,
+                content: data.post_data.content,
+                timestamp: formatTimestamp(data.post_data.created_at),
+                timestampRaw: data.post_data.created_at,
+                isMe: false,
+                type: "post" as const,
+                postData: {
+                  imagePath: data.post_data.image_path,
+                  upvotes: data.post_data.upvotes || 0,
+                  downvotes: data.post_data.downvotes || 0,
+                  userVote: data.post_data.user_vote || 0,
+                  commentsCount: 0,
+                },
+              };
+
+              setMessages((prev) =>
+                [...prev, postMessage].sort((a, b) => {
+                  const timeA = new Date(
+                    a.timestampRaw || a.timestamp
+                  ).getTime();
+                  const timeB = new Date(
+                    b.timestampRaw || b.timestamp
+                  ).getTime();
+                  return timeA - timeB;
+                })
+              );
+            }
+
+            createNotification("📝 New post added", "bg-green-500");
+          }
+        } else if (
+          data.type === "event_created" &&
+          data.group_id === chat.groupId
+        ) {
+          // Handle new event notification - add to state without full refresh
+          console.log("📅 New event created:", data.event_id);
+
+          if (data.created_by !== currentUser?.id) {
+            // Add new event optimistically instead of full refresh
+            if (data.event_data) {
+              setGroupEvents((prevEvents) => [data.event_data, ...prevEvents]);
+            }
+
+            createNotification("📅 New event added", "bg-blue-500");
+          }
+        } else if (
+          data.type === "comment_created" &&
+          data.group_id === chat.groupId
+        ) {
+          // Handle new comment notification - comprehensive update
+          console.log(
+            "💬 New comment created:",
+            data.comment_id,
+            "on post:",
+            data.post_id
+          );
+
+          if (data.created_by !== currentUser?.id) {
+            // Update comments if the modal is open for this post
+            if (
+              showCommentsModal &&
+              selectedPostId === data.post_id &&
+              data.comment_data
+            ) {
+              setPostComments((prevComments) => [
+                ...prevComments,
+                data.comment_data,
+              ]);
+            }
+
+            // Immediately update comment count for all affected posts (optimistic + server sync)
+            if (data.post_id) {
+              // Optimistic count update first
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id === `post-${data.post_id}` && msg.postData) {
+                    return {
+                      ...msg,
+                      postData: {
+                        ...msg.postData,
+                        commentsCount: (msg.postData.commentsCount || 0) + 1,
+                      },
+                    };
+                  }
+                  return msg;
+                })
+              );
+
+              setGroupPosts((prev) =>
+                prev.map((post) => {
+                  if (post.id === data.post_id) {
+                    return {
+                      ...post,
+                      commentsCount: (post.commentsCount || 0) + 1,
+                    };
+                  }
+                  return post;
+                })
+              );
+
+              // Then sync with server for accuracy
+              setTimeout(() => loadPostCommentsCount(data.post_id), 100);
+            }
+
+            createNotification("💬 New comment added", "bg-purple-500");
+          }
         }
       } catch (error) {
         console.error("❌ Error parsing WebSocket message:", error);
@@ -277,11 +725,7 @@ export default function ChatWindow({
     };
 
     newSocket.onerror = (error) => {
-      console.error("❌ WebSocket error occurred:");
-      console.error("- Error event:", error);
-      console.error("- Socket state:", newSocket.readyState);
-      console.error("- Socket URL:", wsUrl);
-
+      console.error("❌ WebSocket error occurred:", error);
       setError(
         "WebSocket connection failed. Check if the server is running. Falling back to polling."
       );
@@ -291,9 +735,6 @@ export default function ChatWindow({
 
     newSocket.onclose = (event) => {
       console.log("🔌 WebSocket connection closed");
-      console.log("- Code:", event.code);
-      console.log("- Reason:", event.reason);
-      console.log("- Clean close:", event.wasClean);
       wsConnected = false;
       clearTimeout(connectionTimeout);
 
@@ -307,25 +748,30 @@ export default function ChatWindow({
 
     setSocket(newSocket);
 
-    // Polling fallback if WebSocket fails
+    // Polling fallback - much less aggressive
     let pollingInterval: NodeJS.Timeout | null = null;
 
     const startPolling = () => {
       // Only start polling if WebSocket is not connected
       if (!wsConnected) {
         console.log("🔄 Starting polling fallback");
-        // Poll every 3 seconds
-        pollingInterval = setInterval(fetchLatestMessages, 3000);
+        // Poll every 10 seconds (reduced from 3 seconds)
+        pollingInterval = setInterval(() => {
+          // Only poll if window is visible to reduce unnecessary requests
+          if (!document.hidden) {
+            fetchLatestMessagesQuietly();
+          }
+        }, 10000);
       }
     };
 
-    // Give WebSocket 3 seconds to connect, then start polling if needed
+    // Give WebSocket 5 seconds to connect, then start polling if needed
     const pollingTimeout = setTimeout(() => {
       if (!wsConnected) {
         console.log("⏰ WebSocket didn't connect in time, starting polling");
         startPolling();
       }
-    }, 3000);
+    }, 5000);
 
     // Cleanup function
     return () => {
@@ -341,21 +787,92 @@ export default function ChatWindow({
     };
   }, [chat.id, currentUser]);
 
-  // Function to fetch the latest messages
-  const fetchLatestMessages = async () => {
+  // Quiet polling function that doesn't cause visible refreshes
+  const fetchLatestMessagesQuietly = async () => {
     if (!chat.id || !currentUser) return;
 
     try {
-      // Use the same combined function for consistency
-      await fetchMessagesWithPosts();
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      // Only fetch new messages, not all messages
+      const lastMessage = messages[messages.length - 1];
+      const lastTimestamp = lastMessage?.timestampRaw || lastMessage?.timestamp;
+
+      const response = await fetch(
+        `${backendUrl}/api/conversations/${chat.id}/messages${
+          lastTimestamp ? `?after=${encodeURIComponent(lastTimestamp)}` : ""
+        }`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.messages && data.messages.length > 0) {
+          const newMessages = data.messages.map((msg: any) => ({
+            id: `msg-${msg.id}`,
+            senderId: msg.sender.id,
+            senderName: `${msg.sender.first_name} ${msg.sender.last_name}`,
+            senderAvatar: msg.sender.avatar,
+            content: msg.content,
+            timestamp: formatTimestamp(msg.created_at),
+            timestampRaw: msg.created_at,
+            isMe:
+              String(msg.sender.id) === String(currentUser?.id) ||
+              Number(msg.sender.id) === Number(currentUser?.id),
+            type: "message" as const,
+          }));
+
+          // Only add truly new messages
+          setMessages((prev) => {
+            const filteredNewMessages = newMessages.filter(
+              (newMsg: Message) =>
+                !prev.some((existingMsg) => existingMsg.id === newMsg.id)
+            );
+
+            if (filteredNewMessages.length === 0) return prev;
+
+            return [...prev, ...filteredNewMessages].sort((a, b) => {
+              const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+              const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+              return timeA - timeB;
+            });
+          });
+
+          // Update conversation list only if there are new messages
+          if (newMessages.length > 0) {
+            const lastMessage = newMessages[newMessages.length - 1];
+            onConversationUpdated(lastMessage.content);
+          }
+        }
+      }
     } catch (error) {
-      console.error("Error polling messages:", error);
+      console.error("Error polling messages quietly:", error);
     }
   };
 
-  // Function to fetch and combine messages with posts for group chats
-  const fetchMessagesWithPosts = async () => {
+  // Function to fetch the latest messages (deprecated - replaced by fetchLatestMessagesQuietly)
+  const fetchLatestMessages = async () => {
     if (!chat.id || !currentUser) return;
+    // This function is now deprecated to prevent visible refreshes
+    console.warn(
+      "fetchLatestMessages is deprecated - using quiet polling instead"
+    );
+  };
+
+  // Function to fetch and combine messages with posts for group chats (initial load only)
+  const fetchMessagesWithPosts = async (isInitialLoad = false) => {
+    if (!chat.id || !currentUser) return;
+
+    // Only do full reload on initial load, otherwise use smart merging
+    if (!isInitialLoad && messages.length > 0) {
+      console.log("Skipping full reload - use smart updates instead");
+      return;
+    }
 
     try {
       const backendUrl =
@@ -463,13 +980,14 @@ export default function ChatWindow({
 
   // Load messages for the current conversation
   useEffect(() => {
-    const fetchMessages = async () => {
+    const loadInitialData = async () => {
+      if (!chat.id) return;
+
       setIsLoading(true);
       setError(null);
 
       try {
-        // Use the new function that combines messages and posts for group chats
-        await fetchMessagesWithPosts();
+        await fetchMessagesWithPosts(true); // Mark as initial load
       } catch (error) {
         console.error("Error fetching messages:", error);
         setError("Failed to load messages. Please try again later.");
@@ -478,9 +996,7 @@ export default function ChatWindow({
       }
     };
 
-    if (chat.id) {
-      fetchMessages();
-    }
+    loadInitialData();
   }, [chat.id, currentUser]);
 
   // Scroll to bottom when messages change
@@ -536,30 +1052,104 @@ export default function ChatWindow({
     const messageContent = message.trim();
     setMessage("");
 
-    console.log(
-      "💬 Attempting to send message:",
-      messageContent.substring(0, 50)
-    );
-    console.log("🔌 WebSocket state:", socket?.readyState);
-    console.log("🔗 Socket available:", !!socket);
+    // Generate unique ID with more precision to avoid collisions in rapid sending
+    const optimisticId = `temp-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
 
-    // Try to send via WebSocket first
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      console.log("📤 Sending via WebSocket");
-      const messageData = {
-        type: "chat_message",
-        conversation_id: parseInt(chat.id),
-        content: messageContent,
-      };
-      socket.send(JSON.stringify(messageData));
-      console.log("✅ Message sent via WebSocket");
-      // Don't add optimistic message for WebSocket - wait for server response
-      return;
-    }
+    // Add optimistic message immediately for better UX
+    const optimisticMessage: Message = {
+      id: optimisticId,
+      senderId: currentUser?.id || 0,
+      senderName:
+        currentUser?.firstName && currentUser?.lastName
+          ? `${currentUser.firstName} ${currentUser.lastName}`
+          : "You",
+      senderAvatar: currentUser?.avatar,
+      content: messageContent,
+      timestamp: formatTimestamp(new Date().toISOString()),
+      timestampRaw: new Date().toISOString(),
+      isMe: true,
+      type: "message" as const,
+    };
 
-    console.log("📤 Sending via REST API (WebSocket not available)");
-    // Fallback to REST API
+    console.log("📤 Creating optimistic message (SPAM-SAFE):", {
+      id: optimisticMessage.id,
+      senderId: optimisticMessage.senderId,
+      content: `"${optimisticMessage.content}"`,
+      currentUserId: currentUser?.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Add optimistic message to UI immediately
+    setMessages((prev) => {
+      console.log(
+        "➕ Adding optimistic message to UI, total messages will be:",
+        prev.length + 1,
+        `Content: "${messageContent}"`
+      );
+      return [...prev, optimisticMessage];
+    });
+
     try {
+      // Try to send via WebSocket first
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        console.log("📤 Sending via WebSocket");
+        const messageData = {
+          type: "chat_message",
+          conversation_id: parseInt(chat.id),
+          content: messageContent,
+        };
+        socket.send(JSON.stringify(messageData));
+        console.log("✅ Message sent via WebSocket");
+
+        // Set a timeout to convert optimistic message to permanent if WebSocket doesn't echo back
+        const optimisticTimeout = setTimeout(() => {
+          setMessages((prev) => {
+            // Check if the optimistic message still exists
+            const optimisticIndex = prev.findIndex(
+              (msg) => msg.id === optimisticMessage.id
+            );
+
+            if (optimisticIndex !== -1) {
+              console.log(
+                "⏰ TIMEOUT: Converting optimistic message to permanent (WebSocket didn't echo back)",
+                {
+                  optimisticId: optimisticMessage.id,
+                  optimisticContent: optimisticMessage.content?.substring(
+                    0,
+                    30
+                  ),
+                  optimisticSenderId: optimisticMessage.senderId,
+                  totalMessages: prev.length,
+                }
+              );
+
+              // Convert optimistic message to permanent by changing its ID
+              const updatedMessages = [...prev];
+              updatedMessages[optimisticIndex] = {
+                ...optimisticMessage,
+                id: `permanent-${Date.now()}`, // Change from temp- to permanent-
+              };
+
+              return updatedMessages;
+            }
+
+            console.log(
+              "✅ TIMEOUT: Optimistic message was already replaced, no action needed"
+            );
+            return prev;
+          });
+        }, 3000); // Give 3 seconds for WebSocket echo, then make it permanent
+
+        // Store the timeout ID for potential cleanup
+        (optimisticMessage as any).timeoutId = optimisticTimeout;
+
+        return;
+      }
+
+      console.log("📤 Sending via REST API (WebSocket not available)");
+      // Fallback to REST API
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(
@@ -575,37 +1165,36 @@ export default function ChatWindow({
           }),
         }
       );
+
       if (!response.ok) {
         throw new Error(`Failed to send message: ${response.status}`);
       }
+
+      const result = await response.json();
       console.log("✅ Message sent via REST API");
-      // For REST API, add optimistic message and refresh
-      const tempMessage = {
-        id: `temp-${Date.now()}`,
-        senderId: currentUser?.id || 0,
-        senderName:
-          currentUser?.firstName && currentUser?.lastName
-            ? `${currentUser.firstName} ${currentUser.lastName}`
-            : "You",
-        content: messageContent,
-        timestamp: formatTimestamp(new Date().toISOString()),
-        timestampRaw: new Date().toISOString(),
-        isMe: true,
-      };
-      setMessages((prev) => {
-        // Add new message and sort all messages by timestamp
-        const allMessages = [...prev, tempMessage];
-        allMessages.sort((a, b) => {
-          const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
-          const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
-          return timeA - timeB;
-        });
-        return allMessages;
-      });
-      setTimeout(fetchLatestMessages, 500);
+
+      // Replace optimistic message with real message
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === optimisticMessage.id
+            ? {
+                ...optimisticMessage,
+                id: `msg-${result.id || Date.now()}`,
+              }
+            : msg
+        )
+      );
+
+      // Update conversation list
+      onConversationUpdated(messageContent);
     } catch (error) {
       console.error("❌ Error sending message via API:", error);
       setError("Failed to send message. Please try again.");
+
+      // Remove optimistic message on error
+      setMessages((prev) =>
+        prev.filter((msg) => msg.id !== optimisticMessage.id)
+      );
     }
   };
 
@@ -619,12 +1208,45 @@ export default function ChatWindow({
   const handleCreateEvent = async () => {
     if (!newEvent.title.trim() || !newEvent.date || !newEvent.time) return;
 
+    // Validate date and time
+    if (!newEvent.date || !newEvent.time) {
+      showWarning(
+        "Event Details Required",
+        "Please select both date and time for the event."
+      );
+      return;
+    }
+
+    // Create date object and validate it's in the future
+    const selectedDate = new Date(newEvent.date + "T" + newEvent.time);
+    const currentDate = new Date();
+
+    // Check if the date is valid
+    if (isNaN(selectedDate.getTime())) {
+      showError("Invalid Date", "Please enter a valid date and time.");
+      return;
+    }
+
+    // Check if the selected date is in the future (at least 1 minute from now)
+    if (selectedDate <= currentDate) {
+      showWarning(
+        "Future Date Required",
+        "Event must be scheduled in the future. Please select a later date and time."
+      );
+      return;
+    }
+
     // Debug logging
     console.log("=== CREATE EVENT DEBUG ===");
     console.log("chat object:", JSON.stringify(chat, null, 2));
     console.log("chat.groupId:", chat.groupId);
     console.log("chat.isGroup:", chat.isGroup);
     console.log("typeof chat.groupId:", typeof chat.groupId);
+    console.log("Raw date:", newEvent.date);
+    console.log("Raw time:", newEvent.time);
+    console.log("Selected date:", selectedDate);
+    console.log("Current date:", currentDate);
+    console.log("Is future date:", selectedDate >= currentDate);
     console.log("========================");
 
     try {
@@ -636,17 +1258,22 @@ export default function ChatWindow({
       if (!groupIdForEvent) {
         console.error("No group ID available for creating event");
         console.error("Full chat object:", chat);
-        alert(
-          "Error: Cannot create event. Please refresh the page and try again."
+        showError(
+          "Event Creation Error",
+          "Cannot create event. Please refresh the page and try again."
         );
         return;
       }
 
+      // Format date and time for backend
+      const formattedDate = selectedDate.toISOString().split("T")[0]; // YYYY-MM-DD
+      const formattedTime = newEvent.time; // Keep user's time input as-is
+
       const requestData = {
         title: newEvent.title.trim(),
         description: newEvent.description.trim(),
-        date: newEvent.date,
-        time: newEvent.time,
+        date: formattedDate,
+        time: formattedTime,
       };
 
       console.log(
@@ -654,6 +1281,8 @@ export default function ChatWindow({
         `${backendUrl}/api/groups/${groupIdForEvent}/events`
       );
       console.log("Request data:", requestData);
+      console.log("Formatted date:", formattedDate);
+      console.log("Formatted time:", formattedTime);
 
       const response = await fetch(
         `${backendUrl}/api/groups/${groupIdForEvent}/events`,
@@ -669,21 +1298,14 @@ export default function ChatWindow({
       console.log("Response headers:", [...response.headers.entries()]);
 
       if (response.ok) {
+        const createdEvent = await response.json();
+        console.log("Event created successfully:", createdEvent);
+
+        // Add the new event to the list immediately (optimistic update)
+        setGroupEvents((prevEvents) => [...prevEvents, createdEvent]);
+
         setShowEventModal(false);
         setNewEvent({ title: "", description: "", date: "", time: "" });
-        // Reload events to show the new one
-        loadGroupEvents();
-
-        // Send event creation notification to chat
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(
-            JSON.stringify({
-              type: "chat_message",
-              conversation_id: parseInt(chat.id),
-              content: `📅 Event created: "${newEvent.title}" on ${newEvent.date} at ${newEvent.time}`,
-            })
-          );
-        }
       } else {
         const errorText = await response.text();
         console.error("Failed to create event - Status:", response.status);
@@ -700,11 +1322,15 @@ export default function ChatWindow({
           }
         }
 
-        alert(`Error creating event: ${errorMessage}`);
+        showError(
+          "Event Creation Failed",
+          `Error creating event: ${errorMessage}`
+        );
       }
     } catch (error) {
       console.error("Error creating event:", error);
-      alert(
+      showError(
+        "Network Error",
         "Network error creating event. Please check your connection and try again."
       );
     }
@@ -735,6 +1361,10 @@ export default function ChatWindow({
 
       if (response.ok) {
         const data = await response.json();
+        console.log("=== EVENTS API RESPONSE ===");
+        console.log("Events data:", data);
+        console.log("Events array:", data.events);
+        console.log("============================");
         setGroupEvents(data.events || []);
       }
     } catch (error) {
@@ -830,8 +1460,9 @@ export default function ChatWindow({
       if (!groupIdForPost) {
         console.error("No group ID available for creating post");
         console.error("Full chat object:", chat);
-        alert(
-          "Error: Cannot create post. Please refresh the page and try again."
+        showError(
+          "Post Creation Error",
+          "Cannot create post. Please refresh the page and try again."
         );
         return;
       }
@@ -867,27 +1498,59 @@ export default function ChatWindow({
         setNewPost({ content: "", image: null });
 
         // Show success message
-        alert("Post created successfully! 🎉");
+        createNotification("Post created successfully! 🎉", "bg-green-500");
 
-        // Reload posts to show the new one in the sidebar
-        loadGroupPosts();
+        // Get the response data
+        const responseData = await response.json();
 
-        // Reload messages with posts to show the new post in the chat
-        await fetchMessagesWithPosts();
+        // Add new post optimistically to local state
+        const createdPost = {
+          id: responseData.id || Date.now(),
+          content: newPost.content,
+          createdAt: new Date().toISOString(),
+          authorId: Number(currentUser?.id) || 0,
+          authorName:
+            currentUser?.firstName && currentUser?.lastName
+              ? `${currentUser.firstName} ${currentUser.lastName}`
+              : "You",
+          authorAvatar: currentUser?.avatar,
+          imagePath: responseData.image_path,
+          upvotes: 0,
+          downvotes: 0,
+          userVote: 0,
+          commentsCount: 0,
+        };
 
-        // Send post creation notification to chat
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(
-            JSON.stringify({
-              type: "chat_message",
-              conversation_id: parseInt(chat.id),
-              content: `📝 New group post: "${newPost.content.substring(
-                0,
-                50
-              )}${newPost.content.length > 50 ? "..." : ""}"`,
-            })
-          );
-        }
+        // Add to posts list
+        setGroupPosts((prev) => [createdPost, ...prev]);
+
+        // Add to messages
+        const postMessage: Message = {
+          id: `post-${createdPost.id}`,
+          senderId: createdPost.authorId,
+          senderName: createdPost.authorName,
+          senderAvatar: createdPost.authorAvatar,
+          content: createdPost.content,
+          timestamp: formatTimestamp(createdPost.createdAt),
+          timestampRaw: createdPost.createdAt,
+          isMe: true,
+          type: "post" as const,
+          postData: {
+            imagePath: createdPost.imagePath,
+            upvotes: createdPost.upvotes,
+            downvotes: createdPost.downvotes,
+            userVote: createdPost.userVote,
+            commentsCount: createdPost.commentsCount,
+          },
+        };
+
+        setMessages((prev) =>
+          [...prev, postMessage].sort((a, b) => {
+            const timeA = new Date(a.timestampRaw || a.timestamp).getTime();
+            const timeB = new Date(b.timestampRaw || b.timestamp).getTime();
+            return timeA - timeB;
+          })
+        );
       } else {
         const errorText = await response.text();
         console.error("Failed to create post - Status:", response.status);
@@ -904,13 +1567,112 @@ export default function ChatWindow({
           }
         }
 
-        alert(`Error creating post: ${errorMessage}`);
+        showError(
+          "Post Creation Failed",
+          `Error creating post: ${errorMessage}`
+        );
       }
     } catch (error) {
       console.error("Error creating post:", error);
-      alert(
+      showError(
+        "Network Error",
         "Network error creating post. Please check your connection and try again."
       );
+    }
+  };
+
+  const handleDeletePost = async (postId: number) => {
+    if (!confirm("Are you sure you want to delete this post?")) {
+      return;
+    }
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const res = await fetch(`${backendUrl}/api/groups/posts/${postId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        console.log("Post deleted successfully");
+
+        // Remove post from the list immediately (optimistic update)
+        setGroupPosts((prevPosts) =>
+          prevPosts.filter((post) => post.id !== postId)
+        );
+        setMessages((prevMessages) =>
+          prevMessages.filter((msg) => msg.id !== `post-${postId}`)
+        );
+
+        // Send WebSocket notification to other users in the group
+        if (socket && socket.readyState === WebSocket.OPEN && chat.groupId) {
+          socket.send(
+            JSON.stringify({
+              type: "post_deleted",
+              group_id: chat.groupId,
+              post_id: postId,
+              deleted_by: currentUser?.id,
+            })
+          );
+        }
+      } else {
+        const errorText = await res.text();
+        console.error("Failed to delete post:", res.status, errorText);
+        showError("Delete Failed", "Failed to delete post. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting post:", error);
+      showError(
+        "Delete Error",
+        "Error deleting post. Please check your connection."
+      );
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: number) => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      console.log("Deleting event:", eventId);
+
+      const res = await fetch(`${backendUrl}/api/groups/events/${eventId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        console.log("Event deleted successfully");
+
+        // Remove event from the list immediately (optimistic update)
+        setGroupEvents((prevEvents) =>
+          prevEvents.filter((event) => event.id !== eventId)
+        );
+
+        // Send WebSocket notification to other users in the group
+        if (socket && socket.readyState === WebSocket.OPEN && chat.groupId) {
+          socket.send(
+            JSON.stringify({
+              type: "event_deleted",
+              group_id: chat.groupId,
+              event_id: eventId,
+              deleted_by: currentUser?.id,
+            })
+          );
+        }
+      } else {
+        const errorText = await res.text();
+        console.error("Failed to delete event:", res.status, errorText);
+        showError(
+          "Delete Failed",
+          "Failed to delete event. You may not have permission."
+        );
+      }
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      showError("Delete Error", "Error deleting event. Please try again.");
     }
   };
 
@@ -921,21 +1683,139 @@ export default function ChatWindow({
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      console.log("Responding to event:", eventId, "with response:", response);
+
+      // Optimistic update - update UI immediately
+      setGroupEvents((prevEvents) =>
+        prevEvents.map((event) => {
+          if (event.id === eventId) {
+            const updatedEvent = { ...event };
+
+            // Update user response
+            const oldResponse = updatedEvent.user_response;
+            // Only update user_response if we're not removing the vote
+            if (!(oldResponse === response)) {
+              updatedEvent.user_response = response;
+            }
+
+            // Update counts optimistically - handle single choice logic
+            if (oldResponse && oldResponse !== response) {
+              // User is changing their vote - remove old vote first
+              if (oldResponse === "going") {
+                updatedEvent.going_count = Math.max(
+                  0,
+                  (updatedEvent.going_count || 0) - 1
+                );
+              } else if (oldResponse === "not_going") {
+                updatedEvent.not_going_count = Math.max(
+                  0,
+                  (updatedEvent.not_going_count || 0) - 1
+                );
+              }
+
+              // Add new vote
+              if (response === "going") {
+                updatedEvent.going_count = (updatedEvent.going_count || 0) + 1;
+              } else if (response === "not_going") {
+                updatedEvent.not_going_count =
+                  (updatedEvent.not_going_count || 0) + 1;
+              }
+            } else if (oldResponse === response) {
+              // User is clicking the same option - remove their vote (toggle off)
+              if (response === "going") {
+                updatedEvent.going_count = Math.max(
+                  0,
+                  (updatedEvent.going_count || 0) - 1
+                );
+              } else if (response === "not_going") {
+                updatedEvent.not_going_count = Math.max(
+                  0,
+                  (updatedEvent.not_going_count || 0) - 1
+                );
+              }
+              updatedEvent.user_response = null; // Remove their response
+            } else if (!oldResponse) {
+              // User is voting for the first time
+              if (response === "going") {
+                updatedEvent.going_count = (updatedEvent.going_count || 0) + 1;
+              } else if (response === "not_going") {
+                updatedEvent.not_going_count =
+                  (updatedEvent.not_going_count || 0) + 1;
+              }
+            }
+
+            return updatedEvent;
+          }
+          return event;
+        })
+      );
+
+      // Determine what to send to backend
+      const eventToUpdate = groupEvents.find((e) => e.id === eventId);
+      const actualResponse =
+        eventToUpdate?.user_response === response ? "remove" : response;
+
       const res = await fetch(
         `${backendUrl}/api/groups/events/${eventId}/respond`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ response }),
+          body: JSON.stringify({ response: actualResponse }),
           credentials: "include",
         }
       );
 
       if (res.ok) {
-        loadGroupEvents();
+        const updatedEvent = await res.json();
+        console.log(
+          "Response successful, updating with server data:",
+          updatedEvent
+        );
+
+        // Update with actual server data
+        setGroupEvents((prevEvents) =>
+          prevEvents.map((event) =>
+            event.id === eventId ? updatedEvent : event
+          )
+        );
+      } else {
+        const errorText = await res.text();
+        console.error("Failed to respond to event:", res.status, errorText);
+
+        // Check if it's a "not found" error (event was deleted)
+        if (res.status === 404) {
+          // Remove the event from local state
+          setGroupEvents((prevEvents) =>
+            prevEvents.filter((event) => event.id !== eventId)
+          );
+
+          // Notify other users via WebSocket
+          if (socket && socket.readyState === WebSocket.OPEN && chat.groupId) {
+            socket.send(
+              JSON.stringify({
+                type: "content_error",
+                content_type: "event",
+                content_id: eventId,
+                group_id: chat.groupId,
+                message: "Event no longer exists",
+              })
+            );
+          }
+
+          showError(
+            "Event Unavailable",
+            "This event has been deleted and is no longer available."
+          );
+        } else {
+          // Revert optimistic update on other errors
+          await loadGroupEvents();
+        }
       }
     } catch (error) {
       console.error("Error responding to event:", error);
+      // Revert optimistic update on error
+      await loadGroupEvents();
     }
   };
 
@@ -994,7 +1874,7 @@ export default function ChatWindow({
 
     if (!chat.isGroup) {
       console.error("❌ Cannot delete: Not a group chat");
-      alert("This is not a group chat. Cannot delete.");
+      showWarning("Not a Group", "This is not a group chat. Cannot delete.");
       return;
     }
 
@@ -1070,13 +1950,9 @@ export default function ChatWindow({
         console.error("- chat.id:", chat.id);
         console.error("- chat.isGroup:", chat.isGroup);
 
-        alert(
-          "Error: Cannot determine group ID for deletion.\n\n" +
-            "Please try the following:\n" +
-            "1. Refresh the page and try again\n" +
-            "2. Close and reopen this group chat\n" +
-            "3. If the problem persists, contact support\n\n" +
-            `Debug info: conversation=${chat.id}, groupId=${chat.groupId}, groupInfo=${groupInfo?.id}`
+        showError(
+          "Cannot Delete Group",
+          "Cannot determine group ID for deletion. Please refresh the page and try again."
         );
         return;
       }
@@ -1086,8 +1962,9 @@ export default function ChatWindow({
         console.error(
           `❌ Group ID ${groupIdToDelete} seems invalid (outside reasonable range)`
         );
-        alert(
-          `Error: Invalid group ID (${groupIdToDelete}). Please refresh and try again.`
+        showError(
+          "Invalid Group ID",
+          `Invalid group ID (${groupIdToDelete}). Please refresh and try again.`
         );
         return;
       }
@@ -1114,7 +1991,7 @@ export default function ChatWindow({
         setShowDeleteConfirm(false);
         // Refresh the conversation list and go back to no selected chat
         onConversationUpdated();
-        alert("Group deleted successfully!");
+        showSuccess("Group Deleted", "Group deleted successfully!");
         // Redirect to chats page
         window.location.href = "/chats";
       } else {
@@ -1132,25 +2009,23 @@ export default function ChatWindow({
         console.error(`❌ Delete failed with status: ${response.status}`);
 
         if (response.status === 404) {
-          alert(
-            `Error: Group not found (404)\n\n` +
-              `The group may have already been deleted or the ID is incorrect.\n` +
-              `Group ID used: ${groupIdToDelete}\n\n` +
-              `Please refresh the page to see the updated group list.`
+          showError(
+            "Group Not Found",
+            "The group may have already been deleted or the ID is incorrect. Please refresh the page to see the updated group list."
           );
         } else if (response.status === 403) {
-          alert(
-            `Error: Permission denied (403)\n\n` +
-              `You don't have permission to delete this group.\n` +
-              `Only the group creator can delete the group.`
+          showError(
+            "Permission Denied",
+            "You don't have permission to delete this group. Only the group creator can delete the group."
           );
         } else {
-          alert(`Error: ${errorMessage}`);
+          showError("Delete Failed", `Error: ${errorMessage}`);
         }
       }
     } catch (error) {
       console.error("❌ Network error deleting group:", error);
-      alert(
+      showError(
+        "Network Error",
         "Network error occurred while deleting group. Please check your connection and try again."
       );
     } finally {
@@ -1163,7 +2038,7 @@ export default function ChatWindow({
 
     if (!chat.isGroup) {
       console.error("❌ Cannot leave: Not a group chat");
-      alert("This is not a group chat. Cannot leave.");
+      showWarning("Not a Group", "This is not a group chat. Cannot leave.");
       return;
     }
 
@@ -1191,8 +2066,9 @@ export default function ChatWindow({
       }
 
       if (!groupIdToLeave || groupIdToLeave <= 0) {
-        alert(
-          "Error: Cannot determine group ID for leaving. Please refresh and try again."
+        showError(
+          "Cannot Leave Group",
+          "Cannot determine group ID for leaving. Please refresh and try again."
         );
         return;
       }
@@ -1211,7 +2087,7 @@ export default function ChatWindow({
         console.log("✅ Left group successfully");
         setShowLeaveConfirm(false);
         onConversationUpdated();
-        alert("You have left the group successfully!");
+        showSuccess("Left Group", "You have left the group successfully!");
         // Redirect to chats page
         window.location.href = "/chats";
       } else {
@@ -1226,11 +2102,12 @@ export default function ChatWindow({
         }
 
         console.error(`❌ Leave failed with status: ${response.status}`);
-        alert(`Error: ${errorMessage}`);
+        showError("Leave Failed", `Error: ${errorMessage}`);
       }
     } catch (error) {
       console.error("❌ Network error leaving group:", error);
-      alert(
+      showError(
+        "Network Error",
         "Network error occurred while leaving group. Please check your connection and try again."
       );
     } finally {
@@ -1257,7 +2134,7 @@ export default function ChatWindow({
         // Filter out users who are already members of the group
         const currentMemberIds = new Set(chat.members?.map((m) => m.id) || []);
         const availableUsers = (data.following || []).filter(
-          (user) => !currentMemberIds.has(user.id)
+          (user: { id: number }) => !currentMemberIds.has(user.id)
         );
         setFollowingUsers(availableUsers);
       }
@@ -1286,7 +2163,7 @@ export default function ChatWindow({
 
       const groupIdToUse = chat.groupId || groupInfo?.id;
       if (!groupIdToUse) {
-        alert("Error: Cannot determine group ID");
+        showError("Group ID Error", "Cannot determine group ID");
         return;
       }
 
@@ -1303,37 +2180,48 @@ export default function ChatWindow({
       );
 
       if (response.ok) {
-        // Immediately update local chat state to add the new members to UI
+        // For private groups, don't add members to UI immediately since they need to accept invitations
+        // For public groups, add members immediately
         if (chat.members && selectedMembers.length > 0) {
-          // Get the user details for the newly added members from followingUsers
-          const newMembers = followingUsers
-            .filter((user) => selectedMembers.includes(user.id))
-            .map((user) => ({
-              id: user.id,
-              name: `${user.first_name} ${user.last_name}`,
-              avatar: user.avatar,
-            }));
+          const responseData = await response.json();
 
-          // Add the new members to the existing members array
-          chat.members = [...chat.members, ...newMembers];
+          // Only add to UI if they were actually added as members (not just invited)
+          if (
+            responseData.added_members &&
+            responseData.added_members.length > 0
+          ) {
+            // Get the user details for the newly added members from followingUsers
+            const newMembers = followingUsers
+              .filter((user) => responseData.added_members.includes(user.id))
+              .map((user) => ({
+                id: user.id,
+                name: `${user.firstName} ${user.lastName}`,
+                avatar: user.avatar,
+                status: "active",
+              }));
+
+            // Add the new members to the existing members array
+            chat.members = [...chat.members, ...newMembers];
+          }
         }
 
         setShowAddMemberModal(false);
         setSelectedMembers([]);
         // Also refresh conversation data to ensure consistency
         onConversationUpdated();
-        alert(
-          `Successfully added ${selectedMembers.length} member${
-            selectedMembers.length !== 1 ? "s" : ""
-          } to the group!`
-        );
+
+        // Show appropriate success message based on response
+        showSuccess("Members Added", "Operation completed successfully!");
       } else {
         const errorData = await response.json();
-        alert(`Failed to add members: ${errorData.message || "Unknown error"}`);
+        showError(
+          "Add Members Failed",
+          `Failed to add members: ${errorData.message || "Unknown error"}`
+        );
       }
     } catch (error) {
       console.error("Error adding members:", error);
-      alert("Error adding members. Please try again.");
+      showError("Add Members Error", "Error adding members. Please try again.");
     } finally {
       setIsAddingMembers(false);
     }
@@ -1353,7 +2241,7 @@ export default function ChatWindow({
 
       const groupIdToUse = chat.groupId || groupInfo?.id;
       if (!groupIdToUse) {
-        alert("Error: Cannot determine group ID");
+        showError("Group ID Error", "Cannot determine group ID");
         return;
       }
 
@@ -1373,16 +2261,23 @@ export default function ChatWindow({
 
         // Also refresh conversation data to ensure consistency
         onConversationUpdated();
-        alert(`${member.name} has been removed from the group.`);
+        showSuccess(
+          "Member Removed",
+          `${member.name} has been removed from the group.`
+        );
       } else {
         const errorData = await response.json();
-        alert(
+        showError(
+          "Remove Member Failed",
           `Failed to remove member: ${errorData.message || "Unknown error"}`
         );
       }
     } catch (error) {
       console.error("Error removing member:", error);
-      alert("Error removing member. Please try again.");
+      showError(
+        "Remove Member Error",
+        "Error removing member. Please try again."
+      );
     }
   };
 
@@ -1419,6 +2314,74 @@ export default function ChatWindow({
   // Group post interaction functions
   const handleVoteGroupPost = async (postId: number, voteType: number) => {
     try {
+      // Optimistic update first - both in messages and posts
+      const updateVote = (
+        currentVote: number,
+        upvotes: number,
+        downvotes: number
+      ) => {
+        const newVote = currentVote === voteType ? 0 : voteType;
+
+        let newUpvotes = upvotes;
+        let newDownvotes = downvotes;
+
+        // Remove old vote
+        if (currentVote === 1) newUpvotes--;
+        if (currentVote === -1) newDownvotes--;
+
+        // Add new vote
+        if (newVote === 1) newUpvotes++;
+        if (newVote === -1) newDownvotes++;
+
+        return { newVote, newUpvotes, newDownvotes };
+      };
+
+      // Update messages optimistically
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id === `post-${postId}` && msg.postData) {
+            const { newVote, newUpvotes, newDownvotes } = updateVote(
+              msg.postData.userVote || 0,
+              msg.postData.upvotes || 0,
+              msg.postData.downvotes || 0
+            );
+
+            return {
+              ...msg,
+              postData: {
+                ...msg.postData,
+                upvotes: newUpvotes,
+                downvotes: newDownvotes,
+                userVote: newVote,
+              },
+            };
+          }
+          return msg;
+        })
+      );
+
+      // Update posts list optimistically
+      setGroupPosts((prev) =>
+        prev.map((post) => {
+          if (post.id === postId) {
+            const { newVote, newUpvotes, newDownvotes } = updateVote(
+              post.userVote || 0,
+              post.upvotes || 0,
+              post.downvotes || 0
+            );
+
+            return {
+              ...post,
+              user_vote: newVote,
+              upvotes: newUpvotes,
+              downvotes: newDownvotes,
+            };
+          }
+          return post;
+        })
+      );
+
+      // Send request to server
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
@@ -1435,7 +2398,7 @@ export default function ChatWindow({
       if (response.ok) {
         const data = await response.json();
 
-        // Update the message state to reflect the vote change
+        // Update with server response (in case of any discrepancies)
         setMessages((prev) =>
           prev.map((msg) => {
             if (msg.id === `post-${postId}` && msg.postData) {
@@ -1453,13 +2416,44 @@ export default function ChatWindow({
           })
         );
 
-        // Also update the group posts in the sidebar
-        loadGroupPosts();
+        setGroupPosts((prev) =>
+          prev.map((post) => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                user_vote: data.user_vote,
+                upvotes: data.upvotes,
+                downvotes: data.downvotes,
+              };
+            }
+            return post;
+          })
+        );
+
+        console.log(`Post ${postId} vote updated successfully`);
       } else {
         console.error("Failed to vote on post");
+
+        // Check if it's a "not found" error (post was deleted)
+        if (response.status === 404) {
+          // Remove the post from local state
+          setGroupPosts((prevPosts) =>
+            prevPosts.filter((post) => post.id !== postId)
+          );
+          setMessages((prevMessages) =>
+            prevMessages.filter((msg) => msg.id !== `post-${postId}`)
+          );
+
+          createNotification("This post was deleted", "bg-red-500");
+        } else {
+          // Revert optimistic update on other errors
+          // We could implement a more sophisticated revert here
+          console.warn("Vote failed, optimistic update may be incorrect");
+        }
       }
     } catch (error) {
       console.error("Error voting on post:", error);
+      // Could revert optimistic update here
     }
   };
 
@@ -1496,32 +2490,171 @@ export default function ChatWindow({
     setSelectedPostId(postId);
     setShowCommentsModal(true);
     loadPostComments(postId);
+    // Also sync the comment count when opening the modal
+    loadPostCommentsCount(postId);
   };
 
   const handleSubmitComment = async () => {
-    if (!newComment.trim() || !selectedPostId) return;
+    // Allow either text content or image, but require at least one
+    if ((!newComment.trim() && !newCommentImage) || !selectedPostId) return;
 
+    const commentContent = newComment.trim();
+    const commentImage = newCommentImage;
+    setNewComment("");
+    setNewCommentImage(null);
     setIsSubmittingComment(true);
+
+    // Generate unique optimistic ID
+    const optimisticId = `temp-comment-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    // Optimistic comment addition
+    const optimisticComment: Comment = {
+      id: optimisticId, // Use string ID for optimistic comment
+      content: commentContent || "",
+      image_path: commentImage ? URL.createObjectURL(commentImage) : undefined, // Backend field name
+      imagePath: commentImage ? URL.createObjectURL(commentImage) : undefined, // Compatibility
+      authorId: Number(currentUser?.id) || 0,
+      authorName:
+        currentUser?.firstName && currentUser?.lastName
+          ? `${currentUser.firstName} ${currentUser.lastName}`
+          : "You",
+      authorAvatar: currentUser?.avatar,
+      created_at: new Date().toISOString(), // Use backend field name
+      createdAt: new Date().toISOString(), // Also keep frontend format for compatibility
+      upvotes: 0,
+      downvotes: 0,
+      userVote: 0,
+    };
+
+    console.log("🔄 Creating optimistic comment:", {
+      id: optimisticId,
+      content: commentContent || "[image only]",
+      hasImage: !!commentImage,
+      imagePath: optimisticComment.imagePath,
+    });
+
+    // Add comment optimistically to the UI
+    setPostComments((prev) => [...prev, optimisticComment]);
+
+    // Update comment count optimistically
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === `post-${selectedPostId}` && msg.postData) {
+          return {
+            ...msg,
+            postData: {
+              ...msg.postData,
+              commentsCount: (msg.postData.commentsCount || 0) + 1,
+            },
+          };
+        }
+        return msg;
+      })
+    );
+
+    setGroupPosts((prev) =>
+      prev.map((post) => {
+        if (post.id === selectedPostId) {
+          return {
+            ...post,
+            commentsCount: (post.commentsCount || 0) + 1,
+          };
+        }
+        return post;
+      })
+    );
+
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
-      const response = await fetch(
-        `${backendUrl}/api/groups/posts/${selectedPostId}/comments`,
-        {
+      // Use FormData if there's an image, otherwise use JSON
+      let requestOptions: RequestInit;
+
+      if (commentImage) {
+        const formData = new FormData();
+        if (commentContent) formData.append("content", commentContent);
+        formData.append("image", commentImage);
+
+        requestOptions = {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        };
+
+        console.log("📤 Sending comment with image via FormData");
+      } else {
+        requestOptions = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: newComment.trim() }),
+          body: JSON.stringify({ content: commentContent }),
           credentials: "include",
-        }
+        };
+
+        console.log("📤 Sending text-only comment via JSON");
+      }
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${selectedPostId}/comments`,
+        requestOptions
       );
 
       if (response.ok) {
-        setNewComment("");
-        // Reload comments
-        await loadPostComments(selectedPostId);
+        const result = await response.json();
+        console.log("✅ Comment submitted successfully:", result);
+        console.log("🔍 Comment fields:", {
+          id: result.id,
+          content: result.content,
+          image_path: result.image_path,
+          imagePath: result.imagePath,
+          created_at: result.created_at,
+          createdAt: result.createdAt,
+        });
 
-        // Update comment count in messages
+        // Clean up blob URL
+        const blobUrl =
+          optimisticComment.image_path || optimisticComment.imagePath;
+        if (blobUrl && blobUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(blobUrl);
+        }
+
+        // Replace optimistic comment with real comment from server
+        setPostComments((prev) =>
+          prev.map((comment) =>
+            comment.id === optimisticId ? result : comment
+          )
+        );
+
+        // Reload comment count to ensure accuracy
+        await loadPostCommentsCount(selectedPostId);
+
+        console.log("💬 Comment submitted successfully");
+      } else {
+        console.error("❌ Failed to submit comment - Status:", response.status);
+
+        let errorText = "";
+        try {
+          errorText = await response.text();
+          console.error("❌ Error response:", errorText);
+        } catch (e) {
+          console.error("❌ Failed to read error response:", e);
+          errorText = "Unknown server error";
+        }
+
+        // Clean up blob URL and remove optimistic comment on error
+        const blobUrl =
+          optimisticComment.image_path || optimisticComment.imagePath;
+        if (blobUrl && blobUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(blobUrl);
+        }
+
+        setPostComments((prev) =>
+          prev.filter((comment) => comment.id !== optimisticId)
+        );
+
+        // Revert comment count
         setMessages((prev) =>
           prev.map((msg) => {
             if (msg.id === `post-${selectedPostId}` && msg.postData) {
@@ -1529,7 +2662,10 @@ export default function ChatWindow({
                 ...msg,
                 postData: {
                   ...msg.postData,
-                  commentsCount: (msg.postData.commentsCount || 0) + 1,
+                  commentsCount: Math.max(
+                    0,
+                    (msg.postData.commentsCount || 0) - 1
+                  ),
                 },
               };
             }
@@ -1537,17 +2673,174 @@ export default function ChatWindow({
           })
         );
 
-        // Also update the group posts in the sidebar
-        loadGroupPosts();
-      } else {
-        console.error("Failed to submit comment");
-        alert("Failed to submit comment. Please try again.");
+        setGroupPosts((prev) =>
+          prev.map((post) => {
+            if (post.id === selectedPostId) {
+              return {
+                ...post,
+                commentsCount: Math.max(0, (post.commentsCount || 0) - 1),
+              };
+            }
+            return post;
+          })
+        );
+
+        // Check if it's a "not found" error (post was deleted)
+        if (response.status === 404) {
+          setGroupPosts((prevPosts) =>
+            prevPosts.filter((post) => post.id !== selectedPostId)
+          );
+          setMessages((prevMessages) =>
+            prevMessages.filter((msg) => msg.id !== `post-${selectedPostId}`)
+          );
+          setShowCommentsModal(false);
+          createNotification("This post was deleted", "bg-red-500");
+        } else {
+          // Parse error message for better user feedback with better error handling
+          let errorMessage = "Failed to submit comment";
+
+          if (errorText) {
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMessage =
+                errorData.message || errorData.error || errorMessage;
+            } catch (e) {
+              // If JSON parsing fails, use the raw error text
+              errorMessage = errorText.includes("error")
+                ? errorText
+                : `${errorMessage}: ${errorText}`;
+            }
+          }
+
+          // Add specific handling for common image upload errors
+          if (
+            errorText.includes("file too large") ||
+            errorText.includes("10MB")
+          ) {
+            errorMessage =
+              "Image file is too large. Please use an image smaller than 10MB.";
+          } else if (
+            errorText.includes("invalid file type") ||
+            errorText.includes("JPEG") ||
+            errorText.includes("PNG")
+          ) {
+            errorMessage =
+              "Invalid image format. Please use JPEG, PNG, or GIF images only.";
+          } else if (
+            errorText.includes("multipart") ||
+            errorText.includes("form")
+          ) {
+            errorMessage =
+              "Image upload failed. Please try selecting the image again.";
+          }
+
+          console.error("📝 Showing error to user:", errorMessage);
+          createNotification(errorMessage, "bg-red-500");
+        }
       }
     } catch (error) {
-      console.error("Error submitting comment:", error);
-      alert("Error submitting comment. Please check your connection.");
+      console.error("❌ Error submitting comment:", error);
+
+      // Clean up blob URL and remove optimistic comment on error
+      const blobUrl =
+        optimisticComment.image_path || optimisticComment.imagePath;
+      if (blobUrl && blobUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(blobUrl);
+      }
+
+      setPostComments((prev) =>
+        prev.filter((comment) => comment.id !== optimisticId)
+      );
+
+      // Revert comment count
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id === `post-${selectedPostId}` && msg.postData) {
+            return {
+              ...msg,
+              postData: {
+                ...msg.postData,
+                commentsCount: Math.max(
+                  0,
+                  (msg.postData.commentsCount || 0) - 1
+                ),
+              },
+            };
+          }
+          return msg;
+        })
+      );
+
+      setGroupPosts((prev) =>
+        prev.map((post) => {
+          if (post.id === selectedPostId) {
+            return {
+              ...post,
+              commentsCount: Math.max(0, (post.commentsCount || 0) - 1),
+            };
+          }
+          return post;
+        })
+      );
+
+      createNotification("Error submitting comment", "bg-red-500");
     } finally {
       setIsSubmittingComment(false);
+    }
+  };
+
+  // Add function to load comment count specifically
+  const loadPostCommentsCount = async (postId: number) => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      const response = await fetch(
+        `${backendUrl}/api/groups/posts/${postId}/comments`,
+        {
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const actualCommentCount = data.comments ? data.comments.length : 0;
+
+        console.log("🔢 Syncing comment count:", {
+          postId,
+          actualCount: actualCommentCount,
+        });
+
+        // Update comment count in messages and groupPosts to match actual count
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === `post-${postId}` && msg.postData) {
+              return {
+                ...msg,
+                postData: {
+                  ...msg.postData,
+                  commentsCount: actualCommentCount,
+                },
+              };
+            }
+            return msg;
+          })
+        );
+
+        setGroupPosts((prev) =>
+          prev.map((post) => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                commentsCount: actualCommentCount,
+              };
+            }
+            return post;
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Error loading comment count:", error);
     }
   };
 
@@ -1568,37 +2861,54 @@ export default function ChatWindow({
       );
 
       if (response.ok) {
-        // Reload comments
+        // Reload comments to reflect the deletion
         await loadPostComments(selectedPostId);
 
-        // Update comment count in messages
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.id === `post-${selectedPostId}` && msg.postData) {
-              return {
-                ...msg,
-                postData: {
-                  ...msg.postData,
-                  commentsCount: Math.max(
-                    0,
-                    (msg.postData.commentsCount || 0) - 1
-                  ),
-                },
-              };
-            }
-            return msg;
-          })
-        );
+        // Reload comment count to ensure accuracy after deletion
+        await loadPostCommentsCount(selectedPostId);
 
-        // Also update the group posts in the sidebar
-        loadGroupPosts();
+        console.log("✅ Comment deleted successfully and counts updated");
+
+        // Send WebSocket notification to other users in the group
+        if (socket && socket.readyState === WebSocket.OPEN && chat.groupId) {
+          socket.send(
+            JSON.stringify({
+              type: "comment_deleted",
+              comment_id: commentId,
+              post_id: selectedPostId,
+              group_id: chat.groupId,
+              deleted_by: currentUser?.id,
+            })
+          );
+        }
       } else {
         const errorData = await response.text();
-        alert(`Failed to delete comment: ${errorData}`);
+        console.error("Failed to delete comment:", response.status, errorData);
+
+        // Check if it's a "not found" error (comment was deleted by someone else)
+        if (response.status === 404) {
+          // Remove the comment from local state
+          setPostComments((prevComments) =>
+            prevComments.filter((comment) => comment.id !== commentId)
+          );
+
+          showError(
+            "Comment Unavailable",
+            "This comment has been deleted and is no longer available."
+          );
+        } else {
+          showError(
+            "Delete Comment Failed",
+            `Failed to delete comment: ${errorData}`
+          );
+        }
       }
     } catch (error) {
       console.error("Error deleting comment:", error);
-      alert("Error deleting comment. Please check your connection.");
+      showError(
+        "Delete Comment Error",
+        "Error deleting comment. Please check your connection."
+      );
     }
   };
 
@@ -1641,6 +2951,19 @@ export default function ChatWindow({
         console.error("Failed to vote on comment");
         const errorText = await response.text();
         console.error("Vote error response:", errorText);
+
+        // Check if it's a "not found" error (comment was deleted)
+        if (response.status === 404) {
+          // Remove the comment from local state
+          setPostComments((prevComments) =>
+            prevComments.filter((comment) => comment.id !== commentId)
+          );
+
+          showError(
+            "Comment Unavailable",
+            "This comment has been deleted and is no longer available."
+          );
+        }
       }
     } catch (error) {
       console.error("Error voting on comment:", error);
@@ -1648,56 +2971,114 @@ export default function ChatWindow({
   };
 
   return (
-    <div className="flex h-full bg-gradient-to-br from-slate-50 to-blue-50">
+    <div
+      className={`flex h-full bg-gradient-to-br from-slate-50 to-blue-50 ${
+        isMobile ? "flex-col" : ""
+      }`}
+    >
       <div className="flex-1 flex flex-col">
-        {/* Modern Chat Header */}
-        <div className="px-6 py-4 bg-white/80 backdrop-blur-sm border-b border-slate-200/60 shadow-sm">
+        {/* Enhanced Chat Header - Device Specific */}
+        <div
+          className={`${
+            deviceType === "phone"
+              ? "px-3 py-2.5"
+              : deviceType === "tablet"
+              ? "px-5 py-3.5"
+              : "px-6 py-4"
+          } bg-white/80 backdrop-blur-sm border-b border-slate-200/60 shadow-sm`}
+        >
           <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              {/* Enhanced Avatar */}
+            <div className="flex items-center space-x-3">
+              {/* Back Button for Mobile/Tablet */}
+              {(isMobile || isTablet) && onBackClick && (
+                <button
+                  onClick={onBackClick}
+                  className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105 active:scale-95 mr-2 ${
+                    deviceType === "phone" ? "p-1.5" : "p-2"
+                  }`}
+                >
+                  <FaArrowLeft size={deviceType === "phone" ? 14 : 16} />
+                </button>
+              )}
+
+              {/* Enhanced Avatar - Device Responsive */}
               <div className="relative">
-                <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center ring-2 ring-white shadow-lg">
-                  {chat.isGroup ? (
-                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 h-full w-full flex items-center justify-center text-white">
-                      <FaUsers size={20} />
-                    </div>
-                  ) : chat.avatar &&
-                    chat.avatar !== "/uploads/avatars/default.jpg" ? (
-                    <img
-                      src={getImageUrl(chat.avatar)}
-                      alt={chat.name}
-                      className="h-full w-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-6 h-6"
-                      >
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                      </svg>
-                    </div>
-                  )}
+                <div
+                  className={`${
+                    deviceType === "phone"
+                      ? "h-9 w-9"
+                      : deviceType === "tablet"
+                      ? "h-11 w-11"
+                      : "h-12 w-12"
+                  } rounded-full overflow-hidden bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center ring-2 ring-white shadow-lg`}
+                >
+                  <ChatAvatar
+                    avatar={chat.avatar}
+                    fullName={chat.name}
+                    size={
+                      deviceType === "phone"
+                        ? "sm"
+                        : deviceType === "tablet"
+                        ? "md"
+                        : "lg"
+                    }
+                    className="w-full h-full"
+                    fallbackIcon={
+                      chat.isGroup ? (
+                        <FaUsers
+                          size={
+                            deviceType === "phone"
+                              ? 14
+                              : deviceType === "tablet"
+                              ? 16
+                              : 20
+                          }
+                        />
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={
+                            deviceType === "phone"
+                              ? "w-4 h-4"
+                              : deviceType === "tablet"
+                              ? "w-5 h-5"
+                              : "w-6 h-6"
+                          }
+                        >
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                      )
+                    }
+                  />
                 </div>
               </div>
 
-              <div>
-                <h2 className="font-semibold text-lg text-slate-800">
+              <div className="flex-1 min-w-0">
+                <h2
+                  className={`font-semibold text-slate-800 truncate ${
+                    deviceType === "phone"
+                      ? "text-sm"
+                      : deviceType === "tablet"
+                      ? "text-base"
+                      : "text-lg"
+                  }`}
+                >
                   {chat.name}
                 </h2>
                 <div className="flex items-center space-x-3">
                   {chat.isGroup && chat.members && (
-                    <p className="text-sm text-slate-500">
+                    <p
+                      className={`text-slate-500 ${
+                        deviceType === "phone" ? "text-xs" : "text-sm"
+                      }`}
+                    >
                       {chat.members.length} members
                     </p>
                   )}
@@ -1705,54 +3086,168 @@ export default function ChatWindow({
               </div>
             </div>
 
-            {/* Modern Action Buttons */}
-            <div className="flex items-center space-x-2">
+            {/* Enhanced Action Buttons - Device Responsive */}
+            <div
+              className={`flex items-center ${
+                deviceType === "phone"
+                  ? chat.isGroup
+                    ? "space-x-0.5" // Tighter spacing for phone group chats (more buttons)
+                    : "space-x-1"
+                  : "space-x-2"
+              }`}
+            >
               {chat.isGroup && (
                 <>
-                  <button
-                    onClick={() => setShowPostModal(true)}
-                    className="p-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                    title="Create post"
-                  >
-                    <IoAddCircle size={18} />
-                  </button>
-                  <button
-                    onClick={() => setShowEventModal(true)}
-                    className="p-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                    title="Create event"
-                  >
-                    <FaCalendarAlt size={18} />
-                  </button>
-                  <button
-                    onClick={() => setShowEventsPanel(!showEventsPanel)}
-                    className={`p-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 ${
-                      showEventsPanel
-                        ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
-                        : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
-                    }`}
-                    title="View events & posts"
-                  >
-                    <FaUsers size={18} />
-                  </button>
+                  {deviceType === "desktop" && (
+                    <>
+                      <button
+                        onClick={() => setShowPostModal(true)}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                        title="Create post"
+                      >
+                        <IoAddCircle size={18} />
+                      </button>
+                      <button
+                        onClick={() => setShowEventModal(true)}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                        title="Create event"
+                      >
+                        <FaCalendarAlt size={18} />
+                      </button>
+                      <button
+                        onClick={() => setShowEventsPanel(!showEventsPanel)}
+                        className={`p-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 ${
+                          showEventsPanel
+                            ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
+                            : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                        }`}
+                        title="View events & posts"
+                      >
+                        <FaUsers size={18} />
+                      </button>
+                    </>
+                  )}
+                  {deviceType === "tablet" && (
+                    <>
+                      <button
+                        onClick={() => setShowPostModal(true)}
+                        className="p-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95"
+                        title="Create post"
+                      >
+                        <IoAddCircle size={16} />
+                      </button>
+                      <button
+                        onClick={() => setShowEventModal(true)}
+                        className="p-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95"
+                        title="Create event"
+                      >
+                        <FaCalendarAlt size={16} />
+                      </button>
+                      <button
+                        onClick={() => setShowEventsPanel(!showEventsPanel)}
+                        className={`p-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                          showEventsPanel
+                            ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
+                            : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                        }`}
+                        title="View events & posts"
+                      >
+                        <FaUsers size={16} />
+                      </button>
+                      <button
+                        onClick={() => setShowChatInfo(!showChatInfo)}
+                        className={`p-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                          showChatInfo
+                            ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
+                            : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                        }`}
+                        title="More options"
+                      >
+                        <IoInformationCircle size={16} />
+                      </button>
+                    </>
+                  )}
+                  {deviceType === "phone" && (
+                    <>
+                      <button
+                        onClick={() => setShowPostModal(true)}
+                        className="p-1.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95"
+                        title="Create post"
+                      >
+                        <IoAddCircle size={14} />
+                      </button>
+                      <button
+                        onClick={() => setShowEventModal(true)}
+                        className="p-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95"
+                        title="Create event"
+                      >
+                        <FaCalendarAlt size={14} />
+                      </button>
+                      <button
+                        onClick={() => setShowEventsPanel(!showEventsPanel)}
+                        className={`p-1.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                          showEventsPanel
+                            ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
+                            : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                        }`}
+                        title="View events & posts"
+                      >
+                        <FaUsers size={14} />
+                      </button>
+                      <button
+                        onClick={() => setShowChatInfo(!showChatInfo)}
+                        className={`p-1.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                          showChatInfo
+                            ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
+                            : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                        }`}
+                        title="More options"
+                      >
+                        <IoInformationCircle size={14} />
+                      </button>
+                    </>
+                  )}
                 </>
               )}
-              <button
-                onClick={() => setShowInfo(!showInfo)}
-                className={`p-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 ${
-                  showInfo
-                    ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
-                    : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
-                }`}
-                title="Chat information"
-              >
-                <IoInformationCircle size={20} />
-              </button>
+              {!chat.isGroup && deviceType === "desktop" && (
+                <button
+                  onClick={() => setShowChatInfo(!showChatInfo)}
+                  className={`p-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 ${
+                    showChatInfo
+                      ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
+                      : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                  }`}
+                  title="Chat information"
+                >
+                  <IoInformationCircle size={20} />
+                </button>
+              )}
+              {!chat.isGroup &&
+                (deviceType === "phone" || deviceType === "tablet") && (
+                  <button
+                    onClick={() => setShowChatInfo(!showChatInfo)}
+                    className={`p-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                      showChatInfo
+                        ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
+                        : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800"
+                    }`}
+                    title="Chat information"
+                  >
+                    <IoInformationCircle
+                      size={deviceType === "phone" ? 14 : 16}
+                    />
+                  </button>
+                )}
             </div>
           </div>
         </div>
 
-        {/* Modern Messages Container */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Modern Messages Container - Responsive */}
+        <div
+          className={`flex-1 overflow-y-auto ${
+            isMobile ? "p-4 space-y-4" : "p-6 space-y-6"
+          }`}
+        >
           {error ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center p-8 bg-red-50 border border-red-200 rounded-2xl shadow-lg">
@@ -1798,9 +3293,13 @@ export default function ChatWindow({
                     }`}
                   >
                     <div
-                      className={`flex items-end max-w-[70%] ${
-                        msg.isMe ? "flex-row-reverse" : "flex-row"
-                      }`}
+                      className={`flex items-end ${
+                        deviceType === "phone"
+                          ? "max-w-[90%]"
+                          : deviceType === "tablet"
+                          ? "max-w-[80%]"
+                          : "max-w-[70%]"
+                      } ${msg.isMe ? "flex-row-reverse" : "flex-row"}`}
                     >
                       {/* Avatar */}
                       {!msg.isMe && (
@@ -1809,37 +3308,12 @@ export default function ChatWindow({
                             showAvatar ? "opacity-100" : "opacity-0"
                           }`}
                         >
-                          <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-br from-slate-200 to-slate-300 ring-2 ring-white shadow-md">
-                            {msg.senderAvatar &&
-                            msg.senderAvatar !==
-                              "/uploads/avatars/default.jpg" ? (
-                              <img
-                                src={getImageUrl(msg.senderAvatar)}
-                                alt={msg.senderName}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display =
-                                    "none";
-                                }}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="white"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  className="w-4 h-4"
-                                >
-                                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                  <circle cx="12" cy="7" r="4"></circle>
-                                </svg>
-                              </div>
-                            )}
-                          </div>
+                          <ChatAvatar
+                            avatar={msg.senderAvatar}
+                            fullName={msg.senderName}
+                            size="sm"
+                            className="ring-2 ring-white shadow-md"
+                          />
                         </div>
                       )}
 
@@ -1866,7 +3340,32 @@ export default function ChatWindow({
                             }`}
                           >
                             {/* Post Header */}
-                            <div className="p-4 border-b border-slate-200">
+                            <div className="p-4 border-b border-slate-200 relative">
+                              {/* Delete Button - Only show for post author or group admin */}
+                              {currentUser &&
+                                (msg.isMe ||
+                                  (groupInfo &&
+                                    groupInfo.creatorId ===
+                                      currentUser.id)) && (
+                                  <button
+                                    onClick={() => {
+                                      if (
+                                        confirm(
+                                          "Are you sure you want to delete this post?"
+                                        )
+                                      ) {
+                                        handleDeletePost(
+                                          parseInt(msg.id.replace("post-", ""))
+                                        );
+                                      }
+                                    }}
+                                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700 transition-colors duration-200 flex items-center justify-center text-sm font-bold shadow-sm hover:shadow-md"
+                                    title="Delete post"
+                                  >
+                                    🗑️
+                                  </button>
+                                )}
+
                               <div className="flex items-center gap-2 mb-2">
                                 <div
                                   className={`px-2 py-1 rounded-full text-xs font-bold ${
@@ -1989,18 +3488,30 @@ export default function ChatWindow({
                         ) : (
                           // Regular message bubble
                           <div
-                            className={`relative px-4 py-3 rounded-2xl shadow-md max-w-sm break-words ${
+                            className={`relative rounded-2xl shadow-md break-words ${
+                              deviceType === "phone"
+                                ? "px-3 py-2.5 max-w-xs"
+                                : deviceType === "tablet"
+                                ? "px-3.5 py-3 max-w-sm"
+                                : "px-4 py-3 max-w-sm"
+                            } ${
                               msg.isMe
                                 ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-br-md"
                                 : "bg-white text-slate-800 rounded-bl-md border border-slate-200"
                             }`}
                           >
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                            <p
+                              className={`leading-relaxed whitespace-pre-wrap font-medium ${
+                                deviceType === "phone" ? "text-sm" : "text-sm"
+                              }`}
+                            >
                               {msg.content}
                             </p>
 
                             <div
-                              className={`text-xs mt-2 font-medium ${
+                              className={`mt-2 font-medium ${
+                                deviceType === "phone" ? "text-xs" : "text-xs"
+                              } ${
                                 msg.isMe ? "text-blue-100" : "text-slate-500"
                               }`}
                             >
@@ -2041,36 +3552,64 @@ export default function ChatWindow({
           )}
         </div>
 
-        {/* Modern Message Input */}
-        <div className="p-6 bg-white/80 backdrop-blur-sm border-t border-slate-200/60">
-          <div className="flex items-end space-x-4 bg-white rounded-2xl shadow-lg border border-slate-200 p-4">
+        {/* Enhanced Message Input - Device Responsive */}
+        <div
+          className={`bg-white/80 backdrop-blur-sm border-t border-slate-200/60 ${
+            deviceType === "phone"
+              ? "p-3"
+              : deviceType === "tablet"
+              ? "p-4"
+              : "p-6"
+          }`}
+        >
+          <div
+            className={`flex items-end bg-white rounded-2xl shadow-lg border border-slate-200 ${
+              deviceType === "phone"
+                ? "space-x-2 p-2.5"
+                : deviceType === "tablet"
+                ? "space-x-3 p-3.5"
+                : "space-x-4 p-4"
+            }`}
+          >
             <button
               type="button"
-              className="flex-shrink-0 p-2 rounded-xl bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+              className={`flex-shrink-0 rounded-xl bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                deviceType === "phone" ? "p-1.5" : "p-2"
+              }`}
               title="Add emoji"
               onClick={handleEmojiClick}
             >
-              <FaSmile size={20} />
+              <FaSmile size={deviceType === "phone" ? 18 : 20} />
             </button>
 
             <div className="flex-1 relative">
               <textarea
-                className="w-full resize-none border-0 rounded-xl px-4 py-3 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-200 placeholder-slate-400 font-medium"
+                className={`w-full resize-none border-0 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-200 placeholder-slate-400 font-medium ${
+                  deviceType === "phone"
+                    ? "px-3 py-2.5 text-sm"
+                    : deviceType === "tablet"
+                    ? "px-3.5 py-3 text-sm"
+                    : "px-4 py-3 text-sm"
+                }`}
                 rows={1}
-                placeholder="Type your message..."
+                placeholder={
+                  deviceType === "phone" ? "Message..." : "Type your message..."
+                }
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
                 style={{
-                  minHeight: 44,
-                  maxHeight: 120,
+                  minHeight: deviceType === "phone" ? 38 : 44,
+                  maxHeight: deviceType === "phone" ? 100 : 120,
                 }}
               />
             </div>
 
             <button
               type="button"
-              className={`flex-shrink-0 p-3 rounded-xl shadow-lg transition-all duration-200 transform ${
+              className={`flex-shrink-0 rounded-xl shadow-lg transition-all duration-200 transform active:scale-95 ${
+                deviceType === "phone" ? "p-2.5" : "p-3"
+              } ${
                 message.trim()
                   ? "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white hover:scale-105 hover:shadow-xl"
                   : "bg-slate-200 text-slate-400 cursor-not-allowed"
@@ -2079,25 +3618,67 @@ export default function ChatWindow({
               disabled={!message.trim()}
               title="Send message"
             >
-              <IoSend size={20} />
+              <IoSend size={deviceType === "phone" ? 18 : 20} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Modern Info Sidebar */}
-      {showInfo && (
-        <div className="w-80 bg-white/90 backdrop-blur-sm border-l border-slate-200/60 overflow-y-auto shadow-xl">
-          <div className="p-6">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl text-slate-800">Chat Details</h3>
-              <button
-                onClick={() => setShowInfo(false)}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105"
+      {/* Enhanced Info Sidebar - Device Responsive */}
+      {showChatInfo && (
+        <div
+          className={`${
+            deviceType === "phone"
+              ? "fixed inset-0 z-50 bg-white"
+              : deviceType === "tablet"
+              ? "fixed inset-0 z-50 bg-white"
+              : "w-80 bg-white/90 backdrop-blur-sm border-l border-slate-200/60 shadow-xl"
+          } overflow-y-auto`}
+        >
+          <div
+            className={`${
+              deviceType === "phone"
+                ? "p-4"
+                : deviceType === "tablet"
+                ? "p-5"
+                : "p-6"
+            }`}
+          >
+            {/* Header - Device Responsive */}
+            <div
+              className={`flex justify-between items-center mb-6 ${
+                isMobile || isTablet ? "pt-4" : ""
+              }`}
+            >
+              {(isMobile || isTablet) && (
+                <button
+                  onClick={() => setShowChatInfo(false)}
+                  className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105 active:scale-95 mr-3 ${
+                    deviceType === "phone" ? "p-1.5" : "p-2"
+                  }`}
+                >
+                  <FaArrowLeft size={deviceType === "phone" ? 14 : 16} />
+                </button>
+              )}
+              <h3
+                className={`font-bold text-slate-800 ${
+                  deviceType === "phone"
+                    ? "text-lg"
+                    : deviceType === "tablet"
+                    ? "text-xl"
+                    : "text-xl"
+                }`}
               >
-                <FaTimes size={16} />
-              </button>
+                Chat Details
+              </h3>
+              {deviceType === "desktop" && (
+                <button
+                  onClick={() => setShowChatInfo(false)}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105"
+                >
+                  <FaTimes size={16} />
+                </button>
+              )}
             </div>
 
             {/* Profile Section */}
@@ -2108,32 +3689,28 @@ export default function ChatWindow({
                     <div className="bg-gradient-to-br from-indigo-500 to-purple-600 h-full w-full flex items-center justify-center text-white">
                       <FaUsers size={40} />
                     </div>
-                  ) : chat.avatar &&
-                    chat.avatar !== "/uploads/avatars/default.jpg" ? (
-                    <img
-                      src={getImageUrl(chat.avatar)}
-                      alt={chat.name}
-                      className="h-full w-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-8 h-8"
-                      >
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                      </svg>
-                    </div>
+                    <Avatar
+                      avatar={chat.avatar}
+                      fullName={chat.name}
+                      size="xl"
+                      className="w-full h-full"
+                      fallbackIcon={
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="w-10 h-10"
+                        >
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                      }
+                    />
                   )}
                 </div>
                 <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-green-500 border-3 border-white rounded-full flex items-center justify-center">
@@ -2183,19 +3760,12 @@ export default function ChatWindow({
                           className="flex items-center p-3 hover:bg-white/80 rounded-xl transition-all duration-200 group"
                         >
                           <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-slate-200 to-slate-300 mr-3 flex items-center justify-center ring-2 ring-white shadow-md">
-                            {member.avatar &&
-                            member.avatar !== "/uploads/avatars/default.jpg" ? (
-                              <img
-                                src={getImageUrl(member.avatar)}
-                                alt={member.name}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display =
-                                    "none";
-                                }}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-400 to-slate-500">
+                            <ChatAvatar
+                              avatar={member.avatar}
+                              fullName={member.name}
+                              size="md"
+                              className="w-full h-full"
+                              fallbackIcon={
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
                                   viewBox="0 0 24 24"
@@ -2209,12 +3779,12 @@ export default function ChatWindow({
                                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                                   <circle cx="12" cy="7" r="4"></circle>
                                 </svg>
-                              </div>
-                            )}
+                              }
+                            />
                           </div>
                           <div className="flex-1">
                             <p className="font-semibold text-slate-800">
-                              {member.name}
+                              {member.name || "Unknown User"}
                             </p>
                             <div className="flex items-center gap-2 mt-1">
                               {index === 0 && (
@@ -2242,7 +3812,7 @@ export default function ChatWindow({
                             <>
                               {/* Check if current user is creator using groupInfo */}
                               {groupInfo &&
-                                groupInfo.creator_id === currentUser.id &&
+                                groupInfo.creatorId === currentUser.id &&
                                 index !== 0 && (
                                   <button
                                     onClick={() => handleRemoveMember(member)}
@@ -2258,7 +3828,7 @@ export default function ChatWindow({
                                 chat.members &&
                                 chat.members.length > 0 &&
                                 (chat.members[0].id === currentUser.id ||
-                                  chat.members[0].id === currentUser.userId) &&
+                                  chat.members[0].id === currentUser.id) &&
                                 index !== 0 && (
                                   <button
                                     onClick={() => handleRemoveMember(member)}
@@ -2280,7 +3850,7 @@ export default function ChatWindow({
                 {chat.isGroup && currentUser && (
                   <div className="pt-6 border-t border-slate-200">
                     {groupInfo ? (
-                      groupInfo.creator_id === currentUser.id ? (
+                      groupInfo.creatorId === currentUser.id ? (
                         <div className="space-y-4">
                           <button
                             onClick={() => setShowDeleteConfirm(true)}
@@ -2328,7 +3898,7 @@ export default function ChatWindow({
                     ) : chat.members &&
                       chat.members.length > 0 &&
                       (chat.members[0].id === currentUser.id ||
-                        chat.members[0].id === currentUser.userId) ? (
+                        chat.members[0].id === currentUser.id) ? (
                       <div className="space-y-4">
                         <button
                           onClick={() => setShowDeleteConfirm(true)}
@@ -2397,18 +3967,28 @@ export default function ChatWindow({
       {/* Create Event Modal */}
       <Dialog.Root open={showEventModal} onOpenChange={setShowEventModal}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-md z-50">
-            <Dialog.Title className="text-xl font-semibold mb-4">
-              Create Group Event
-            </Dialog.Title>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-white to-purple-50 rounded-3xl shadow-2xl p-8 w-full max-w-lg z-50 border border-purple-200">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <FaCalendarAlt className="text-white" size={24} />
+              </div>
+              <Dialog.Title className="text-2xl font-bold text-slate-800 mb-2">
+                Create Group Event
+              </Dialog.Title>
+              <p className="text-slate-600 text-sm">
+                Plan something amazing for your group!
+              </p>
+            </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <label
                   htmlFor="eventTitle"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2"
                 >
+                  <span className="text-purple-500">✨</span>
                   Event Title
                 </label>
                 <input
@@ -2418,16 +3998,17 @@ export default function ChatWindow({
                   onChange={(e) =>
                     setNewEvent({ ...newEvent, title: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter event title"
+                  className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
+                  placeholder="What's the event called?"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="eventDescription"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2"
                 >
+                  <span className="text-purple-500">📝</span>
                   Description
                 </label>
                 <textarea
@@ -2437,53 +4018,73 @@ export default function ChatWindow({
                     setNewEvent({ ...newEvent, description: e.target.value })
                   }
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter event description"
+                  className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 resize-none"
+                  placeholder="Tell everyone what this event is about..."
                 />
               </div>
 
-              <div className="flex gap-4">
-                <div className="flex-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <label
                     htmlFor="eventDate"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2"
                   >
+                    <span className="text-purple-500">📅</span>
                     Date
                   </label>
                   <input
                     id="eventDate"
                     type="date"
                     value={newEvent.date}
-                    onChange={(e) =>
-                      setNewEvent({ ...newEvent, date: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    min={new Date().toISOString().split("T")[0]}
+                    onChange={(e) => {
+                      setNewEvent({ ...newEvent, date: e.target.value });
+                    }}
+                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
                   />
                 </div>
-                <div className="flex-1">
+                <div>
                   <label
                     htmlFor="eventTime"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2"
                   >
+                    <span className="text-purple-500">⏰</span>
                     Time
                   </label>
                   <input
                     id="eventTime"
                     type="time"
                     value={newEvent.time}
-                    onChange={(e) =>
-                      setNewEvent({ ...newEvent, time: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    onChange={(e) => {
+                      const selectedTime = e.target.value;
+                      setNewEvent({ ...newEvent, time: selectedTime });
+
+                      // If date is today, validate that time is in the future
+                      if (newEvent.date) {
+                        const today = new Date().toISOString().split("T")[0];
+                        if (newEvent.date === today) {
+                          const currentTime = new Date()
+                            .toTimeString()
+                            .slice(0, 5);
+                          if (selectedTime <= currentTime) {
+                            // Don't show alert immediately, just note it for form submission
+                            console.log(
+                              "Time must be in the future for today's date"
+                            );
+                          }
+                        }
+                      }
+                    }}
+                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-8 flex gap-3">
               <button
                 onClick={() => setShowEventModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                className="flex-1 px-6 py-3 text-sm font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-all duration-200 transform hover:scale-105"
               >
                 Cancel
               </button>
@@ -2492,13 +4093,16 @@ export default function ChatWindow({
                 disabled={
                   !newEvent.title.trim() || !newEvent.date || !newEvent.time
                 }
-                className={`px-4 py-2 text-sm font-medium text-white rounded-md ${
+                className={`flex-1 px-6 py-3 text-sm font-semibold text-white rounded-xl transition-all duration-200 transform hover:scale-105 ${
                   newEvent.title.trim() && newEvent.date && newEvent.time
-                    ? "bg-blue-600 hover:bg-blue-700"
-                    : "bg-blue-400 cursor-not-allowed"
+                    ? "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl"
+                    : "bg-gray-400 cursor-not-allowed"
                 }`}
               >
-                Create Event
+                <div className="flex items-center justify-center gap-2">
+                  <span>🎉</span>
+                  <span>Create Event</span>
+                </div>
               </button>
             </div>
           </Dialog.Content>
@@ -2579,41 +4183,101 @@ export default function ChatWindow({
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* Modern Events & Posts Panel */}
+      {/* Enhanced Group Activity Panel - Device Responsive */}
       {showEventsPanel && chat.isGroup && (
-        <div className="w-80 bg-white/90 backdrop-blur-sm border-l border-slate-200/60 flex flex-col shadow-xl">
-          <div className="p-6 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-200/60">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl text-slate-800">
+        <div
+          className={`${
+            deviceType === "phone"
+              ? "fixed inset-0 z-50 bg-white"
+              : deviceType === "tablet"
+              ? "fixed inset-0 z-50 bg-white"
+              : "w-80 bg-white/90 backdrop-blur-sm border-l border-slate-200/60 shadow-xl"
+          } flex flex-col overflow-y-auto`}
+        >
+          <div
+            className={`bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-200/60 ${
+              deviceType === "phone"
+                ? "p-4"
+                : deviceType === "tablet"
+                ? "p-5"
+                : "p-6"
+            }`}
+          >
+            {/* Header - Device Responsive */}
+            <div
+              className={`flex justify-between items-center mb-6 ${
+                isMobile || isTablet ? "pt-4" : ""
+              }`}
+            >
+              {(isMobile || isTablet) && (
+                <button
+                  onClick={() => setShowEventsPanel(false)}
+                  className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105 active:scale-95 mr-3 ${
+                    deviceType === "phone" ? "p-1.5" : "p-2"
+                  }`}
+                >
+                  <FaArrowLeft size={deviceType === "phone" ? 14 : 16} />
+                </button>
+              )}
+              <h3
+                className={`font-bold text-slate-800 ${
+                  deviceType === "phone"
+                    ? "text-lg"
+                    : deviceType === "tablet"
+                    ? "text-xl"
+                    : "text-xl"
+                }`}
+              >
                 Group Activity
               </h3>
-              <button
-                onClick={() => setShowEventsPanel(false)}
-                className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105 shadow-md"
-              >
-                <FaTimes size={16} />
-              </button>
+              {deviceType === "desktop" && (
+                <button
+                  onClick={() => setShowEventsPanel(false)}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105"
+                >
+                  <FaTimes size={16} />
+                </button>
+              )}
             </div>
 
-            <div className="flex gap-3">
+            {/* Quick Action Buttons */}
+            <div
+              className={`flex ${deviceType === "phone" ? "gap-2" : "gap-3"}`}
+            >
               <button
                 onClick={() => setShowPostModal(true)}
-                className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-4 py-3 rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                className={`flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                  deviceType === "phone"
+                    ? "px-3 py-2.5 text-xs"
+                    : "px-4 py-3 text-sm"
+                }`}
               >
-                ✨ Create Post
+                ✨ {deviceType === "phone" ? "Post" : "Create Post"}
               </button>
               <button
                 onClick={() => setShowEventModal(true)}
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-3 rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                className={`flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                  deviceType === "phone"
+                    ? "px-3 py-2.5 text-xs"
+                    : "px-4 py-3 text-sm"
+                }`}
               >
-                📅 Create Event
+                📅 {deviceType === "phone" ? "Event" : "Create Event"}
               </button>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 to-blue-50">
-            {/* Modern Events Section */}
-            <div className="p-6 border-b border-slate-200/60">
+            {/* Enhanced Events Section */}
+            <div
+              className={`border-b border-slate-200/60 ${
+                deviceType === "phone"
+                  ? "p-4"
+                  : deviceType === "tablet"
+                  ? "p-5"
+                  : "p-6"
+              }`}
+            >
               <h4 className="font-bold text-slate-700 text-sm uppercase tracking-wide mb-4 flex items-center gap-2">
                 <div className="h-2 w-2 bg-purple-500 rounded-full"></div>
                 <FaCalendarAlt size={16} />
@@ -2631,81 +4295,261 @@ export default function ChatWindow({
                 </div>
               ) : groupEvents.length > 0 ? (
                 <div className="space-y-4">
-                  {groupEvents.map((event) => (
-                    <div
-                      key={event.id}
-                      className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-4 shadow-md hover:shadow-lg transition-all duration-200"
-                    >
-                      <h5 className="font-bold text-slate-800 mb-2">
-                        {event.title}
-                      </h5>
-                      <p className="text-sm text-slate-600 mb-3 leading-relaxed">
-                        {event.description}
-                      </p>
-                      <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
-                        <div className="h-1.5 w-1.5 bg-blue-500 rounded-full"></div>
-                        <span className="font-medium">
-                          {new Date(event.event_date).toLocaleString()}
-                        </span>
-                      </div>
+                  {groupEvents.map((event) => {
+                    // Debug: Log event data to see what we're receiving
+                    console.log("Event data:", event);
+                    console.log("Delete button check:", {
+                      currentUser: currentUser,
+                      eventCreatorId: event.creator_id,
+                      currentUserId: currentUser?.id,
+                      isEventCreator: event.creator_id === currentUser?.id,
+                      groupInfo: groupInfo,
+                      groupCreatorId: groupInfo?.creatorId,
+                      isGroupAdmin:
+                        groupInfo && groupInfo.creatorId === currentUser?.id,
+                      shouldShowButton:
+                        currentUser &&
+                        (event.creator_id === currentUser.id ||
+                          (groupInfo &&
+                            groupInfo.creatorId === currentUser.id)),
+                    });
 
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 text-xs">
-                          <div className="flex items-center gap-1">
-                            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                            <span className="text-green-700 font-medium">
-                              {event.going_count || 0} going
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <div className="h-2 w-2 bg-red-500 rounded-full"></div>
-                            <span className="text-red-700 font-medium">
-                              {event.not_going_count || 0} not going
-                            </span>
+                    // Improved date parsing for time display
+                    let timeDisplay = "Time not set";
+                    try {
+                      console.log(
+                        "Raw event date:",
+                        event.eventDate,
+                        typeof event.eventDate
+                      );
+
+                      if (event.eventDate) {
+                        let eventDate: Date;
+
+                        // Handle different date formats from backend
+                        if (typeof event.eventDate === "string") {
+                          // Try parsing ISO string or other formats
+                          eventDate = new Date(event.eventDate);
+
+                          // If that fails, try parsing with specific formats
+                          if (isNaN(eventDate.getTime())) {
+                            // Try parsing "YYYY-MM-DD HH:MM" format
+                            const parts = event.eventDate.match(
+                              /(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/
+                            );
+                            if (parts) {
+                              eventDate = new Date(
+                                parseInt(parts[1]), // year
+                                parseInt(parts[2]) - 1, // month (0-based)
+                                parseInt(parts[3]), // day
+                                parseInt(parts[4]), // hour
+                                parseInt(parts[5]) // minute
+                              );
+                            }
+                          }
+                        } else {
+                          eventDate = new Date(event.eventDate);
+                        }
+
+                        console.log(
+                          "Parsed event date:",
+                          eventDate,
+                          "Valid:",
+                          !isNaN(eventDate.getTime())
+                        );
+
+                        if (eventDate && !isNaN(eventDate.getTime())) {
+                          timeDisplay = eventDate.toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          });
+                        }
+                      }
+                    } catch (error) {
+                      console.log(
+                        "Date parsing error for event:",
+                        event.id,
+                        "Error:",
+                        error,
+                        "Raw date:",
+                        event.eventDate
+                      );
+                      timeDisplay = "Time not set";
+                    }
+
+                    return (
+                      <div
+                        key={event.id}
+                        className="bg-gradient-to-br from-white to-purple-50/30 rounded-xl border border-purple-200/40 p-4 hover:shadow-lg hover:border-purple-300/60 transition-all duration-300 relative group overflow-hidden"
+                      >
+                        {/* Background Pattern */}
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-100/40 to-pink-100/40 rounded-full -translate-y-10 translate-x-10 group-hover:scale-110 transition-transform duration-500"></div>
+
+                        {/* Delete Button - Only show for event creator or group admin */}
+                        {currentUser &&
+                          (event.creator_id === currentUser.id ||
+                            (groupInfo &&
+                              groupInfo.creatorId === currentUser.id)) && (
+                            <button
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "Are you sure you want to delete this event?"
+                                  )
+                                ) {
+                                  handleDeleteEvent(event.id);
+                                }
+                              }}
+                              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700 transition-all duration-200 flex items-center justify-center text-sm font-bold shadow-md hover:shadow-lg transform hover:scale-105 z-10"
+                              title="Delete event"
+                            >
+                              <FaTimes size={12} />
+                            </button>
+                          )}
+
+                        {/* Event Header */}
+                        <div className="relative z-10 mb-4">
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-white shadow-lg">
+                              <FaCalendarAlt size={20} />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-bold text-slate-800 text-base mb-1 leading-tight">
+                                {event.title}
+                              </h4>
+                              <div className="flex items-center gap-2 text-xs text-purple-600 font-medium">
+                                <div className="h-1.5 w-1.5 bg-purple-500 rounded-full"></div>
+                                <span>📅 {timeDisplay}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
+                        {/* Description */}
+                        {event.description && (
+                          <div className="relative z-10 mb-4">
+                            <p className="text-slate-600 text-sm leading-relaxed bg-white/60 backdrop-blur-sm rounded-lg px-3 py-2 border border-purple-100/50">
+                              {event.description}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Enhanced Action Buttons with Better Styling */}
+                        <div className="relative z-10 flex gap-3">
                           <button
                             onClick={() => respondToEvent(event.id, "going")}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                            className={`flex-1 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform hover:scale-[1.02] ${
                               event.user_response === "going"
-                                ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md"
-                                : "bg-slate-100 text-slate-700 hover:bg-green-100 hover:text-green-700"
+                                ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white"
+                                : "bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 hover:from-green-100 hover:to-emerald-100 border border-green-200"
                             }`}
                           >
-                            ✅ Going
+                            <div className="flex items-center gap-1">
+                              <span className="text-lg">✅</span>
+                              <span>Going</span>
+                            </div>
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                event.user_response === "going"
+                                  ? "bg-green-600 text-white"
+                                  : "bg-green-200 text-green-800"
+                              }`}
+                            >
+                              {event.going_count || 0}
+                            </span>
                           </button>
+
                           <button
                             onClick={() =>
                               respondToEvent(event.id, "not_going")
                             }
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                            className={`flex-1 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform hover:scale-[1.02] ${
                               event.user_response === "not_going"
-                                ? "bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-md"
-                                : "bg-slate-100 text-slate-700 hover:bg-red-100 hover:text-red-700"
+                                ? "bg-gradient-to-r from-red-500 to-rose-500 text-white"
+                                : "bg-gradient-to-r from-red-50 to-rose-50 text-red-700 hover:from-red-100 hover:to-rose-100 border border-red-200"
                             }`}
                           >
-                            ❌ Not Going
+                            <div className="flex items-center gap-1">
+                              <span className="text-lg">❌</span>
+                              <span>Not Going</span>
+                            </div>
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                event.user_response === "not_going"
+                                  ? "bg-red-600 text-white"
+                                  : "bg-red-200 text-red-800"
+                              }`}
+                            >
+                              {event.not_going_count || 0}
+                            </span>
                           </button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3">📅</div>
-                  <p className="text-slate-500 font-medium">No events yet</p>
-                  <p className="text-slate-400 text-sm mt-1">
-                    Create your first event to get started!
+                <div
+                  className={`text-center ${
+                    deviceType === "phone" ? "py-8" : "py-12"
+                  }`}
+                >
+                  <div
+                    className={`bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl mx-auto mb-6 flex items-center justify-center relative overflow-hidden ${
+                      deviceType === "phone" ? "w-20 h-20" : "w-24 h-24"
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-br from-purple-200/40 to-pink-200/40 rounded-full -translate-y-4 translate-x-4"></div>
+                    <FaCalendarAlt
+                      className="text-purple-600 relative z-10"
+                      size={deviceType === "phone" ? 28 : 36}
+                    />
+                  </div>
+                  <h4
+                    className={`font-bold text-slate-800 mb-3 ${
+                      deviceType === "phone" ? "text-lg" : "text-xl"
+                    }`}
+                  >
+                    No events yet
+                  </h4>
+                  <p
+                    className={`text-slate-600 mb-6 max-w-xs mx-auto leading-relaxed ${
+                      deviceType === "phone" ? "text-sm" : "text-base"
+                    }`}
+                  >
+                    Create your first group event to bring everyone together!
                   </p>
+                  <button
+                    onClick={() => setShowEventModal(true)}
+                    className={`bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 ${
+                      deviceType === "phone"
+                        ? "px-6 py-3 text-sm"
+                        : "px-8 py-3.5 text-base"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FaCalendarAlt size={16} />
+                      <span>Create Event</span>
+                    </div>
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Modern Posts Section */}
-            <div className="p-6">
+            {/* Enhanced Posts Section */}
+            <div
+              className={`${
+                deviceType === "phone"
+                  ? "p-4"
+                  : deviceType === "tablet"
+                  ? "p-5"
+                  : "p-6"
+              }`}
+            >
               <h4 className="font-bold text-slate-700 text-sm uppercase tracking-wide mb-4 flex items-center gap-2">
                 <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
                 <IoAddCircle size={16} />
@@ -2734,77 +4578,155 @@ export default function ChatWindow({
                 <div className="space-y-4">
                   {groupPosts.map((post) => {
                     console.log("Rendering post:", post);
+
+                    // Enhanced date parsing
+                    let dateDisplay = "Just now";
+                    try {
+                      const postDate = post.created_at || post.createdAt;
+                      console.log("Post date fields:", {
+                        created_at: post.created_at,
+                        createdAt: post.createdAt,
+                        using: postDate,
+                      });
+
+                      if (postDate) {
+                        const date = new Date(postDate);
+                        if (!isNaN(date.getTime())) {
+                          const now = new Date();
+                          const diffTime = now.getTime() - date.getTime();
+                          const diffDays = Math.floor(
+                            diffTime / (1000 * 60 * 60 * 24)
+                          );
+
+                          if (diffDays === 0) {
+                            dateDisplay = date.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            });
+                          } else if (diffDays === 1) {
+                            dateDisplay = "Yesterday";
+                          } else if (diffDays < 7) {
+                            dateDisplay = `${diffDays} days ago`;
+                          } else {
+                            dateDisplay = date.toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                            });
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error(
+                        "Date parsing error for post:",
+                        post.id,
+                        error
+                      );
+                      dateDisplay = "Just now";
+                    }
+
                     return (
                       <div
                         key={post.id}
-                        className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-4 shadow-md hover:shadow-lg transition-all duration-200"
+                        className="bg-gradient-to-br from-white to-blue-50/30 rounded-xl border border-blue-200/40 p-5 hover:shadow-xl hover:border-blue-300/60 transition-all duration-300 relative group overflow-hidden"
                       >
-                        <div className="flex items-start justify-between mb-3">
-                          <span className="font-bold text-slate-800">
-                            {post.author_name}
-                          </span>
-                          <div className="flex items-center gap-1 text-xs text-slate-500">
-                            <div className="h-1.5 w-1.5 bg-slate-400 rounded-full"></div>
-                            <span className="font-medium">
-                              {new Date(post.created_at).toLocaleDateString()}
-                            </span>
+                        {/* Background Pattern */}
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-100/30 to-cyan-100/30 rounded-full -translate-y-12 translate-x-12 group-hover:scale-110 transition-transform duration-500"></div>
+
+                        {/* Post Header */}
+                        <div className="relative z-10 flex items-start gap-3 mb-4">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center text-white shadow-lg">
+                            <IoAddCircle size={18} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-slate-800 text-base">
+                                {post.authorName}
+                              </h4>
+                              <div className="flex items-center gap-2 text-xs text-blue-600 font-medium">
+                                <div className="h-1.5 w-1.5 bg-blue-500 rounded-full"></div>
+                                <span>{dateDisplay}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <p className="text-sm text-slate-700 mb-3 leading-relaxed">
-                          {post.content}
-                        </p>
-                        {post.image_path && (
-                          <img
-                            src={`${
-                              process.env.NEXT_PUBLIC_BACKEND_URL ||
-                              "http://localhost:8080"
-                            }${post.image_path}`}
-                            alt="Post image"
-                            className="w-full h-32 object-cover rounded-xl mb-3 border border-slate-200"
-                          />
+
+                        {/* Post Content */}
+                        <div className="relative z-10 mb-4">
+                          <p className="text-slate-700 text-sm leading-relaxed bg-white/60 backdrop-blur-sm rounded-lg px-4 py-3 border border-blue-100/50">
+                            {post.content}
+                          </p>
+                        </div>
+
+                        {/* Post Image */}
+                        {(post.imagePath || post.image_path) && (
+                          <div className="relative z-10 mb-4">
+                            <img
+                              src={getImageUrl(
+                                post.imagePath || post.image_path
+                              )}
+                              alt="Post image"
+                              className="w-full h-40 object-cover rounded-xl border border-blue-200/50 shadow-md"
+                              onError={(e) => {
+                                console.error("Failed to load post image:", {
+                                  imagePath: post.imagePath,
+                                  image_path: post.image_path,
+                                  src: e.currentTarget.src,
+                                });
+                              }}
+                            />
+                          </div>
                         )}
-                        <div className="flex items-center gap-4 text-xs">
-                          <div className="flex items-center gap-2">
+
+                        {/* Enhanced Action Bar */}
+                        <div className="relative z-10 flex items-center justify-between">
+                          {/* Voting Section */}
+                          <div className="flex items-center gap-1 bg-white/70 backdrop-blur-sm rounded-full px-3 py-2 border border-slate-200/50 shadow-sm">
                             <button
                               onClick={() => handleVoteGroupPost(post.id, 1)}
-                              className={`flex items-center justify-center w-7 h-6 rounded-lg transition-all duration-200 hover:scale-110 ${
-                                post.user_vote === 1
-                                  ? "bg-green-100 text-green-600"
-                                  : "text-gray-400 hover:bg-green-50 hover:text-green-500"
+                              className={`flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${
+                                post.userVote === 1
+                                  ? "bg-green-500 text-white shadow-md"
+                                  : "text-slate-400 hover:bg-green-100 hover:text-green-600"
                               }`}
                             >
-                              <span className="text-sm">👍</span>
+                              <span className="text-base">👍</span>
                             </button>
                             <span
-                              className={`font-bold text-sm min-w-[2rem] text-center ${
-                                post.user_vote === 1
+                              className={`font-bold text-sm min-w-[2.5rem] text-center px-2 ${
+                                post.userVote === 1
                                   ? "text-green-600"
-                                  : post.user_vote === -1
+                                  : post.userVote === -1
                                   ? "text-red-600"
-                                  : "text-gray-600"
+                                  : "text-slate-600"
                               }`}
                             >
                               {(post.upvotes || 0) - (post.downvotes || 0)}
                             </span>
                             <button
                               onClick={() => handleVoteGroupPost(post.id, -1)}
-                              className={`flex items-center justify-center w-7 h-6 rounded-lg transition-all duration-200 hover:scale-110 ${
-                                post.user_vote === -1
-                                  ? "bg-red-100 text-red-600"
-                                  : "text-gray-400 hover:bg-red-50 hover:text-red-500"
+                              className={`flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${
+                                post.userVote === -1
+                                  ? "bg-red-500 text-white shadow-md"
+                                  : "text-slate-400 hover:bg-red-100 hover:text-red-600"
                               }`}
                             >
-                              <span className="text-sm">👎</span>
+                              <span className="text-base">👎</span>
                             </button>
                           </div>
+
+                          {/* Comments Section */}
                           <button
                             onClick={() => handleShowComments(post.id)}
-                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-cyan-600 hover:bg-cyan-50 transition-all duration-200 hover:scale-105"
+                            className="flex items-center gap-2 bg-gradient-to-r from-cyan-50 to-blue-50 hover:from-cyan-100 hover:to-blue-100 text-cyan-700 px-4 py-2 rounded-full border border-cyan-200/50 transition-all duration-200 hover:scale-105 shadow-sm hover:shadow-md"
                           >
-                            <div className="h-1.5 w-1.5 bg-cyan-500 rounded-full"></div>
-                            <span className="font-medium">
-                              💬 {post.comments_count || 0} comment
-                              {(post.comments_count || 0) !== 1 ? "s" : ""}
+                            <span className="text-base">💬</span>
+                            <span className="font-semibold text-sm">
+                              {post.commentsCount || 0}
+                            </span>
+                            <span className="text-xs font-medium">
+                              {(post.commentsCount || 0) === 1
+                                ? "comment"
+                                : "comments"}
                             </span>
                           </button>
                         </div>
@@ -2813,12 +4735,49 @@ export default function ChatWindow({
                   })}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3">📝</div>
-                  <p className="text-slate-500 font-medium">No posts yet</p>
-                  <p className="text-slate-400 text-sm mt-1">
+                <div
+                  className={`text-center ${
+                    deviceType === "phone" ? "py-8" : "py-12"
+                  }`}
+                >
+                  <div
+                    className={`bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl mx-auto mb-6 flex items-center justify-center relative overflow-hidden ${
+                      deviceType === "phone" ? "w-20 h-20" : "w-24 h-24"
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-br from-blue-200/40 to-cyan-200/40 rounded-full -translate-y-4 translate-x-4"></div>
+                    <IoAddCircle
+                      className="text-blue-600 relative z-10"
+                      size={deviceType === "phone" ? 28 : 36}
+                    />
+                  </div>
+                  <h4
+                    className={`font-bold text-slate-800 mb-3 ${
+                      deviceType === "phone" ? "text-lg" : "text-xl"
+                    }`}
+                  >
+                    No posts yet
+                  </h4>
+                  <p
+                    className={`text-slate-600 mb-6 max-w-xs mx-auto leading-relaxed ${
+                      deviceType === "phone" ? "text-sm" : "text-base"
+                    }`}
+                  >
                     Share something with your group!
                   </p>
+                  <button
+                    onClick={() => setShowPostModal(true)}
+                    className={`bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 ${
+                      deviceType === "phone"
+                        ? "px-6 py-3 text-sm"
+                        : "px-8 py-3.5 text-base"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <IoAddCircle size={16} />
+                      <span>Create Post</span>
+                    </div>
+                  </button>
                 </div>
               )}
             </div>
@@ -3088,7 +5047,7 @@ export default function ChatWindow({
                           {user.avatar ? (
                             <img
                               src={getImageUrl(user.avatar)}
-                              alt={user.first_name}
+                              alt={user.firstName}
                               className="h-full w-full object-cover"
                             />
                           ) : (
@@ -3113,7 +5072,7 @@ export default function ChatWindow({
                           htmlFor={`add-member-${user.id}`}
                           className="text-sm font-medium text-gray-900 cursor-pointer flex-1"
                         >
-                          {user.first_name} {user.last_name}
+                          {user.firstName} {user.lastName}
                         </label>
                       </div>
                     </div>
@@ -3181,14 +5140,45 @@ export default function ChatWindow({
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* Emoji Picker */}
+      {/* Enhanced Emoji Picker - Device Responsive */}
       {showEmojiPicker && (
-        <div ref={emojiPickerRef} className="absolute bottom-20 left-4 z-50">
-          <EmojiPicker
-            onEmojiClick={handleEmojiSelect}
-            width={300}
-            height={400}
-          />
+        <div
+          ref={emojiPickerRef}
+          className={`absolute z-50 ${
+            deviceType === "phone"
+              ? "bottom-16 left-1/2 transform -translate-x-1/2"
+              : deviceType === "tablet"
+              ? "bottom-20 left-1/2 transform -translate-x-1/2"
+              : "bottom-20 left-4"
+          }`}
+        >
+          <div
+            className={
+              deviceType === "phone"
+                ? "scale-75 origin-bottom"
+                : deviceType === "tablet"
+                ? "scale-90 origin-bottom"
+                : ""
+            }
+          >
+            <EmojiPicker
+              onEmojiClick={handleEmojiSelect}
+              width={
+                deviceType === "phone"
+                  ? 280
+                  : deviceType === "tablet"
+                  ? 320
+                  : 300
+              }
+              height={
+                deviceType === "phone"
+                  ? 350
+                  : deviceType === "tablet"
+                  ? 380
+                  : 400
+              }
+            />
+          </div>
         </div>
       )}
 
@@ -3220,12 +5210,12 @@ export default function ChatWindow({
                     >
                       <div className="flex items-start gap-3">
                         <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
-                          {comment.author_avatar &&
-                          comment.author_avatar !==
+                          {comment.authorAvatar &&
+                          comment.authorAvatar !==
                             "/uploads/avatars/default.jpg" ? (
                             <img
-                              src={getImageUrl(comment.author_avatar)}
-                              alt={comment.author_name}
+                              src={getImageUrl(comment.authorAvatar)}
+                              alt={comment.authorName}
                               className="h-full w-full object-cover"
                             />
                           ) : (
@@ -3250,16 +5240,25 @@ export default function ChatWindow({
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-sm text-slate-800">
-                                {comment.author_name}
+                                {comment.authorName}
                               </span>
                               <span className="text-xs text-slate-500">
-                                {new Date(
-                                  comment.created_at
-                                ).toLocaleDateString()}
+                                {(() => {
+                                  try {
+                                    const date = new Date(
+                                      comment.created_at || comment.createdAt
+                                    );
+                                    return isNaN(date.getTime())
+                                      ? "Just now"
+                                      : date.toLocaleDateString();
+                                  } catch (error) {
+                                    return "Just now";
+                                  }
+                                })()}
                               </span>
                             </div>
                             {/* Delete button - shown if user is comment author or post owner */}
-                            {(comment.author_id === currentUser?.id ||
+                            {(comment.authorId === currentUser?.id ||
                               messages.find(
                                 (msg) => msg.id === `post-${selectedPostId}`
                               )?.senderId === currentUser?.id) && (
@@ -3272,9 +5271,52 @@ export default function ChatWindow({
                               </button>
                             )}
                           </div>
-                          <p className="text-sm text-slate-700 leading-relaxed mb-2">
-                            {comment.content}
-                          </p>
+                          {comment.content && (
+                            <p className="text-sm text-slate-700 leading-relaxed mb-2">
+                              {comment.content}
+                            </p>
+                          )}
+
+                          {(comment.image_path || comment.imagePath) && (
+                            <div className="mb-2">
+                              <img
+                                src={(() => {
+                                  const imagePath =
+                                    comment.image_path || comment.imagePath;
+                                  if (!imagePath) return "";
+
+                                  // If it's a blob URL (optimistic), use as-is
+                                  if (imagePath.startsWith("blob:")) {
+                                    return imagePath;
+                                  }
+
+                                  // Use the getImageUrl utility for proper URL construction
+                                  return getImageUrl(imagePath);
+                                })()}
+                                alt="Comment image"
+                                className="max-w-full h-auto rounded-lg border border-slate-200 shadow-sm"
+                                style={{ maxHeight: "200px" }}
+                                onError={(e) => {
+                                  console.error(
+                                    "❌ Failed to load comment image:",
+                                    {
+                                      src: e.currentTarget.src,
+                                      image_path: comment.image_path,
+                                      imagePath: comment.imagePath,
+                                      constructedUrl: (() => {
+                                        const imagePath =
+                                          comment.image_path ||
+                                          comment.imagePath;
+                                        return imagePath
+                                          ? getImageUrl(imagePath)
+                                          : "no path";
+                                      })(),
+                                    }
+                                  );
+                                }}
+                              />
+                            </div>
+                          )}
 
                           {/* Comment voting buttons */}
                           <div className="flex items-center gap-4 text-xs">
@@ -3282,7 +5324,7 @@ export default function ChatWindow({
                               <button
                                 onClick={() => handleVoteComment(comment.id, 1)}
                                 className={`flex items-center justify-center w-6 h-5 rounded-lg transition-all duration-200 hover:scale-110 ${
-                                  comment.user_vote === 1
+                                  comment.userVote === 1
                                     ? "bg-green-100 text-green-600"
                                     : "text-gray-400 hover:bg-green-50 hover:text-green-500"
                                 }`}
@@ -3291,9 +5333,9 @@ export default function ChatWindow({
                               </button>
                               <span
                                 className={`font-bold text-xs min-w-[1.5rem] text-center ${
-                                  comment.user_vote === 1
+                                  comment.userVote === 1
                                     ? "text-green-600"
-                                    : comment.user_vote === -1
+                                    : comment.userVote === -1
                                     ? "text-red-600"
                                     : "text-gray-600"
                                 }`}
@@ -3306,7 +5348,7 @@ export default function ChatWindow({
                                   handleVoteComment(comment.id, -1)
                                 }
                                 className={`flex items-center justify-center w-6 h-5 rounded-lg transition-all duration-200 hover:scale-110 ${
-                                  comment.user_vote === -1
+                                  comment.userVote === -1
                                     ? "bg-red-100 text-red-600"
                                     : "text-gray-400 hover:bg-red-50 hover:text-red-500"
                                 }`}
@@ -3333,20 +5375,108 @@ export default function ChatWindow({
 
             {/* Add Comment Form */}
             <div className="border-t border-slate-200 pt-4">
-              <div className="flex gap-3">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Write a comment..."
-                  rows={2}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  disabled={isSubmittingComment}
-                />
+              {/* Image Preview */}
+              {newCommentImage && (
+                <div className="mb-3 relative">
+                  <img
+                    src={URL.createObjectURL(newCommentImage)}
+                    alt="Comment preview"
+                    className="max-w-full h-auto rounded-lg border border-slate-200 shadow-sm"
+                    style={{ maxHeight: "150px" }}
+                  />
+                  <button
+                    onClick={() => setNewCommentImage(null)}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-colors"
+                    title="Remove image"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSubmitComment();
+                }}
+                className="flex gap-3"
+                noValidate
+              >
+                <div className="flex-1">
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (
+                          (newComment.trim() || newCommentImage) &&
+                          !isSubmittingComment
+                        ) {
+                          handleSubmitComment();
+                        }
+                      }
+                    }}
+                    placeholder={
+                      newCommentImage
+                        ? "Add a caption (optional)..."
+                        : "Write a comment, add an image, or both..."
+                    }
+                    rows={2}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    disabled={isSubmittingComment}
+                    required={false}
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        id="comment-image-upload"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setNewCommentImage(file);
+                          }
+                        }}
+                        className="hidden"
+                        disabled={isSubmittingComment}
+                      />
+                      <label
+                        htmlFor="comment-image-upload"
+                        className={`cursor-pointer p-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors ${
+                          isSubmittingComment
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
+                        }`}
+                        title="Add image"
+                      >
+                        <svg
+                          className="w-4 h-4 text-slate-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </label>
+                    </div>
+                  </div>
+                </div>
                 <button
-                  onClick={handleSubmitComment}
-                  disabled={!newComment.trim() || isSubmittingComment}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    newComment.trim() && !isSubmittingComment
+                  type="submit"
+                  disabled={
+                    (!newComment.trim() && !newCommentImage) ||
+                    isSubmittingComment
+                  }
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 self-start ${
+                    (newComment.trim() || newCommentImage) &&
+                    !isSubmittingComment
                       ? "bg-blue-600 hover:bg-blue-700 text-white"
                       : "bg-slate-200 text-slate-400 cursor-not-allowed"
                   }`}
@@ -3354,15 +5484,19 @@ export default function ChatWindow({
                   {isSubmittingComment ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   ) : (
-                    "Post"
+                    "Post Comment"
                   )}
                 </button>
-              </div>
+              </form>
             </div>
 
             {/* Close Button */}
             <button
               onClick={() => {
+                // Clean up blob URL if exists
+                if (newCommentImage) {
+                  setNewCommentImage(null);
+                }
                 setShowCommentsModal(false);
                 setSelectedPostId(null);
                 setPostComments([]);

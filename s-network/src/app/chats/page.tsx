@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion } from "framer-motion";
+import { FaBars, FaTimes, FaArrowLeft } from "react-icons/fa";
 import ChatList from "./components/ChatList.tsx";
 import ChatWindow from "./components/ChatWindow.tsx";
 import GroupChatList from "./components/GroupChatList.tsx";
@@ -35,6 +36,63 @@ export default function ChatPage() {
   const [following, setFollowing] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Enhanced responsive state for iPhone, iPad, and Desktop
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+  const [deviceType, setDeviceType] = useState<"phone" | "tablet" | "desktop">(
+    "desktop"
+  );
+
+  // Debouncing for conversation updates
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Enhanced device detection for optimal experience
+  useEffect(() => {
+    const checkDevice = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      // iPhone: width < 768px
+      if (width < 768) {
+        setDeviceType("phone");
+        setIsMobile(true);
+        setIsTablet(false);
+      }
+      // iPad: width >= 768px && width < 1200px
+      else if (width >= 768 && width < 1200) {
+        setDeviceType("tablet");
+        setIsMobile(false); // iPad gets different treatment
+        setIsTablet(true);
+      }
+      // Desktop: width >= 1200px
+      else {
+        setDeviceType("desktop");
+        setIsMobile(false);
+        setIsTablet(false);
+        setIsSidebarOpen(false); // Always show sidebar on desktop
+      }
+
+      // Smart sidebar behavior based on device and context
+      if (width >= 1200) {
+        // Desktop: sidebar always visible
+        setIsSidebarOpen(false);
+      } else if (width >= 768 && width < 1200) {
+        // iPad: keep sidebar open if no chat selected, close if chat selected
+        if (selectedChat) {
+          setIsSidebarOpen(false);
+        } else {
+          setIsSidebarOpen(true);
+        }
+      }
+      // iPhone: sidebar closed by default, user controls it
+    };
+
+    checkDevice();
+    window.addEventListener("resize", checkDevice);
+    return () => window.removeEventListener("resize", checkDevice);
+  }, [selectedChat]);
+
   useEffect(() => {
     // If not logged in, redirect to login
     if (!loading && !isLoggedIn) {
@@ -45,6 +103,15 @@ export default function ChatPage() {
       fetchFollowRelationships();
     }
   }, [isLoggedIn, loading, router]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const fetchFollowRelationships = async () => {
     try {
@@ -179,6 +246,51 @@ export default function ChatPage() {
     }
   };
 
+  // Smart conversation update function - updates specific conversation without full reload
+  const updateConversationInList = (
+    conversationId: string,
+    updates: Partial<Chat>
+  ) => {
+    const updateChatsList = (chatsList: Chat[]) =>
+      chatsList.map((chat) =>
+        chat.id === conversationId ? { ...chat, ...updates } : chat
+      );
+
+    // Update in both direct chats and group chats
+    setChats((prev) => updateChatsList(prev));
+    setGroupChats((prev) => updateChatsList(prev));
+  };
+
+  // Optimized conversation updated function - no more full reloads!
+  const handleConversationUpdated = async (lastMessage?: string) => {
+    // Debounce rapid updates to prevent flashing
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+    }
+
+    updateTimeoutRef.current = setTimeout(() => {
+      // Just update timestamp and message of selected chat without full reload
+      if (selectedChat) {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        const updates: Partial<Chat> = {
+          lastMessageTime: timeString,
+        };
+
+        // If a message is provided, update the last message
+        if (lastMessage) {
+          updates.lastMessage = lastMessage;
+        }
+
+        updateConversationInList(selectedChat.id, updates);
+      }
+    }, 100); // 100ms debounce to batch rapid updates
+  };
+
   // Function to create a new conversation with a user
   const createConversation = async (userId: number) => {
     try {
@@ -202,7 +314,7 @@ export default function ChatPage() {
 
       const data = await response.json();
 
-      // Refresh conversations list
+      // Only do full refresh for new conversations
       fetchChats();
 
       // Return the new conversation ID
@@ -247,15 +359,116 @@ export default function ChatPage() {
     return Array.from(contactsMap.values());
   };
 
+  // Handle chat selection with enhanced device-specific behavior
+  const handleChatSelect = (chat: Chat) => {
+    setSelectedChat(chat);
+
+    // Device-specific sidebar behavior
+    if (deviceType === "phone") {
+      // iPhone: Always close sidebar when chat selected
+      setIsSidebarOpen(false);
+    } else if (deviceType === "tablet") {
+      // iPad: Close sidebar in portrait, keep open in landscape if space allows
+      const width = window.innerWidth;
+      if (width < 900) {
+        setIsSidebarOpen(false); // Close in portrait mode
+      }
+      // In landscape (width >= 900), sidebar can stay open
+    }
+    // Desktop: No change needed
+  };
+
   return (
-    <div className="flex h-[calc(100vh-70px)] bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="flex h-[calc(100vh-70px)] bg-gradient-to-br from-slate-50 to-blue-50 relative overflow-hidden">
+      {/* Enhanced Mobile Header for iPhone and iPad */}
+      {(isMobile || isTablet) && (
+        <div
+          className={`absolute top-0 left-0 right-0 z-30 flex items-center justify-between bg-white/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm ${
+            deviceType === "phone" ? "p-3" : "p-4"
+          }`}
+        >
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className={`rounded-xl bg-blue-500 hover:bg-blue-600 text-white shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+              deviceType === "phone" ? "p-2.5" : "p-3"
+            }`}
+          >
+            {isSidebarOpen ? (
+              <FaTimes size={deviceType === "phone" ? 16 : 18} />
+            ) : (
+              <FaBars size={deviceType === "phone" ? 16 : 18} />
+            )}
+          </button>
+
+          {selectedChat && (
+            <div className="flex items-center gap-3 flex-1 ml-4 min-w-0">
+              <div
+                className={`font-semibold text-slate-800 truncate ${
+                  deviceType === "phone" ? "text-sm" : "text-base"
+                }`}
+              >
+                {selectedChat.name}
+              </div>
+              {selectedChat.isGroup && (
+                <span
+                  className={`bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-medium flex-shrink-0 ${
+                    deviceType === "phone" ? "text-xs" : "text-sm"
+                  }`}
+                >
+                  Group
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* iPad: Show sidebar toggle hint when no chat selected */}
+          {isTablet && !selectedChat && (
+            <div className="text-slate-600 text-sm font-medium">
+              Choose a conversation
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Enhanced Sidebar Overlay */}
+      {(isMobile || isTablet) && isSidebarOpen && (
+        <div
+          className={`fixed inset-0 z-40 transition-opacity duration-300 ${
+            deviceType === "phone" ? "bg-black/60" : "bg-black/40"
+          }`}
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Modern Sidebar Navigation */}
       <Tabs.Root
         value={activeTab}
         onValueChange={setActiveTab}
-        className="flex flex-col md:flex-row w-full h-full"
+        className="flex flex-col lg:flex-row w-full h-full"
       >
-        <div className="w-full md:w-80 bg-white/90 backdrop-blur-sm border-r border-slate-200/60 shadow-xl">
+        <div
+          className={`
+          ${
+            deviceType === "phone"
+              ? `fixed top-0 left-0 h-full w-[85vw] max-w-xs z-50 transform transition-transform duration-300 ease-in-out ${
+                  isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+                }`
+              : deviceType === "tablet"
+              ? `fixed top-0 left-0 h-full z-50 transform transition-transform duration-300 ease-in-out ${
+                  window.innerWidth < 900
+                    ? `w-[70vw] max-w-sm ${
+                        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+                      }`
+                    : `w-96 ${
+                        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+                      }`
+                }`
+              : "w-full md:w-80 lg:w-96 xl:w-80" // Desktop - responsive sidebar width
+          } 
+          bg-white/95 backdrop-blur-sm border-r border-slate-200/60 shadow-xl
+          ${isMobile || isTablet ? "pt-16" : ""}
+        `}
+        >
           <Tabs.List className="flex w-full bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-slate-200/60">
             <Tabs.Trigger
               value="direct"
@@ -286,11 +499,14 @@ export default function ChatPage() {
             <ChatList
               chats={chats}
               selectedChatId={selectedChat?.id}
-              onSelectChat={setSelectedChat}
+              onSelectChat={handleChatSelect}
               isLoading={isLoading}
               error={error}
               contacts={getAvailableContacts()}
               onStartNewChat={createConversation}
+              isMobile={isMobile}
+              isTablet={isTablet}
+              deviceType={deviceType}
             />
           </Tabs.Content>
 
@@ -301,25 +517,85 @@ export default function ChatPage() {
             <GroupChatList
               groupChats={groupChats}
               selectedChatId={selectedChat?.id}
-              onSelectChat={setSelectedChat}
+              onSelectChat={handleChatSelect}
               isLoading={isLoading}
               error={error}
               onGroupCreated={fetchChats}
+              isMobile={isMobile}
+              isTablet={isTablet}
+              deviceType={deviceType}
             />
           </Tabs.Content>
         </div>
 
-        {/* Chat window */}
-        <div className="flex-1 flex flex-col h-full">
+        {/* Chat window - Enhanced Responsive Layout */}
+        <div
+          className={`
+          flex-1 flex flex-col h-full
+          ${
+            deviceType === "phone"
+              ? selectedChat
+                ? "block"
+                : "hidden"
+              : "block"
+          }
+          ${(isMobile || isTablet) && selectedChat ? "pt-16" : ""}
+          ${
+            deviceType === "tablet" && isSidebarOpen && window.innerWidth >= 900
+              ? "ml-96"
+              : ""
+          }
+        `}
+        >
           {selectedChat ? (
-            <ChatWindow
-              chat={selectedChat}
-              onConversationUpdated={fetchChats}
-            />
+            <motion.div
+              initial={
+                deviceType === "phone"
+                  ? { opacity: 0, x: 20 }
+                  : deviceType === "tablet"
+                  ? { opacity: 0, scale: 0.95 }
+                  : false
+              }
+              animate={
+                deviceType === "phone"
+                  ? { opacity: 1, x: 0 }
+                  : deviceType === "tablet"
+                  ? { opacity: 1, scale: 1 }
+                  : false
+              }
+              transition={{
+                duration: deviceType === "phone" ? 0.3 : 0.2,
+                ease: "easeOut",
+              }}
+              className="h-full"
+            >
+              <ChatWindow
+                chat={selectedChat}
+                onConversationUpdated={handleConversationUpdated}
+                isMobile={isMobile}
+                isTablet={isTablet}
+                deviceType={deviceType}
+                onBackClick={
+                  isMobile || isTablet ? () => setSelectedChat(null) : undefined
+                }
+              />
+            </motion.div>
           ) : (
             <EmptyState
-              title="Select a conversation"
-              description="Choose a chat from the sidebar or start a new conversation"
+              title={
+                deviceType === "phone"
+                  ? "Welcome to Chat"
+                  : deviceType === "tablet"
+                  ? "Select a Conversation"
+                  : "Select a conversation"
+              }
+              description={
+                deviceType === "phone"
+                  ? "Tap the menu button to view your conversations"
+                  : deviceType === "tablet"
+                  ? "Choose a chat from the sidebar to start messaging"
+                  : "Choose a chat from the sidebar or start a new conversation"
+              }
             />
           )}
         </div>

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
+import { useToast } from "@/context/ToastContext";
+import { Avatar } from "@/components/ui";
 import {
   FiEdit3,
   FiCamera,
@@ -44,6 +46,7 @@ interface Post {
 
 export default function Profile() {
   const router = useRouter();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
@@ -237,6 +240,10 @@ export default function Profile() {
       }
 
       setSuccess("Profile updated successfully");
+      showSuccess(
+        "Profile Updated",
+        "Your profile has been updated successfully!"
+      );
       setShowSettingsPopup(false);
 
       // Refresh user data and posts
@@ -312,14 +319,14 @@ export default function Profile() {
       if (response.ok) {
         // Remove the follower from the local state
         setFollowers(followers.filter((f) => f.id !== followerId));
-        alert("Follower removed successfully");
+        showSuccess("Follower Removed", "Follower removed successfully");
       } else {
         const errorText = await response.text();
-        alert(`Failed to remove follower: ${errorText}`);
+        showError("Remove Failed", `Failed to remove follower: ${errorText}`);
       }
     } catch (error) {
       console.error("Error removing follower:", error);
-      alert("Failed to remove follower. Please try again.");
+      showError("Remove Error", "Failed to remove follower. Please try again.");
     }
   };
 
@@ -339,14 +346,14 @@ export default function Profile() {
       if (response.ok) {
         // Remove the user from the following list
         setFollowing(following.filter((f) => f.id !== userId));
-        alert("User unfollowed successfully");
+        showSuccess("Unfollowed", "User unfollowed successfully");
       } else {
         const errorText = await response.text();
-        alert(`Failed to unfollow user: ${errorText}`);
+        showError("Unfollow Failed", `Failed to unfollow user: ${errorText}`);
       }
     } catch (error) {
       console.error("Error unfollowing user:", error);
-      alert("Failed to unfollow user. Please try again.");
+      showError("Unfollow Error", "Failed to unfollow user. Please try again.");
     }
   };
 
@@ -388,36 +395,15 @@ export default function Profile() {
             {/* Avatar - positioned to overlap the gradient banner */}
             <div className="absolute -top-20 left-6 rounded-full overflow-hidden border-4 border-white bg-white shadow-md">
               <div className="relative w-32 h-32">
-                {user?.avatar ? (
-                  <Image
-                    src={getImageUrl(user.avatar)}
-                    alt={`${user?.first_name || "User"}'s profile picture`}
-                    fill
-                    sizes="128px"
-                    className="object-cover"
-                    unoptimized={user.avatar?.startsWith("http")}
-                    priority
-                    onError={(e) => {
-                      // If image fails to load, replace with initial
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = "none";
-                      const parent = target.parentElement;
-                      if (parent) {
-                        const fallback = document.createElement("div");
-                        fallback.className =
-                          "w-full h-full flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600";
-                        fallback.innerText = user?.first_name?.charAt(0) || "?";
-                        parent.appendChild(fallback);
-                      }
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600">
-                    {user?.first_name?.charAt(0) || "?"}
-                  </div>
-                )}
+                <Avatar
+                  avatar={user?.avatar}
+                  firstName={user?.first_name}
+                  lastName={user?.last_name}
+                  size="2xl"
+                  className="w-full h-full !text-3xl"
+                />
                 {/* Camera icon overlay for avatar */}
-                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100 rounded-full">
                   <div className="bg-white p-2 rounded-full">
                     <FiCamera className="text-gray-700" />
                   </div>
@@ -984,11 +970,11 @@ export default function Profile() {
               </Link>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
+            <div className="space-y-4 p-4">
               {posts.map((post) => (
                 <div
                   key={post.id}
-                  className="bg-white rounded-lg border border-gray-200 shadow-md overflow-hidden m-4"
+                  className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
                 >
                   {/* Modern post layout */}
                   <div className="flex">
@@ -1050,31 +1036,13 @@ export default function Profile() {
                       <div className="flex items-center mb-3">
                         {/* User avatar */}
                         <div className="flex-shrink-0 mr-3">
-                          {user?.avatar ? (
-                            <div className="relative w-10 h-10 rounded-full overflow-hidden">
-                              <Image
-                                src={getImageUrl(user.avatar)}
-                                alt={`${
-                                  user?.first_name || "User"
-                                }'s profile picture`}
-                                fill
-                                sizes="40px"
-                                className="object-cover"
-                                unoptimized={user.avatar?.startsWith("http")}
-                                onError={(e) =>
-                                  createAvatarFallback(
-                                    e.target as HTMLImageElement,
-                                    user?.first_name?.charAt(0) || "?",
-                                    "text-sm"
-                                  )
-                                }
-                              />
-                            </div>
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold text-white">
-                              {user?.first_name?.charAt(0) || "?"}
-                            </div>
-                          )}
+                          <Avatar
+                            avatar={user?.avatar}
+                            firstName={user?.first_name}
+                            lastName={user?.last_name}
+                            size="md"
+                            className="border-2 border-gray-100"
+                          />
                         </div>
 
                         {/* Post metadata */}
@@ -1083,9 +1051,6 @@ export default function Profile() {
                             <span className="font-semibold text-gray-900 mr-1 text-sm">
                               {user?.first_name} {user?.last_name}
                             </span>
-                            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full mr-2">
-                              Author
-                            </span>
                           </div>
                           <div className="flex items-center text-xs text-gray-500">
                             <span>{formatDate(post.created_at)}</span>
@@ -1093,17 +1058,56 @@ export default function Profile() {
                             <span className="flex items-center">
                               {post.privacy === "public" ? (
                                 <>
-                                  <FiGlobe className="w-3 h-3 mr-1" />
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-3 w-3 mr-1"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
                                   Public
                                 </>
                               ) : post.privacy === "almost_private" ? (
                                 <>
-                                  <FiUsers className="w-3 h-3 mr-1" />
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-3 w-3 mr-1"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                    />
+                                  </svg>
                                   Followers
                                 </>
                               ) : (
                                 <>
-                                  <FiLock className="w-3 h-3 mr-1" />
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-3 w-3 mr-1"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                                    />
+                                  </svg>
                                   Private
                                 </>
                               )}
@@ -1113,11 +1117,9 @@ export default function Profile() {
                       </div>
 
                       {/* Post title */}
-                      {post.title && (
-                        <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
-                          {post.title}
-                        </h3>
-                      )}
+                      <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                        {post.title || post.content.split("\n")[0]}
+                      </h3>
 
                       {/* Post content */}
                       <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
@@ -1147,8 +1149,27 @@ export default function Profile() {
 
                       {/* Post footer with actions */}
                       <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
-                        <div className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors">
-                          <FiMessageSquare className="h-4 w-4 mr-1.5 text-gray-500" />
+                        <div
+                          className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigateToPost(post.id);
+                          }}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 mr-1.5 text-gray-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                            />
+                          </svg>
                           <span>{post.comment_count || 0} Comments</span>
                         </div>
                         <div
@@ -1159,10 +1180,19 @@ export default function Profile() {
                               .writeText(
                                 window.location.origin + `/posts/${post.id}`
                               )
-                              .then(() => alert("Link copied to clipboard!"))
-                              .catch((err) =>
-                                console.error("Failed to copy: ", err)
-                              );
+                              .then(() =>
+                                showSuccess(
+                                  "Link Copied",
+                                  "Link copied to clipboard!"
+                                )
+                              )
+                              .catch((err) => {
+                                console.error("Failed to copy: ", err);
+                                showError(
+                                  "Copy Failed",
+                                  "Failed to copy link to clipboard"
+                                );
+                              });
                           }}
                         >
                           <svg

@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import Image from "next/image";
-import { getImageUrl, createAvatarFallback } from "@/utils/image";
+import { Avatar } from "@/components/ui";
+import { getImageUrl } from "@/utils/image";
+import { useToast } from "@/context/ToastContext";
 
 // Basic types
 interface Post {
@@ -32,6 +33,7 @@ interface Post {
 export default function Explore() {
   const router = useRouter();
   const { isLoggedIn } = useAuth();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
   const [voting, setVoting] = useState<{ [postId: number]: boolean }>({});
   const [postsLoading, setPostsLoading] = useState(false);
@@ -96,66 +98,76 @@ export default function Explore() {
     }
   };
 
-  // Handle vote
-  const handleVote = async (postId: number, vote: number) => {
-    if (voting[postId]) return;
+  // Handle voting on a post - same logic as home page
+  const handleVote = async (
+    postId: number,
+    voteType: 1 | -1,
+    event: React.MouseEvent
+  ) => {
+    event.stopPropagation(); // Prevent navigation to post detail
+
+    if (voting[postId]) return; // Prevent double clicks
 
     setVoting((prev) => ({ ...prev, [postId]: true }));
 
     try {
-      const post = posts.find((p) => p.id === postId);
-      if (!post) return;
+      // Simple optimistic UI update
+      // Determine the new vote state (toggle if same, change if different)
+      const updatedPosts = posts.map((post) => {
+        if (post.id === postId) {
+          const currentVote = post.user_vote || 0;
+          const newVote = currentVote === voteType ? 0 : voteType;
 
-      // Optimistic UI update
-      const currentVote = post.user_vote || 0;
-      const newVote = currentVote === vote ? 0 : vote;
+          // Update upvotes/downvotes
+          let newUpvotes = post.upvotes || 0;
+          let newDownvotes = post.downvotes || 0;
 
-      let newUpvotes = post.upvotes || 0;
-      let newDownvotes = post.downvotes || 0;
+          // Remove old vote if exists
+          if (currentVote === 1) newUpvotes--;
+          if (currentVote === -1) newDownvotes--;
 
-      // Remove old vote
-      if (currentVote === 1) newUpvotes--;
-      if (currentVote === -1) newDownvotes--;
+          // Add new vote if not toggling off
+          if (newVote === 1) newUpvotes++;
+          if (newVote === -1) newDownvotes++;
 
-      // Add new vote if not toggling off
-      if (newVote === 1) newUpvotes++;
-      if (newVote === -1) newDownvotes++;
+          return {
+            ...post,
+            user_vote: newVote,
+            upvotes: newUpvotes,
+            downvotes: newDownvotes,
+          };
+        }
+        return post;
+      });
 
       // Update UI immediately
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                user_vote: newVote,
-                upvotes: newUpvotes,
-                downvotes: newDownvotes,
-              }
-            : p
-        )
-      );
+      setPosts(updatedPosts);
 
-      // Send request to server
+      // Send API request
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
       await fetch(`${backendUrl}/api/posts/${postId}/vote`, {
         method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ vote_type: vote }),
+        body: JSON.stringify({ vote_type: voteType }),
       });
+
+      // Note: We're not updating the UI again with the server response
+      // This makes the vote appear immediate, without waiting for the server
     } catch (error) {
-      console.error("Error voting:", error);
-      // Refresh posts on error to ensure correct data
+      console.error("Error voting on post:", error);
+      // On error, refresh posts to ensure data consistency
       fetchPosts(1, true);
     } finally {
       setVoting((prev) => ({ ...prev, [postId]: false }));
     }
   };
 
-  // Format date to a readable format
+  // Format date to a readable format - same as home page
   const formatDate = (dateString: string) => {
     const options: Intl.DateTimeFormatOptions = {
       year: "numeric",
@@ -165,12 +177,6 @@ export default function Explore() {
       minute: "2-digit",
     };
     return new Date(dateString).toLocaleDateString(undefined, options);
-  };
-
-  // Truncate content for preview
-  const truncateContent = (content: string, maxLength: number = 200) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + "...";
   };
 
   if (!isLoggedIn) {
@@ -195,8 +201,8 @@ export default function Explore() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="py-6">
+      <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -207,249 +213,287 @@ export default function Explore() {
           </p>
         </div>
 
-        {/* Posts feed */}
-        <div className="space-y-6">
-          {postsLoading && posts.length === 0 && (
-            <div className="bg-white shadow-md rounded-lg p-8 flex justify-center items-center">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-              <span className="ml-3 text-gray-600">Loading posts...</span>
-            </div>
-          )}
+        {/* Posts feed with exact same styling as home page */}
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Main Content - Posts feed */}
+          <div className="flex-1">
+            {postsLoading && posts.length === 0 && (
+              <div className="bg-white shadow-md rounded-lg p-8 flex justify-center items-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                <span className="ml-3 text-gray-600">Loading posts...</span>
+              </div>
+            )}
 
-          {!postsLoading && posts.length === 0 && (
-            <div className="bg-white shadow-md rounded-lg p-8 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 text-gray-400 mb-4">
+            {!postsLoading && posts.length === 0 && (
+              <div className="bg-white shadow-md rounded-lg p-10 text-center border border-gray-200 transition-all hover:shadow-lg">
                 <svg
-                  className="w-8 h-8"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-16 w-16 mx-auto text-gray-400 mb-5"
                   fill="none"
-                  stroke="currentColor"
                   viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    strokeWidth={1}
+                    d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
                   />
                 </svg>
+                <p className="text-gray-500 mb-5 text-lg">
+                  No public posts to explore yet.
+                </p>
               </div>
-              <h3 className="text-lg font-medium text-gray-800 mb-2">
-                No posts found
-              </h3>
-              <p className="text-gray-600">
-                There are no public posts to explore yet.
-              </p>
-            </div>
-          )}
+            )}
 
-          {posts.map((post) => (
-            <div
-              key={post.id}
-              className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
-            >
-              <div
-                className="p-6 cursor-pointer"
-                onClick={() => router.push(`/posts/${post.id}`)}
-              >
-                {/* Post header with user info */}
-                <div className="flex items-center mb-4">
-                  {/* User avatar */}
-                  <div className="flex-shrink-0 mr-3">
-                    {post.author.avatar ? (
-                      <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-gray-100">
-                        <Image
-                          src={getImageUrl(post.author.avatar)}
-                          alt={`${post.author.first_name} ${post.author.last_name}`}
-                          width={48}
-                          height={48}
-                          className="object-cover"
-                          onError={(e) =>
-                            createAvatarFallback(
-                              e.target as HTMLImageElement,
-                              post.author.first_name.charAt(0),
-                              "text-sm"
-                            )
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
-                        {post.author.first_name.charAt(0)}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Post metadata */}
-                  <div className="flex-1">
-                    <div className="flex items-center">
-                      <span className="font-semibold text-gray-900 hover:text-indigo-600 cursor-pointer">
-                        {post.author.first_name} {post.author.last_name}
-                      </span>
-                      <span className="mx-2 text-gray-400">·</span>
-                      <span className="text-sm text-gray-500">
-                        {formatDate(post.created_at)}
-                      </span>
-                    </div>
-                    <div className="flex items-center text-xs text-gray-400 mt-1">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-3 w-3 mr-1"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      Public
-                    </div>
-                  </div>
-                </div>
-
-                {/* Post content */}
-                <div className="mb-4">
-                  {post.title && (
-                    <h2 className="text-xl font-bold mb-2 text-gray-900">
-                      {post.title}
-                    </h2>
-                  )}
-                  <div className="text-gray-700 whitespace-pre-line leading-relaxed">
-                    {truncateContent(post.content)}
-                  </div>
-                </div>
-
-                {/* Post image */}
-                {post.image_url && (
-                  <div className="mb-4 rounded-lg overflow-hidden bg-gray-50">
-                    <Image
-                      src={getImageUrl(post.image_url)}
-                      alt={post.title || "Post image"}
-                      width={600}
-                      height={400}
-                      className="w-full h-auto max-h-96 object-cover"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Post actions */}
-              <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    {/* Upvote */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleVote(post.id, 1);
-                      }}
-                      disabled={voting[post.id]}
-                      className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        post.user_vote === 1
-                          ? "bg-green-100 text-green-700"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 11l5-5m0 0l5 5m-5-5v12"
-                        />
-                      </svg>
-                      <span>{post.upvotes || 0}</span>
-                    </button>
-
-                    {/* Downvote */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleVote(post.id, -1);
-                      }}
-                      disabled={voting[post.id]}
-                      className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        post.user_vote === -1
-                          ? "bg-red-100 text-red-700"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17 13l-5 5m0 0l-5-5m5 5V6"
-                        />
-                      </svg>
-                      <span>{post.downvotes || 0}</span>
-                    </button>
-
-                    {/* Comments */}
-                    <div className="flex items-center space-x-1 text-gray-600">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                        />
-                      </svg>
-                      <span className="text-sm">{post.comment_count || 0}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => router.push(`/posts/${post.id}`)}
-                    className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+            {posts.length > 0 && (
+              <div className="space-y-4">
+                {posts.map((post) => (
+                  <div
+                    key={post.id}
+                    className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
                   >
-                    View Post
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+                    {/* Modern post layout - EXACT same as home page */}
+                    <div className="flex">
+                      {/* Vote buttons - left side */}
+                      <div className="bg-gray-50 w-12 flex flex-col items-center py-4 border-r border-gray-100">
+                        <button
+                          onClick={(e) => handleVote(post.id, 1, e)}
+                          className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                            post.user_vote === 1
+                              ? "text-orange-500 bg-orange-50"
+                              : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
+                          }`}
+                          disabled={voting[post.id]}
+                          aria-label="Upvote"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path d="M12 4l8 8h-6v8h-4v-8H4z" />
+                          </svg>
+                        </button>
+                        <span
+                          className={`text-sm font-medium my-1 ${
+                            post.user_vote === 1
+                              ? "text-orange-500"
+                              : post.user_vote === -1
+                              ? "text-blue-500"
+                              : "text-gray-700"
+                          }`}
+                        >
+                          {(post.upvotes || 0) - (post.downvotes || 0)}
+                        </span>
+                        <button
+                          onClick={(e) => handleVote(post.id, -1, e)}
+                          className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                            post.user_vote === -1
+                              ? "text-blue-500 bg-blue-50"
+                              : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                          }`}
+                          disabled={voting[post.id]}
+                          aria-label="Downvote"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path d="M12 20l-8-8h6V4h4v8h6z" />
+                          </svg>
+                        </button>
+                      </div>
 
-          {/* Load more button */}
-          {hasMore && posts.length > 0 && (
-            <div className="text-center">
-              <button
-                onClick={loadMore}
-                disabled={postsLoading}
-                className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {postsLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Loading...
-                  </>
-                ) : (
-                  "Load More Posts"
-                )}
-              </button>
-            </div>
-          )}
+                      {/* Post content - right side */}
+                      <div
+                        className="p-4 w-full cursor-pointer"
+                        onClick={() => router.push(`/posts/${post.id}`)}
+                      >
+                        {/* Post header with user info */}
+                        <div className="flex items-center mb-3">
+                          {/* User avatar */}
+                          <div className="flex-shrink-0 mr-3">
+                            <Avatar
+                              avatar={post.author.avatar}
+                              firstName={post.author.first_name}
+                              lastName={post.author.last_name}
+                              size="md"
+                              className="border-2 border-gray-100"
+                            />
+                          </div>
+
+                          {/* Post metadata */}
+                          <div className="flex flex-col">
+                            <div className="flex items-center">
+                              <span className="font-semibold text-gray-900 mr-1 text-sm">
+                                {post.author.first_name} {post.author.last_name}
+                              </span>
+                            </div>
+                            <div className="flex items-center text-xs text-gray-500">
+                              <span>{formatDate(post.created_at)}</span>
+                              <span className="mx-1">·</span>
+                              <span className="flex items-center">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-3 w-3 mr-1"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                                Public
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Post title */}
+                        <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                          {post.title || post.content.split("\n")[0]}
+                        </h3>
+
+                        {/* Post content */}
+                        <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
+                          {post.content}
+                        </div>
+
+                        {/* Post image */}
+                        {post.image_url && (
+                          <div className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
+                            <div
+                              className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                              style={{
+                                backgroundImage: `url(${getImageUrl(
+                                  post.image_url
+                                )})`,
+                              }}
+                            ></div>
+                            <div className="relative z-10 flex justify-center bg-transparent">
+                              <img
+                                src={getImageUrl(post.image_url)}
+                                alt="Post image"
+                                className="max-w-full mx-auto max-h-72 object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Post footer with actions */}
+                        <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
+                          <div
+                            className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/posts/${post.id}`);
+                            }}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4 mr-1.5 text-gray-500"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                              />
+                            </svg>
+                            <span>{post.comment_count || 0} Comments</span>
+                          </div>
+                          <div
+                            className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard
+                                .writeText(
+                                  window.location.origin + `/posts/${post.id}`
+                                )
+                                .then(() =>
+                                  showSuccess(
+                                    "Link Copied",
+                                    "Link copied to clipboard!"
+                                  )
+                                )
+                                .catch((err) => {
+                                  console.error("Failed to copy: ", err);
+                                  showError(
+                                    "Copy Failed",
+                                    "Failed to copy link to clipboard"
+                                  );
+                                });
+                            }}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4 mr-1.5 text-gray-500"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                              />
+                            </svg>
+                            <span>Share</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Load more button */}
+            {hasMore && posts.length > 0 && (
+              <div className="text-center mt-8">
+                <button
+                  onClick={loadMore}
+                  disabled={postsLoading}
+                  className="inline-flex items-center justify-center px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {postsLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5 mr-2"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Load More Posts
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

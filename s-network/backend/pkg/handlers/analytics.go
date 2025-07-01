@@ -8,7 +8,7 @@ import (
 )
 
 // AnalyticsData represents the main dashboard analytics structure
-type AnalyticsData struct {
+type AnalyticsData struct {  
 	// Overview stats
 	TotalFollowers    int `json:"total_followers"`
 	TotalFollowing    int `json:"total_following"`

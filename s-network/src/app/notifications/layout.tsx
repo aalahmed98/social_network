@@ -1,5 +1,4 @@
-import Sidebar from "@/app/components/Sidebar";
-import Navbar from "@/app/components/Navbar";
+import { Sidebar, Navbar } from "@/components/layout";
 
 export default function NotificationsLayout({
   children,

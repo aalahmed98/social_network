@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Chat } from "../page";
+import { useToast } from "@/context/ToastContext";
 import { IoSearch, IoClose } from "react-icons/io5";
 import {
   FaPlus,
@@ -23,6 +24,9 @@ interface GroupChatListProps {
   isLoading: boolean;
   error: string | null;
   onGroupCreated?: () => void;
+  isMobile?: boolean;
+  isTablet?: boolean;
+  deviceType?: "phone" | "tablet" | "desktop";
 }
 
 interface Group {
@@ -56,7 +60,11 @@ export default function GroupChatList({
   isLoading,
   error,
   onGroupCreated,
+  isMobile = false,
+  isTablet = false,
+  deviceType = "desktop",
 }: GroupChatListProps) {
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isBrowseDialogOpen, setIsBrowseDialogOpen] = useState(false);
@@ -218,7 +226,8 @@ export default function GroupChatList({
 
       if (response.ok) {
         const data = await response.json();
-        setInvitations(data || []);
+        // Extract invitations array properly from response
+        setInvitations(data.invitations || []);
       }
     } catch (error) {
       console.error("Error loading invitations:", error);
@@ -397,7 +406,7 @@ export default function GroupChatList({
         if (onGroupCreated) {
           onGroupCreated();
         }
-        alert("Group deleted successfully!");
+        showSuccess("Group Deleted", "Group deleted successfully!");
       } else {
         // Get the actual error message from the response
         let errorMessage = "Failed to delete group. Please try again.";
@@ -410,11 +419,14 @@ export default function GroupChatList({
         }
 
         console.error(`Delete failed with status: ${response.status}`);
-        alert(`Error: ${errorMessage}`);
+        showError("Delete Failed", `Error: ${errorMessage}`);
       }
     } catch (error) {
       console.error("Error deleting group:", error);
-      alert("Network error occurred while deleting group. Please try again.");
+      showError(
+        "Delete Error",
+        "Network error occurred while deleting group. Please try again."
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -553,35 +565,53 @@ export default function GroupChatList({
 
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-slate-50 to-blue-50">
-      {/* Modern Search and Actions Section */}
-      <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-200/60">
+      {/* Enhanced Search and Actions Section - Device Responsive */}
+      <div
+        className={`bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-200/60 ${
+          deviceType === "phone"
+            ? "p-3"
+            : deviceType === "tablet"
+            ? "p-4"
+            : "p-4"
+        }`}
+      >
         <div className="relative mb-4">
           <input
             type="text"
-            placeholder="Search groups..."
-            className="w-full pl-10 pr-4 py-3 bg-white/80 backdrop-blur-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-slate-200 shadow-md transition-all duration-200 placeholder-slate-400 font-medium"
+            placeholder={
+              deviceType === "phone" ? "Search..." : "Search groups..."
+            }
+            className={`w-full pl-10 pr-4 bg-white/80 backdrop-blur-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-slate-200 shadow-md transition-all duration-200 placeholder-slate-400 font-medium ${
+              deviceType === "phone" ? "py-2.5 text-sm" : "py-3 text-sm"
+            }`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           <IoSearch
-            className="absolute left-3 top-3.5 text-slate-400"
-            size={18}
+            className={`absolute text-slate-400 ${
+              deviceType === "phone" ? "left-3 top-3" : "left-3 top-3.5"
+            }`}
+            size={deviceType === "phone" ? 16 : 18}
           />
         </div>
-        <div className="flex gap-3">
+        <div className={`flex ${deviceType === "phone" ? "gap-2" : "gap-3"}`}>
           <button
             onClick={() => setIsCreateDialogOpen(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+            className={`flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+              deviceType === "phone" ? "py-2.5 text-xs" : "py-3 text-sm"
+            }`}
           >
-            <FaPlus size={14} />
-            <span>Create Group</span>
+            <FaPlus size={deviceType === "phone" ? 12 : 14} />
+            <span>{deviceType === "phone" ? "Create" : "Create Group"}</span>
           </button>
           <button
             onClick={handleBrowseGroups}
-            className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+            className={`flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+              deviceType === "phone" ? "py-2.5 text-xs" : "py-3 text-sm"
+            }`}
           >
-            <FaUsers size={14} />
-            <span>Browse Groups</span>
+            <FaUsers size={deviceType === "phone" ? 12 : 14} />
+            <span>{deviceType === "phone" ? "Browse" : "Browse Groups"}</span>
           </button>
         </div>
       </div>
@@ -603,18 +633,25 @@ export default function GroupChatList({
             </div>
           </div>
         ) : filteredChats.length > 0 ? (
-          <div className="p-2">
+          <div className={`${deviceType === "phone" ? "p-1" : "p-2"}`}>
             {filteredChats.map((chat) => (
               <div
                 key={chat.id}
-                className={`flex items-start p-4 rounded-2xl transition-all duration-200 relative group mb-2 border ${
+                className={`flex items-start rounded-2xl transition-all duration-200 relative group mb-2 border cursor-pointer touch-manipulation ${
+                  deviceType === "phone" ? "p-3" : "p-4"
+                } ${
                   selectedChatId === chat.id
                     ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-md"
-                    : "bg-white/60 backdrop-blur-sm hover:bg-white/80 border-slate-200/60 hover:shadow-lg hover:border-blue-200"
+                    : "bg-white/60 backdrop-blur-sm hover:bg-white/80 border-slate-200/60 hover:shadow-lg hover:border-blue-200 active:bg-white/90"
                 }`}
+                onClick={() => onSelectChat(chat)}
               >
                 <div className="relative">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 overflow-hidden flex items-center justify-center text-white shadow-lg ring-2 ring-white">
+                  <div
+                    className={`rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 overflow-hidden flex items-center justify-center text-white shadow-lg ring-2 ring-white ${
+                      deviceType === "phone" ? "h-10 w-10" : "h-12 w-12"
+                    }`}
+                  >
                     {chat.avatar ? (
                       <img
                         src={
@@ -629,26 +666,39 @@ export default function GroupChatList({
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <FaUsers className="h-6 w-6" />
+                      <FaUsers
+                        className={
+                          deviceType === "phone" ? "h-5 w-5" : "h-6 w-6"
+                        }
+                      />
                     )}
                   </div>
                 </div>
 
                 <div
-                  className="ml-4 flex-1 overflow-hidden cursor-pointer"
-                  onClick={() => onSelectChat(chat)}
+                  className={`flex-1 overflow-hidden min-w-0 ${
+                    deviceType === "phone" ? "ml-3" : "ml-4"
+                  }`}
                 >
                   <div className="flex justify-between items-baseline">
-                    <h3 className="font-bold text-slate-800 truncate">
+                    <h3
+                      className={`font-bold text-slate-800 truncate ${
+                        deviceType === "phone" ? "text-sm" : "text-base"
+                      }`}
+                    >
                       {chat.name}
                     </h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                       <span className="text-xs text-slate-500 font-medium">
                         {chat.lastMessageTime}
                       </span>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-600 truncate leading-relaxed">
+                  <p
+                    className={`text-slate-600 truncate leading-relaxed ${
+                      deviceType === "phone" ? "text-xs" : "text-sm"
+                    }`}
+                  >
                     {chat.lastMessage || "No messages yet"}
                   </p>
                   {chat.members && chat.members.length > 0 && (
@@ -701,8 +751,20 @@ export default function GroupChatList({
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-lg z-50 max-h-[80vh] overflow-y-auto">
-            <Dialog.Title className="text-xl font-semibold mb-4">
+          <Dialog.Content
+            className={`fixed z-50 bg-white rounded-lg shadow-lg overflow-y-auto ${
+              deviceType === "phone"
+                ? "inset-4 p-4 max-h-[calc(100vh-2rem)]"
+                : deviceType === "tablet"
+                ? "top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-md p-5 max-h-[80vh]"
+                : "top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg p-6 max-h-[80vh]"
+            }`}
+          >
+            <Dialog.Title
+              className={`font-semibold mb-4 ${
+                deviceType === "phone" ? "text-lg" : "text-xl"
+              }`}
+            >
               Create New Group
             </Dialog.Title>
 
@@ -920,17 +982,29 @@ export default function GroupChatList({
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[80vh] z-50">
-            <div className="p-6">
+          <Dialog.Content
+            className={`fixed z-50 bg-white rounded-lg shadow-lg ${
+              deviceType === "phone"
+                ? "inset-2 max-h-[calc(100vh-1rem)]"
+                : deviceType === "tablet"
+                ? "top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[95vw] max-w-3xl max-h-[85vh]"
+                : "top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[80vh]"
+            }`}
+          >
+            <div className={`${deviceType === "phone" ? "p-4" : "p-6"}`}>
               <div className="flex justify-between items-center mb-4">
-                <Dialog.Title className="text-xl font-semibold">
+                <Dialog.Title
+                  className={`font-semibold ${
+                    deviceType === "phone" ? "text-lg" : "text-xl"
+                  }`}
+                >
                   Browse Public Groups
                 </Dialog.Title>
                 <button
                   onClick={() => setIsBrowseDialogOpen(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 touch-manipulation"
                 >
-                  <IoClose size={24} />
+                  <IoClose size={deviceType === "phone" ? 20 : 24} />
                 </button>
               </div>
 

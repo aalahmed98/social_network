@@ -1,11 +1,11 @@
-import { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { 
-  APIError, 
-  getErrorMessage, 
-  shouldRedirectToLogin, 
-  logError 
-} from '@/utils/errorHandling';
+import { useCallback } from "react";
+import { useRouter } from "next/navigation";
+import {
+  APIError,
+  getErrorMessage,
+  shouldRedirectToLogin,
+  logError,
+} from "@/utils/errorHandling";
 
 interface UseErrorHandlerOptions {
   redirectOnUnauthorized?: boolean;
@@ -14,11 +14,13 @@ interface UseErrorHandlerOptions {
 }
 
 interface ErrorHandlerResult {
-  handleError: (error: Error, context?: Record<string, any>) => void;
+  handleError: (error: Error, context?: Record<string, unknown>) => void;
   getDisplayMessage: (error: Error) => string;
 }
 
-export const useErrorHandler = (options: UseErrorHandlerOptions = {}): ErrorHandlerResult => {
+export const useErrorHandler = (
+  options: UseErrorHandlerOptions = {}
+): ErrorHandlerResult => {
   const {
     redirectOnUnauthorized = true,
     showErrorNotification = true,
@@ -27,27 +29,32 @@ export const useErrorHandler = (options: UseErrorHandlerOptions = {}): ErrorHand
 
   const router = useRouter();
 
-  const handleError = useCallback((error: Error, context?: Record<string, any>) => {
-    // Log the error if enabled
-    if (logErrors) {
-      logError(error, context);
-    }
+  const handleError = useCallback(
+    (error: Error, context?: Record<string, unknown>) => {
+      // Log the error if enabled
+      if (logErrors) {
+        logError(error, context);
+      }
 
-    // Handle specific error types
-    const apiError = error as APIError;
+      // Handle specific error types
+      const apiError = error as APIError;
 
-    // Redirect to login for unauthorized access
-    if (redirectOnUnauthorized && shouldRedirectToLogin(apiError)) {
-      router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
-      return;
-    }
+      // Redirect to login for unauthorized access
+      if (redirectOnUnauthorized && shouldRedirectToLogin(apiError)) {
+        router.push(
+          "/login?redirect=" + encodeURIComponent(window.location.pathname)
+        );
+        return;
+      }
 
-    // Show error notification (you can integrate with your notification system)
-    if (showErrorNotification) {
-      // This would integrate with your notification context/system
-      console.warn('Error notification:', getErrorMessage(apiError));
-    }
-  }, [router, redirectOnUnauthorized, showErrorNotification, logErrors]);
+      // Show error notification (you can integrate with your notification system)
+      if (showErrorNotification) {
+        // This would integrate with your notification context/system
+        console.warn("Error notification:", getErrorMessage(apiError));
+      }
+    },
+    [router, redirectOnUnauthorized, showErrorNotification, logErrors]
+  );
 
   const getDisplayMessage = useCallback((error: Error): string => {
     return getErrorMessage(error as APIError);
@@ -66,4 +73,4 @@ export const useApiErrorHandler = () => {
     showErrorNotification: true,
     logErrors: true,
   });
-}; 
+};

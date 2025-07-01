@@ -367,6 +367,7 @@ func (db *DB) InitializeTables() error {
 			post_id INTEGER NOT NULL,
 			author_id INTEGER NOT NULL,
 			content TEXT NOT NULL,
+			image_path TEXT,
 			vote_count INTEGER DEFAULT 0,
 			upvotes INTEGER DEFAULT 0,
 			downvotes INTEGER DEFAULT 0,
@@ -377,6 +378,16 @@ func (db *DB) InitializeTables() error {
 	`)
 	if err != nil {
 		return err
+	}
+
+	// Add image_path column to group_post_comments table if it doesn't exist
+	_, err = db.Exec(`ALTER TABLE group_post_comments ADD COLUMN image_path TEXT`)
+	if err != nil {
+		// Ignore error if column already exists
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			// If it's not a "duplicate column" error, return the error
+			return err
+		}
 	}
 
 	// Create group_event_responses table if it doesn't exist
@@ -1247,6 +1258,92 @@ func (db *DB) RejectFollowRequest(requestID int64) error {
 		return fmt.Errorf("follow request not found")
 	}
 
+	return nil
+}
+
+// AutoApproveFollowRequests automatically approves all pending follow requests for a user
+// This is used when a user changes their account from private to public
+func (db *DB) AutoApproveFollowRequests(userID int64) error {
+	// Check if follow_requests table exists first
+	var tableName string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='follow_requests'").Scan(&tableName)
+	if err != nil {
+		// If follow_requests table doesn't exist, no requests to process
+		return nil
+	}
+
+	// Get all pending follow requests for this user
+	followRequests, err := db.GetUserFollowRequests(userID)
+	if err != nil {
+		return fmt.Errorf("failed to get follow requests: %w", err)
+	}
+
+	// If no pending requests, nothing to do
+	if len(followRequests) == 0 {
+		return nil
+	}
+
+	// Start a transaction to ensure all requests are processed atomically
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Process each follow request
+	for _, request := range followRequests {
+		// Check if follow relationship already exists to avoid duplicates
+		var existingCount int
+		err = tx.QueryRow(`SELECT COUNT(*) FROM followers WHERE follower_id = ? AND following_id = ?`,
+			request.FollowerID, request.FollowingID).Scan(&existingCount)
+		if err != nil {
+			return fmt.Errorf("failed to check existing follow relationship: %w", err)
+		}
+
+		// Only create the follow relationship if it doesn't already exist
+		if existingCount == 0 {
+			_, err = tx.Exec(`INSERT INTO followers (follower_id, following_id) VALUES (?, ?)`, 
+				request.FollowerID, request.FollowingID)
+			if err != nil {
+				return fmt.Errorf("failed to create follow relationship: %w", err)
+			}
+		}
+
+		// Delete the follow request
+		_, err = tx.Exec(`DELETE FROM follow_requests WHERE id = ?`, request.ID)
+		if err != nil {
+			return fmt.Errorf("failed to delete follow request: %w", err)
+		}
+
+		// Create a notification for the requester
+		// Get the user's name for the notification
+		var firstName, lastName string
+		err = tx.QueryRow(`SELECT first_name, last_name FROM users WHERE id = ?`, userID).Scan(&firstName, &lastName)
+		if err != nil {
+			// Log warning but continue processing other requests
+			fmt.Printf("Warning: Failed to get user name for notification (user %d): %v\n", userID, err)
+			continue
+		}
+
+		notificationContent := fmt.Sprintf("%s %s accepted your follow request", firstName, lastName)
+		
+		// Insert notification
+		_, err = tx.Exec(`
+			INSERT INTO notifications (user_id, sender_id, type, content, reference_id, created_at) 
+			VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+			request.FollowerID, userID, "follow_accepted", notificationContent, request.ID)
+		if err != nil {
+			// Log warning but continue processing other requests
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", request.FollowerID, err)
+		}
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	fmt.Printf("Auto-approved %d follow requests for user %d\n", len(followRequests), userID)
 	return nil
 }
 

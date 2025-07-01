@@ -135,6 +135,8 @@ export default function NotificationsPage() {
     } else if (!authLoading && !isLoggedIn) {
       setIsLoading(false); // Stop loading if not logged in
     }
+    // Return undefined explicitly for other cases
+    return undefined;
   }, [isLoggedIn, authLoading]);
 
   useEffect(() => {
