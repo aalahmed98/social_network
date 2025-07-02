@@ -21,7 +21,7 @@ export default function MinimalSidebar() {
   };
 
   return (
-    <div className="w-16 shrink-0 h-screen fixed top-0 left-0 bg-white shadow-md border-r border-gray-200 z-30">
+    <div className="w-16 shrink-0 fixed inset-y-0 left-0 bg-white shadow-md border-r border-gray-200 z-30">
       <div className="p-3 h-full flex flex-col items-center">
         <div className="mb-8 py-3">
           <svg

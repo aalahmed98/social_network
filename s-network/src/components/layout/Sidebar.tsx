@@ -21,7 +21,7 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-64 shrink-0 h-screen fixed top-0 left-0 bg-white shadow-md border-r border-gray-200 z-30">
+    <div className="w-64 shrink-0 fixed inset-y-0 left-0 bg-white shadow-md border-r border-gray-200 z-30">
       <div className="p-6 h-full overflow-y-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold italic mb-6 text-indigo-600">

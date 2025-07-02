@@ -83,14 +83,23 @@ function AppLayoutInner({ children }: AppLayoutProps) {
       <div className="flex pt-16">
         {showSidebar && (
           <>
-            {/* Always show the minimal sidebar when expanded */}
+            {/* Show minimal sidebar on mobile, full sidebar on desktop */}
             {isSearchExpanded ? (
               <>
                 <MinimalSidebar />
                 <SearchSidebar />
               </>
             ) : (
-              <Sidebar />
+              <>
+                {/* Hidden on mobile, visible on desktop */}
+                <div className="hidden md:block">
+                  <Sidebar />
+                </div>
+                {/* Visible on mobile, hidden on desktop */}
+                <div className="md:hidden">
+                  <MinimalSidebar />
+                </div>
+              </>
             )}
           </>
         )}
@@ -99,8 +108,8 @@ function AppLayoutInner({ children }: AppLayoutProps) {
           className={`flex-1 ${
             showSidebar
               ? isSearchExpanded
-                ? "ml-96" // 16px (minimal sidebar) + 80px (search sidebar)
-                : "ml-64"
+                ? "ml-96" // 64px (minimal sidebar) + 320px (search sidebar) = 384px
+                : "ml-16 md:ml-64" // 16px on mobile, 64px on desktop
               : ""
           }`}
         >

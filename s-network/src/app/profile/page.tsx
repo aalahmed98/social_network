@@ -381,7 +381,7 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-gray-100 pt-6 pb-12">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-lg w-full mx-auto px-2 sm:px-4 md:px-6 lg:px-8">
         {/* Profile Header */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6 border border-gray-200">
           <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-40 md:h-60 relative">
