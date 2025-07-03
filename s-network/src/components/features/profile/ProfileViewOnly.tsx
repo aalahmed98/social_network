@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   FiMessageSquare,
   FiCalendar,
@@ -439,22 +438,27 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
   const isOwnProfile = currentUser?.id === userId;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
+    <div className="min-h-screen bg-gray-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Profile header */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <div className="bg-white rounded-xl shadow-md p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div className="flex items-center space-x-3 sm:space-x-4">
               {user?.avatar ? (
-                <Image
+                <img
                   src={getImageUrl(user.avatar)}
                   alt={`${user.first_name} avatar`}
-                  width={80}
-                  height={80}
-                  className="rounded-full object-cover"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
+                  onError={(e) =>
+                    createAvatarFallback(
+                      e.currentTarget,
+                      user?.first_name?.charAt(0) || "?",
+                      "text-xl sm:text-2xl"
+                    )
+                  }
                 />
               ) : (
-                <div className="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-2xl text-white">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gray-300 flex items-center justify-center text-xl sm:text-2xl text-white">
                   {user?.first_name.charAt(0)}
                 </div>
               )}
@@ -564,7 +568,7 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
                   onClick={() => setShowFollowersPopup(false)}
                 >
                   <div
-                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    className="bg-white rounded-lg shadow-lg w-80 max-w-[90vw] max-h-[80vh] overflow-y-auto p-4"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3 className="text-lg font-semibold mb-2">Followers</h3>
@@ -629,7 +633,7 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
                   onClick={() => setShowFollowingPopup(false)}
                 >
                   <div
-                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    className="bg-white rounded-lg shadow-lg w-80 max-w-[90vw] max-h-[80vh] overflow-y-auto p-4"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3 className="text-lg font-semibold mb-2">Following</h3>
@@ -693,7 +697,7 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
 
         {/* Posts Section */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-bold">Posts</h2>
           </div>
 
@@ -719,30 +723,31 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
               {posts.map((post) => (
                 <div
                   key={post.id}
-                  className="flex p-4 hover:bg-gray-50 cursor-pointer"
+                  className="flex p-3 sm:p-4 hover:bg-gray-50 cursor-pointer"
                   onClick={() => router.push(`/posts/${post.id}`)}
                 >
                   {post.image_url && (
-                    <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden mr-4">
-                      <Image
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-lg overflow-hidden mr-3 sm:mr-4">
+                      <img
                         src={getImageUrl(post.image_url)}
                         alt={post.title || "Post image"}
-                        width={80}
-                        height={80}
-                        className="object-cover"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
                       />
                     </div>
                   )}
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     {post.title && (
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
                         {post.title}
                       </h3>
                     )}
-                    <p className="text-sm text-gray-700 line-clamp-2 mt-1">
+                    <p className="text-sm text-gray-700 line-clamp-2 mt-1 break-words">
                       {post.content}
                     </p>
-                    <div className="mt-2 text-xs text-gray-500 flex items-center">
+                    <div className="mt-2 text-xs text-gray-500 flex items-center flex-wrap">
                       <FiCalendar className="mr-1" />
                       <span>
                         {new Date(post.created_at).toLocaleDateString()}

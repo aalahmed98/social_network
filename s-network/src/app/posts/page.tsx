@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import { useToast } from "@/context/ToastContext";
 
@@ -192,17 +191,17 @@ export default function Posts() {
   const [showFollowerSelect, setShowFollowerSelect] = useState(false);
 
   return (
-    <div className="py-6">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Create New Post</h1>
-          <p className="text-gray-600">Share your thoughts with your network</p>
+    <div className="py-4 sm:py-6">
+      <div className="max-w-3xl mx-auto px-2 sm:px-4">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Create New Post</h1>
+          <p className="text-sm sm:text-base text-gray-600">Share your thoughts with your network</p>
         </div>
 
         {/* Create Post Form */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden">
           <form onSubmit={handleCreatePost}>
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {/* Title input */}
               <div className="mb-4">
                 <label
@@ -214,7 +213,7 @@ export default function Posts() {
                 <input
                   id="title"
                   type="text"
-                  className="w-full border border-gray-300 rounded-lg p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full border border-gray-300 rounded-lg p-2 sm:p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base"
                   placeholder="Add a descriptive title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -223,7 +222,7 @@ export default function Posts() {
               </div>
 
               {/* Content textarea */}
-              <div className="mb-6">
+              <div className="mb-4 sm:mb-6">
                 <label
                   htmlFor="content"
                   className="block text-sm font-medium text-gray-700 mb-1"
@@ -232,7 +231,7 @@ export default function Posts() {
                 </label>
                 <textarea
                   id="content"
-                  className="w-full border border-gray-300 rounded-lg p-4 min-h-[120px] text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full border border-gray-300 rounded-lg p-3 sm:p-4 min-h-[100px] sm:min-h-[120px] text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base resize-none"
                   placeholder="What's on your mind?"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
@@ -241,25 +240,23 @@ export default function Posts() {
 
               {/* Image preview */}
               {imagePreview && (
-                <div className="mb-6 relative rounded-lg overflow-hidden border border-gray-200">
+                <div className="mb-4 sm:mb-6 relative rounded-lg overflow-hidden border border-gray-200">
                   <div className="relative bg-gray-50">
-                    <div
-                      className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
-                      style={{
-                        backgroundImage: `url(${imagePreview})`,
-                      }}
-                    ></div>
-                    <div className="relative z-10 flex justify-center bg-transparent py-2">
+                    <div className="w-full flex justify-center bg-transparent py-2">
                       <img
                         src={imagePreview}
                         alt="Preview"
-                        className="max-w-full max-h-80 object-contain"
+                        className="w-full h-auto max-h-64 sm:max-h-80 object-contain"
+                        style={{
+                          maxWidth: '100%',
+                          height: 'auto'
+                        }}
                       />
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="absolute top-2 right-2 bg-gray-800 bg-opacity-70 text-white rounded-full p-1.5 hover:bg-red-500 transition-colors"
+                    className="absolute top-2 right-2 bg-gray-800 bg-opacity-70 text-white rounded-full p-1 sm:p-1.5 hover:bg-red-500 transition-colors"
                     onClick={() => {
                       setImage(null);
                       setImagePreview("");
@@ -267,7 +264,7 @@ export default function Posts() {
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5"
+                      className="h-4 w-4 sm:h-5 sm:w-5"
                       viewBox="0 0 20 20"
                       fill="currentColor"
                     >
@@ -282,7 +279,7 @@ export default function Posts() {
               )}
 
               {/* Post settings and options */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-4 sm:mb-6">
                 <div>
                   <label
                     htmlFor="privacy"
@@ -293,7 +290,7 @@ export default function Posts() {
                   <div className="relative">
                     <select
                       id="privacy"
-                      className="appearance-none block w-full bg-white border border-gray-300 rounded-lg py-3 px-4 pr-8 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="appearance-none block w-full bg-white border border-gray-300 rounded-lg py-2 sm:py-3 px-3 sm:px-4 pr-8 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                       value={privacy}
                       onChange={handlePrivacyChange}
                     >
@@ -332,11 +329,11 @@ export default function Posts() {
                     />
                     <label
                       htmlFor="image"
-                      className="flex items-center justify-center cursor-pointer py-3 px-4 text-gray-600 hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-center cursor-pointer py-2 sm:py-3 px-3 sm:px-4 text-gray-600 hover:bg-gray-50 transition-colors text-sm sm:text-base"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-2 text-gray-500"
+                        className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-gray-500"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -356,15 +353,15 @@ export default function Posts() {
 
               {/* Followers selection (for private posts) */}
               {showFollowerSelect && followers.length > 0 && (
-                <div className="mb-6">
+                <div className="mb-4 sm:mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select followers who can see this post:
                   </label>
-                  <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                  <div className="max-h-48 sm:max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
                     {followers.map((follower) => (
                       <div
                         key={follower.id}
-                        className="flex items-center px-4 py-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors"
+                        className="flex items-center px-3 sm:px-4 py-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors"
                       >
                         <input
                           type="checkbox"
@@ -375,16 +372,14 @@ export default function Posts() {
                         />
                         <label
                           htmlFor={`follower-${follower.id}`}
-                          className="flex items-center ml-3 cursor-pointer flex-1 py-1"
+                          className="flex items-center ml-3 cursor-pointer flex-1 py-1 min-w-0"
                         >
                           {follower.avatar ? (
-                            <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-gray-100 mr-3">
-                              <Image
+                            <div className="relative w-6 h-6 sm:w-8 sm:h-8 rounded-full overflow-hidden border-2 border-gray-100 mr-2 sm:mr-3 flex-shrink-0">
+                              <img
                                 src={getImageUrl(follower.avatar)}
                                 alt={`${follower.first_name} ${follower.last_name}`}
-                                width={32}
-                                height={32}
-                                className="object-cover"
+                                className="w-full h-full object-cover"
                                 onError={(e) =>
                                   createAvatarFallback(
                                     e.target as HTMLImageElement,
@@ -395,11 +390,11 @@ export default function Posts() {
                               />
                             </div>
                           ) : (
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white mr-3 shadow-sm">
+                            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-xs sm:text-sm font-bold text-white mr-2 sm:mr-3 shadow-sm flex-shrink-0">
                               {follower.first_name.charAt(0)}
                             </div>
                           )}
-                          <span className="text-gray-700">
+                          <span className="text-sm sm:text-base text-gray-700 truncate">
                             {follower.first_name} {follower.last_name}
                           </span>
                         </label>
@@ -411,21 +406,21 @@ export default function Posts() {
             </div>
 
             {/* Form actions */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-100 flex flex-col sm:flex-row sm:justify-between items-center gap-3 sm:gap-0">
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-medium"
+                className="w-full sm:w-auto px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-medium text-sm sm:text-base"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-8 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full sm:w-auto px-6 sm:px-8 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none text-sm sm:text-base"
               >
                 {loading ? (
-                  <span className="flex items-center">
+                  <span className="flex items-center justify-center">
                     <svg
                       className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
                       xmlns="http://www.w3.org/2000/svg"

@@ -559,7 +559,7 @@ export default function ChatPage() {
   }, [isLoggedIn, currentUser, updateConversationInList, fetchChats]);
 
   return (
-    <div className="flex h-[calc(100vh-70px)] bg-gradient-to-br from-slate-50 to-blue-50 relative overflow-hidden">
+    <div className="flex h-[calc(100vh-70px)] bg-gradient-to-br from-slate-50 to-blue-50 relative">
       {/* Enhanced Mobile Header for iPhone and iPad */}
       {(isMobile || isTablet) && (
         <div
@@ -567,18 +567,35 @@ export default function ChatPage() {
             deviceType === "phone" ? "p-3" : "p-4"
           }`}
         >
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`rounded-xl bg-blue-500 hover:bg-blue-600 text-white shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 ${
-              deviceType === "phone" ? "p-2.5" : "p-3"
-            }`}
-          >
-            {isSidebarOpen ? (
-              <FaTimes size={deviceType === "phone" ? 16 : 18} />
-            ) : (
-              <FaBars size={deviceType === "phone" ? 16 : 18} />
-            )}
-          </button>
+          {selectedChat ? (
+            <button
+              onClick={() => {
+                setSelectedChat(null);
+                // Open sidebar on mobile when going back to chat list
+                if (deviceType === "phone") {
+                  setIsSidebarOpen(true);
+                }
+              }}
+              className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                deviceType === "phone" ? "p-2.5" : "p-3"
+              }`}
+            >
+              <FaArrowLeft size={deviceType === "phone" ? 16 : 18} />
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`rounded-xl bg-blue-500 hover:bg-blue-600 text-white shadow-lg transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                deviceType === "phone" ? "p-2.5" : "p-3"
+              }`}
+            >
+              {isSidebarOpen ? (
+                <FaTimes size={deviceType === "phone" ? 16 : 18} />
+              ) : (
+                <FaBars size={deviceType === "phone" ? 16 : 18} />
+              )}
+            </button>
+          )}
 
           {selectedChat && (
             <div className="flex items-center gap-3 flex-1 ml-4 min-w-0">
@@ -755,9 +772,7 @@ export default function ChatPage() {
                 isMobile={isMobile}
                 isTablet={isTablet}
                 deviceType={deviceType}
-                onBackClick={
-                  isMobile || isTablet ? () => setSelectedChat(null) : undefined
-                }
+                onBackClick={() => setSelectedChat(null)}
               />
             </motion.div>
           ) : (

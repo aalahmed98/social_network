@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, FormEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import { useToast } from "@/context/ToastContext";
@@ -357,19 +356,7 @@ export default function Profile() {
     }
   };
 
-  // Helper function to get the correct image URL
-  const getImageUrl = (path: string) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-
-    const backendUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-    // Make sure we don't double up on slashes
-    if (path.startsWith("/")) {
-      return `${backendUrl}${path}`;
-    }
-    return `${backendUrl}/${path}`;
-  };
+  // Use the imported getImageUrl function from utils/image.ts
 
   if (loading) {
     return (
@@ -381,10 +368,10 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-gray-100 pt-6 pb-12">
-      <div className="max-w-lg w-full mx-auto px-2 sm:px-4 md:px-6 lg:px-8">
+      <div className="max-w-2xl w-full mx-auto px-2 sm:px-4 md:px-6 lg:px-8">
         {/* Profile Header */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6 border border-gray-200">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-40 md:h-60 relative">
+        <div className="bg-white rounded-xl shadow-md mb-6 border border-gray-200">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-32 sm:h-40 md:h-48 relative">
             {/* Camera icon for cover photo (decoration only in this version) */}
             <button className="absolute bottom-3 right-3 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md text-gray-700 hover:bg-white transition-colors">
               <FiCamera size={18} />
@@ -392,88 +379,110 @@ export default function Profile() {
           </div>
 
           <div className="px-6 py-6 md:px-8 md:py-6 relative">
-            {/* Avatar - positioned to overlap the gradient banner */}
-            <div className="absolute -top-20 left-6 rounded-full overflow-hidden border-4 border-white bg-white shadow-md">
-              <div className="relative w-32 h-32">
-                <Avatar
-                  avatar={user?.avatar}
-                  firstName={user?.first_name}
-                  lastName={user?.last_name}
-                  size="2xl"
-                  className="w-full h-full !text-3xl"
-                />
-                {/* Camera icon overlay for avatar */}
-                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100 rounded-full">
-                  <div className="bg-white p-2 rounded-full">
-                    <FiCamera className="text-gray-700" />
+            {/* Avatar and User Info Section */}
+            <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-4">
+              {/* Avatar */}
+              <div className="flex-shrink-0">
+                <div className="rounded-full overflow-hidden border-4 border-white bg-white shadow-md">
+                  <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32">
+                    <Avatar
+                      avatar={user?.avatar}
+                      firstName={user?.first_name}
+                      lastName={user?.last_name}
+                      size="2xl"
+                      className="w-full h-full !text-lg sm:!text-xl md:!text-3xl"
+                    />
+                    {/* Camera icon overlay for avatar */}
+                    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100 rounded-full">
+                      <div className="bg-white p-1 sm:p-2 rounded-full">
+                        <FiCamera className="text-gray-700 w-3 h-3 sm:w-4 sm:h-4" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* User Info */}
-            <div className="ml-0 mt-16 md:ml-36 md:mt-0 md:flex md:justify-between md:items-start">
-              <div>
-                <div className="flex items-center">
-                  <h2 className="text-2xl font-bold text-gray-800">
-                    {user?.first_name} {user?.last_name}
-                  </h2>
-                  {user?.is_public === false && (
-                    <div className="ml-2 text-gray-500" title="Private profile">
-                      <FiLock size={16} />
+              {/* User Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-start">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center">
+                      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 truncate">
+                        {user?.first_name} {user?.last_name}
+                      </h2>
+                      {user?.is_public === false && (
+                        <div className="ml-2 text-gray-500 flex-shrink-0" title="Private profile">
+                          <FiLock size={16} />
+                        </div>
+                      )}
+                      {user?.is_public === true && (
+                        <div className="ml-2 text-green-500 flex-shrink-0" title="Public profile">
+                          <FiGlobe size={16} />
+                        </div>
+                      )}
+                      {/* Verification badge (decorative) */}
+                      {followers.length > 10 && (
+                        <div className="ml-2 bg-blue-500 text-white p-1 rounded-full flex-shrink-0">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="w-3 h-3"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {user?.is_public === true && (
-                    <div className="ml-2 text-green-500" title="Public profile">
-                      <FiGlobe size={16} />
+                    {user?.nickname && (
+                      <p className="text-gray-600 truncate">@{user.nickname}</p>
+                    )}
+                    <div className="flex items-center mt-1 text-sm text-gray-500">
+                      {user?.created_at && (
+                        <div className="flex items-center">
+                          <FiCalendar className="mr-1" />
+                          <span>
+                            Joined {new Date(user.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {/* Verification badge (decorative) */}
-                  {followers.length > 10 && (
-                    <div className="ml-2 bg-blue-500 text-white p-1 rounded-full">
+                    {user?.about_me && (
+                      <p className="text-gray-700 mt-3 text-sm sm:text-base">
+                        {user.about_me}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ml-4 flex-shrink-0 flex space-x-2">
+                    <button
+                      onClick={() => router.push('/dashboard')}
+                      className="inline-flex items-center p-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition duration-200 hover:shadow-sm"
+                      aria-label="Analytics Dashboard"
+                      title="Analytics Dashboard"
+                    >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
+                        className="w-5 h-5"
+                        viewBox="0 0 20 20"
                         fill="currentColor"
-                        className="w-3 h-3"
                       >
-                        <path
-                          fillRule="evenodd"
-                          d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z"
-                          clipRule="evenodd"
-                        />
+                        <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM14 11a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" />
                       </svg>
-                    </div>
-                  )}
+                    </button>
+                    <button
+                      onClick={() => setShowSettingsPopup(true)}
+                      className="inline-flex items-center p-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition duration-200 hover:shadow-sm"
+                      aria-label="Settings"
+                      title="Profile Settings"
+                    >
+                      <FiSettings className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-                {user?.nickname && (
-                  <p className="text-gray-600">@{user.nickname}</p>
-                )}
-                <div className="flex items-center mt-1 text-sm text-gray-500">
-                  {user?.created_at && (
-                    <div className="flex items-center">
-                      <FiCalendar className="mr-1" />
-                      <span>
-                        Joined {new Date(user.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {user?.about_me && (
-                  <p className="text-gray-700 mt-3 max-w-2xl">
-                    {user.about_me}
-                  </p>
-                )}
-              </div>
-              <div className="mt-4 md:mt-0">
-                <button
-                  onClick={() => setShowSettingsPopup(true)}
-                  className="inline-flex items-center p-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition duration-200 hover:shadow-sm"
-                  aria-label="Settings"
-                  title="Profile Settings"
-                >
-                  <FiSettings className="w-5 h-5" />
-                </button>
               </div>
             </div>
 
@@ -518,7 +527,7 @@ export default function Profile() {
                   onClick={() => setShowFollowersPopup(false)}
                 >
                   <div
-                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    className="bg-white rounded-lg shadow-lg w-80 max-w-[90vw] max-h-[80vh] overflow-y-auto p-4"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3 className="text-lg font-semibold mb-2">Followers</h3>
@@ -580,7 +589,7 @@ export default function Profile() {
                   onClick={() => setShowFollowingPopup(false)}
                 >
                   <div
-                    className="bg-white rounded-lg shadow-lg w-80 max-h-[80vh] overflow-y-auto p-4"
+                    className="bg-white rounded-lg shadow-lg w-80 max-w-[90vw] max-h-[80vh] overflow-y-auto p-4"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3 className="text-lg font-semibold mb-2">Following</h3>
@@ -776,25 +785,20 @@ export default function Profile() {
                             className="h-full w-full object-cover"
                           />
                         ) : user?.avatar ? (
-                          <div className="relative h-full w-full">
-                            <Image
-                              src={getImageUrl(user.avatar)}
-                              alt={`${
-                                user?.first_name || "User"
-                              }'s profile picture`}
-                              fill
-                              sizes="40px"
-                              className="object-cover"
-                              unoptimized={user.avatar?.startsWith("http")}
-                              onError={(e) =>
-                                createAvatarFallback(
-                                  e.target as HTMLImageElement,
-                                  user?.first_name?.charAt(0) || "?",
-                                  "text-sm"
-                                )
-                              }
-                            />
-                          </div>
+                          <img
+                            src={getImageUrl(user.avatar)}
+                            alt={`${
+                              user?.first_name || "User"
+                            }'s profile picture`}
+                            className="h-full w-full object-cover"
+                            onError={(e) =>
+                              createAvatarFallback(
+                                e.currentTarget,
+                                user?.first_name?.charAt(0) || "?",
+                                "text-sm"
+                              )
+                            }
+                          />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center bg-indigo-600 text-white font-bold">
                             {formData.firstName.charAt(0) || "?"}
@@ -976,12 +980,12 @@ export default function Profile() {
                   key={post.id}
                   className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
                 >
-                  {/* Modern post layout */}
-                  <div className="flex">
+                  {/* Modern post layout - Responsive */}
+                  <div className="flex min-w-0">
                     {/* Vote buttons - left side */}
-                    <div className="bg-gray-50 w-12 flex flex-col items-center py-4 border-r border-gray-100">
+                    <div className="bg-gray-50 w-10 md:w-12 flex flex-col items-center py-4 border-r border-gray-100 flex-shrink-0">
                       <button
-                        className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                        className={`w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-md transition-colors ${
                           post.user_vote === 1
                             ? "text-orange-500 bg-orange-50"
                             : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
@@ -992,13 +996,13 @@ export default function Profile() {
                           xmlns="http://www.w3.org/2000/svg"
                           viewBox="0 0 24 24"
                           fill="currentColor"
-                          className="w-5 h-5"
+                          className="w-4 h-4 md:w-5 md:h-5"
                         >
                           <path d="M12 4l8 8h-6v8h-4v-8H4z" />
                         </svg>
                       </button>
                       <span
-                        className={`text-sm font-medium my-1 ${
+                        className={`text-xs md:text-sm font-medium my-1 ${
                           post.user_vote === 1
                             ? "text-orange-500"
                             : post.user_vote === -1
@@ -1009,7 +1013,7 @@ export default function Profile() {
                         {(post.upvotes || 0) - (post.downvotes || 0)}
                       </span>
                       <button
-                        className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                        className={`w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-md transition-colors ${
                           post.user_vote === -1
                             ? "text-blue-500 bg-blue-50"
                             : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
@@ -1020,7 +1024,7 @@ export default function Profile() {
                           xmlns="http://www.w3.org/2000/svg"
                           viewBox="0 0 24 24"
                           fill="currentColor"
-                          className="w-5 h-5"
+                          className="w-4 h-4 md:w-5 md:h-5"
                         >
                           <path d="M12 20l-8-8h6V4h4v8h6z" />
                         </svg>
@@ -1029,13 +1033,13 @@ export default function Profile() {
 
                     {/* Post content - right side */}
                     <div
-                      className="p-4 w-full cursor-pointer"
+                      className="p-2 sm:p-3 md:p-4 flex-1 min-w-0 cursor-pointer"
                       onClick={() => navigateToPost(post.id)}
                     >
                       {/* Post header with user info */}
-                      <div className="flex items-center mb-3">
+                      <div className="flex items-center mb-3 min-w-0">
                         {/* User avatar */}
-                        <div className="flex-shrink-0 mr-3">
+                        <div className="flex-shrink-0 mr-2 md:mr-3">
                           <Avatar
                             avatar={user?.avatar}
                             firstName={user?.first_name}
@@ -1046,16 +1050,16 @@ export default function Profile() {
                         </div>
 
                         {/* Post metadata */}
-                        <div className="flex flex-col">
-                          <div className="flex items-center">
-                            <span className="font-semibold text-gray-900 mr-1 text-sm">
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <div className="flex items-center min-w-0">
+                            <span className="font-semibold text-gray-900 mr-1 text-sm truncate">
                               {user?.first_name} {user?.last_name}
                             </span>
                           </div>
-                          <div className="flex items-center text-xs text-gray-500">
-                            <span>{formatDate(post.created_at)}</span>
-                            <span className="mx-1">·</span>
-                            <span className="flex items-center">
+                          <div className="flex items-center text-xs text-gray-500 min-w-0">
+                            <span className="truncate">{formatDate(post.created_at)}</span>
+                            <span className="mx-1 flex-shrink-0">·</span>
+                            <span className="flex items-center flex-shrink-0">
                               {post.privacy === "public" ? (
                                 <>
                                   <svg
@@ -1117,12 +1121,12 @@ export default function Profile() {
                       </div>
 
                       {/* Post title */}
-                      <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                      <h3 className="text-base md:text-lg font-medium mb-2 text-gray-900 leading-snug break-words">
                         {post.title || post.content.split("\n")[0]}
                       </h3>
 
                       {/* Post content */}
-                      <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
+                      <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3 break-words overflow-hidden">
                         {post.content}
                       </div>
 
@@ -1141,16 +1145,19 @@ export default function Profile() {
                             <img
                               src={getImageUrl(post.image_url)}
                               alt="Post image"
-                              className="max-w-full mx-auto max-h-72 object-contain"
+                              className="w-full h-auto max-h-48 sm:max-h-64 md:max-h-72 object-contain"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
                             />
                           </div>
                         </div>
                       )}
 
                       {/* Post footer with actions */}
-                      <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
+                      <div className="flex flex-wrap gap-2 text-xs text-gray-600 pt-2 border-t border-gray-100 min-w-0">
                         <div
-                          className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                          className="flex items-center py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer flex-shrink-0"
                           onClick={(e) => {
                             e.stopPropagation();
                             navigateToPost(post.id);
@@ -1158,7 +1165,7 @@ export default function Profile() {
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4 mr-1.5 text-gray-500"
+                            className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-1.5 text-gray-500"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -1170,10 +1177,10 @@ export default function Profile() {
                               d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                             />
                           </svg>
-                          <span>{post.comment_count || 0} Comments</span>
+                          <span className="text-xs">{post.comment_count || 0} Comments</span>
                         </div>
                         <div
-                          className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                          className="flex items-center py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer flex-shrink-0"
                           onClick={(e) => {
                             e.stopPropagation();
                             navigator.clipboard
@@ -1197,7 +1204,7 @@ export default function Profile() {
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4 mr-1.5 text-gray-500"
+                            className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-1.5 text-gray-500"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -1209,7 +1216,7 @@ export default function Profile() {
                               d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
                             />
                           </svg>
-                          <span>Share</span>
+                          <span className="text-xs">Share</span>
                         </div>
                       </div>
                     </div>

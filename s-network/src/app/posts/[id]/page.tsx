@@ -454,15 +454,15 @@ export default function PostDetail() {
   }
 
   return (
-    <div className="min-h-screen p-4 bg-gray-100">
+    <div className="min-h-screen p-2 sm:p-4 bg-gray-100">
       <div className="max-w-2xl mx-auto">
         <button
           onClick={() => router.push("/")}
-          className="mb-4 text-blue-500 hover:text-blue-700 flex items-center"
+          className="mb-3 sm:mb-4 text-blue-500 hover:text-blue-700 flex items-center text-sm sm:text-base"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 mr-1"
+            className="h-4 w-4 sm:h-5 sm:w-5 mr-1"
             viewBox="0 0 20 20"
             fill="currentColor"
           >
@@ -476,29 +476,29 @@ export default function PostDetail() {
         </button>
 
         {/* Post */}
-        <div className="bg-white shadow-lg rounded-lg overflow-hidden mb-6 border border-gray-200 transition-all hover:shadow-xl">
+        <div className="bg-white shadow-lg rounded-lg overflow-hidden mb-4 sm:mb-6 border border-gray-200 transition-all hover:shadow-xl">
           {/* Post Header */}
-          <div className="flex items-center px-6 pt-4 pb-2 border-b border-gray-100">
+          <div className="flex items-center px-3 sm:px-6 pt-3 sm:pt-4 pb-2 border-b border-gray-100">
             {/* Author avatar */}
-            <div className="flex-shrink-0 mr-3">
+            <div className="flex-shrink-0 mr-2 sm:mr-3">
               <Avatar
                 avatar={post?.author.avatar}
                 firstName={post?.author.first_name}
                 lastName={post?.author.last_name}
                 size="md"
-                className="border-2 border-gray-100"
+                className="border-2 border-gray-100 w-8 h-8 sm:w-10 sm:h-10"
               />
             </div>
 
             {/* Post metadata */}
-            <div className="flex flex-col">
-              <span className="font-semibold text-gray-900 text-sm">
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="font-semibold text-gray-900 text-sm sm:text-base">
                 {post?.author.first_name} {post?.author.last_name}
               </span>
               <div className="flex items-center text-xs text-gray-500">
-                <span>{post && formatDate(post.created_at)}</span>
+                <span className="truncate">{post && formatDate(post.created_at)}</span>
                 <span className="mx-1">·</span>
-                <span className="flex items-center">
+                <span className="flex items-center flex-shrink-0">
                   {post?.privacy === "public" ? (
                     <>
                       <svg
@@ -515,7 +515,7 @@ export default function PostDetail() {
                           d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                         />
                       </svg>
-                      Public
+                      <span className="hidden sm:inline">Public</span>
                     </>
                   ) : post?.privacy === "almost_private" ? (
                     <>
@@ -533,7 +533,7 @@ export default function PostDetail() {
                           d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
                         />
                       </svg>
-                      Followers Only
+                      <span className="hidden sm:inline">Followers Only</span>
                     </>
                   ) : (
                     <>
@@ -551,7 +551,7 @@ export default function PostDetail() {
                           d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
                         />
                       </svg>
-                      Private
+                      <span className="hidden sm:inline">Private</span>
                     </>
                   )}
                 </span>
@@ -563,12 +563,12 @@ export default function PostDetail() {
               <button
                 onClick={() => setShowDeletePostConfirm(true)}
                 disabled={deleting}
-                className="ml-auto text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                className="ml-auto text-gray-400 hover:text-red-500 p-1 sm:p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
                 title="Delete post"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
+                  className="h-4 w-4 sm:h-5 sm:w-5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -585,13 +585,13 @@ export default function PostDetail() {
           </div>
 
           {/* Post Content */}
-          <div className="flex px-6">
-            {/* Left vote column */}
-            <div className="pt-4 w-10 flex flex-col items-center">
+          <div className="flex px-3 sm:px-6 min-w-0">
+            {/* Left vote column - mobile optimized */}
+            <div className="pt-3 sm:pt-4 w-8 sm:w-10 flex flex-col items-center flex-shrink-0">
               <button
                 onClick={() => handleVote(1)}
                 disabled={voting}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                className={`w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center rounded-md transition-colors ${
                   post.user_vote === 1
                     ? "text-orange-500 bg-orange-50"
                     : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
@@ -602,14 +602,14 @@ export default function PostDetail() {
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
                   fill="currentColor"
-                  className="w-5 h-5"
+                  className="w-4 h-4 sm:w-5 sm:h-5"
                 >
                   <path d="M12 4l8 8h-6v8h-4v-8H4z" />
                 </svg>
               </button>
 
               <div
-                className={`text-sm font-medium my-1 ${
+                className={`text-xs sm:text-sm font-medium my-1 ${
                   post.user_vote === 1
                     ? "text-orange-500"
                     : post.user_vote === -1
@@ -623,7 +623,7 @@ export default function PostDetail() {
               <button
                 onClick={() => handleVote(-1)}
                 disabled={voting}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                className={`w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center rounded-md transition-colors ${
                   post.user_vote === -1
                     ? "text-blue-500 bg-blue-50"
                     : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
@@ -634,37 +634,35 @@ export default function PostDetail() {
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
                   fill="currentColor"
-                  className="w-5 h-5"
+                  className="w-4 h-4 sm:w-5 sm:h-5"
                 >
                   <path d="M12 20l-8-8h6V4h4v8h6z" />
                 </svg>
               </button>
             </div>
 
-            {/* Main content */}
-            <div className="flex-1 py-4 pl-4">
+            {/* Main content - mobile optimized */}
+            <div className="flex-1 py-3 sm:py-4 pl-2 sm:pl-4 min-w-0 overflow-hidden">
               {post?.title && (
-                <h1 className="text-2xl font-bold mb-4 text-gray-900">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-bold mb-3 sm:mb-4 text-gray-900 break-words">
                   {post.title}
                 </h1>
               )}
-              <div className="whitespace-pre-line text-gray-800 mb-4 text-base leading-relaxed">
+              <div className="whitespace-pre-line text-gray-800 mb-3 sm:mb-4 text-sm sm:text-base leading-relaxed break-words">
                 {post?.content}
               </div>
 
               {post?.image_url && (
-                <div className="mb-5 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shadow-sm relative">
-                  <div
-                    className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
-                    style={{
-                      backgroundImage: `url(${getImageUrl(post.image_url)})`,
-                    }}
-                  ></div>
-                  <div className="relative z-10 flex justify-center bg-transparent">
+                <div className="mb-4 sm:mb-5 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shadow-sm">
+                  <div className="w-full">
                     <img
                       src={getImageUrl(post.image_url)}
                       alt="Post image"
-                      className="max-h-[28rem] w-auto max-w-full mx-auto object-contain"
+                      className="w-full h-auto max-h-64 sm:max-h-80 md:max-h-96 object-contain"
+                      style={{
+                        maxWidth: '100%',
+                        height: 'auto'
+                      }}
                     />
                   </div>
                 </div>
@@ -673,12 +671,12 @@ export default function PostDetail() {
           </div>
 
           {/* Post actions */}
-          <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 text-sm text-gray-600">
-            <div className="flex items-center">
-              <div className="flex items-center mr-6">
+          <div className="px-3 sm:px-6 py-2 sm:py-3 border-t border-gray-100 bg-gray-50 text-xs sm:text-sm text-gray-600">
+            <div className="flex items-center flex-wrap gap-4">
+              <div className="flex items-center mr-4 sm:mr-6">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 mr-2 text-gray-500"
+                  className="h-4 w-4 mr-1 sm:mr-2 text-gray-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -696,7 +694,7 @@ export default function PostDetail() {
               <div className="flex items-center">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 mr-2 text-gray-500"
+                  className="h-4 w-4 mr-1 sm:mr-2 text-gray-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -732,12 +730,12 @@ export default function PostDetail() {
           </div>
         </div>
 
-        {/* Add Comment Form - Modern Style */}
-        <div className="bg-white shadow-md rounded-lg border border-gray-200 p-5 mb-6 transition-all hover:shadow-lg">
-          <h2 className="text-base font-semibold mb-4 text-gray-800 flex items-center">
+        {/* Add Comment Form - Mobile optimized */}
+        <div className="bg-white shadow-md rounded-lg border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6 transition-all hover:shadow-lg">
+          <h2 className="text-sm sm:text-base font-semibold mb-3 sm:mb-4 text-gray-800 flex items-center">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-2 text-blue-500"
+              className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-blue-500"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -753,9 +751,9 @@ export default function PostDetail() {
           </h2>
 
           <form onSubmit={handleAddComment} noValidate>
-            <div className="mb-4">
+            <div className="mb-3 sm:mb-4">
               <textarea
-                className="w-full border border-gray-300 rounded-lg p-3 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                className="w-full border border-gray-300 rounded-lg p-2 sm:p-3 h-20 sm:h-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all resize-none"
                 placeholder="What are your thoughts? (text, image, or both)"
                 value={commentContent}
                 onChange={(e) => setCommentContent(e.target.value)}
@@ -771,18 +769,16 @@ export default function PostDetail() {
             </div>
 
             {commentImagePreview && (
-              <div className="mb-4 relative">
-                <div
-                  className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110 rounded-lg"
-                  style={{
-                    backgroundImage: `url(${commentImagePreview})`,
-                  }}
-                ></div>
-                <div className="relative z-10">
+              <div className="mb-3 sm:mb-4 relative">
+                <div className="w-full">
                   <img
                     src={commentImagePreview}
                     alt="Preview"
-                    className="max-h-64 rounded-lg mx-auto border border-gray-200 shadow-sm"
+                    className="w-full h-auto max-h-48 sm:max-h-64 rounded-lg border border-gray-200 shadow-sm object-contain"
+                    style={{
+                      maxWidth: '100%',
+                      height: 'auto'
+                    }}
                   />
                 </div>
                 <button
@@ -795,7 +791,7 @@ export default function PostDetail() {
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
+                    className="h-3 w-3 sm:h-4 sm:w-4"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                   >
@@ -809,12 +805,12 @@ export default function PostDetail() {
               </div>
             )}
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer flex items-center text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-colors">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <label className="cursor-pointer flex items-center text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full transition-colors">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 mr-1.5 text-blue-500"
+                    className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 text-blue-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -826,7 +822,8 @@ export default function PostDetail() {
                       d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                     />
                   </svg>
-                  Add Image
+                  <span className="hidden sm:inline">Add Image</span>
+                  <span className="sm:hidden">📷</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -839,7 +836,7 @@ export default function PostDetail() {
               <button
                 type="submit"
                 disabled={loading || (!commentContent.trim() && !commentImage)}
-                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-colors ${
                   loading || (!commentContent.trim() && !commentImage)
                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                     : "bg-blue-500 hover:bg-blue-600 text-white shadow-sm hover:shadow"
@@ -848,7 +845,7 @@ export default function PostDetail() {
                 {loading ? (
                   <span className="flex items-center">
                     <svg
-                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                      className="animate-spin -ml-1 mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 text-white"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
                       viewBox="0 0 24 24"
@@ -867,23 +864,26 @@ export default function PostDetail() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Posting...
+                    <span className="hidden sm:inline">Posting...</span>
                   </span>
                 ) : (
-                  "Post Comment"
+                  <>
+                    <span className="hidden sm:inline">Post Comment</span>
+                    <span className="sm:hidden">Post</span>
+                  </>
                 )}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Comments List - Modern Style */}
+        {/* Comments List - Mobile optimized */}
         <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden transition-all hover:shadow-lg">
-          <div className="px-5 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
-            <h2 className="font-semibold text-gray-800 flex items-center">
+          <div className="px-3 sm:px-5 py-2 sm:py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+            <h2 className="text-sm sm:text-base font-semibold text-gray-800 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 mr-2 text-blue-500"
+                className="h-4 w-4 sm:h-5 sm:w-5 mr-2 text-blue-500"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -904,24 +904,24 @@ export default function PostDetail() {
               {post.comments.map((comment) => (
                 <div
                   key={comment.id}
-                  className="p-5 hover:bg-gray-50 transition-colors"
+                  className="p-3 sm:p-5 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex">
-                    <div className="flex-shrink-0 mr-3">
+                  <div className="flex min-w-0">
+                    <div className="flex-shrink-0 mr-2 sm:mr-3">
                       <Avatar
                         avatar={comment.author.avatar}
                         firstName={comment.author.first_name}
                         lastName={comment.author.last_name}
                         size="sm"
-                        className="border-2 border-gray-100"
+                        className="border-2 border-gray-100 w-6 h-6 sm:w-8 sm:h-8"
                       />
                     </div>
-                    <div className="flex-1 -mt-0.5">
-                      <div className="flex items-center mb-1">
-                        <span className="text-sm font-medium text-gray-900 mr-2">
+                    <div className="flex-1 -mt-0.5 min-w-0 overflow-hidden">
+                      <div className="flex items-center mb-1 min-w-0">
+                        <span className="text-xs sm:text-sm font-medium text-gray-900 mr-2 truncate">
                           {comment.author.first_name} {comment.author.last_name}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 flex-shrink-0">
                           {formatDate(comment.created_at)}
                         </span>
 
@@ -932,12 +932,12 @@ export default function PostDetail() {
                           <button
                             onClick={() => showDeleteComment(comment.id)}
                             disabled={deleting}
-                            className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                            className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
                             title="Delete comment"
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4"
+                              className="h-3 w-3 sm:h-4 sm:w-4"
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
@@ -952,24 +952,20 @@ export default function PostDetail() {
                           </button>
                         )}
                       </div>
-                      <div className="text-sm text-gray-800 whitespace-pre-line mb-3 leading-relaxed">
+                      <div className="text-xs sm:text-sm text-gray-800 whitespace-pre-line mb-2 sm:mb-3 leading-relaxed break-words">
                         {comment.content}
                       </div>
                       {comment.image_url && (
-                        <div className="mt-2 mb-3 relative">
-                          <div
-                            className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110 rounded-lg"
-                            style={{
-                              backgroundImage: `url(${getImageUrl(
-                                comment.image_url
-                              )})`,
-                            }}
-                          ></div>
-                          <div className="relative z-10">
+                        <div className="mt-2 mb-2 sm:mb-3">
+                          <div className="w-full">
                             <img
                               src={getImageUrl(comment.image_url)}
                               alt="Comment image"
-                              className="max-h-60 max-w-full rounded-lg border border-gray-200 shadow-sm"
+                              className="w-full h-auto max-h-40 sm:max-h-60 rounded-lg border border-gray-200 shadow-sm object-contain"
+                              style={{
+                                maxWidth: '100%',
+                                height: 'auto'
+                              }}
                             />
                           </div>
                         </div>
@@ -989,13 +985,13 @@ export default function PostDetail() {
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                               fill="currentColor"
-                              className="w-4 h-4"
+                              className="w-3 h-3 sm:w-4 sm:h-4"
                             >
                               <path d="M12 4l8 8h-6v8h-4v-8H4z" />
                             </svg>
                           </button>
                           <span
-                            className={`mx-1 font-medium ${
+                            className={`mx-1 font-medium text-xs ${
                               comment.user_vote === 1
                                 ? "text-orange-500"
                                 : comment.user_vote === -1
@@ -1018,7 +1014,7 @@ export default function PostDetail() {
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                               fill="currentColor"
-                              className="w-4 h-4"
+                              className="w-3 h-3 sm:w-4 sm:h-4"
                             >
                               <path d="M12 20l-8-8h6V4h4v8h6z" />
                             </svg>
@@ -1031,10 +1027,10 @@ export default function PostDetail() {
               ))}
             </div>
           ) : (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-6 sm:p-8 text-center text-gray-500">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-16 w-16 mx-auto text-gray-300 mb-4"
+                className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-gray-300 mb-3 sm:mb-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1046,7 +1042,7 @@ export default function PostDetail() {
                   d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
                 />
               </svg>
-              <p className="text-sm font-medium">
+              <p className="text-xs sm:text-sm font-medium">
                 No comments yet. Be the first to comment!
               </p>
             </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
 import { getAvatarUrl, getInitials, getAvatarColor } from "@/utils/image";
 
 interface AvatarProps {
@@ -80,6 +79,10 @@ export default function Avatar({
   const avatarColor = getAvatarColor(displayName);
   const avatarUrl = getAvatarUrl(avatar);
 
+  // Check if it's an external URL (from backend) or local asset
+  const isExternalUrl = avatarUrl && (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://'));
+  const isLocalAsset = avatarUrl && avatarUrl.startsWith('/');
+
   // Determine if we should show image or fallback
   const shouldShowImage =
     avatarUrl &&
@@ -99,6 +102,7 @@ export default function Avatar({
   `;
 
   const handleImageError = () => {
+    console.warn(`Failed to load avatar image: ${avatarUrl}`);
     setImageError(true);
     setImageLoading(false);
   };
@@ -111,19 +115,20 @@ export default function Avatar({
     <div className={baseClasses} onClick={onClick}>
       {shouldShowImage ? (
         <>
-          <Image
+          {/* Use regular img tag for external URLs to avoid Next.js optimization issues */}
+          <img
             src={avatarUrl}
             alt={alt || `${displayName}'s avatar`}
-            fill
-            className="object-cover"
+            className="w-full h-full object-cover"
             onError={handleImageError}
             onLoad={handleImageLoad}
-            priority={priority}
-            sizes={`${sizeClasses[size].split(" ")[0].slice(2)}`}
+            style={{
+              display: imageError ? 'none' : 'block'
+            }}
           />
-          {imageLoading && (
+          {(imageLoading || imageError) && (
             <div
-              className={`absolute inset-0 bg-gradient-to-br ${avatarColor} flex items-center justify-center text-white font-semibold animate-pulse`}
+              className={`absolute inset-0 bg-gradient-to-br ${avatarColor} flex items-center justify-center text-white font-semibold ${imageLoading ? 'animate-pulse' : ''}`}
             >
               {initials}
             </div>

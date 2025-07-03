@@ -253,13 +253,13 @@ export default function Explore() {
                     key={post.id}
                     className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
                   >
-                    {/* Modern post layout - EXACT same as home page */}
-                    <div className="flex">
+                    {/* Modern post layout - Responsive */}
+                    <div className="flex min-w-0">
                       {/* Vote buttons - left side */}
-                      <div className="bg-gray-50 w-12 flex flex-col items-center py-4 border-r border-gray-100">
+                      <div className="bg-gray-50 w-10 md:w-12 flex flex-col items-center py-4 border-r border-gray-100 flex-shrink-0">
                         <button
                           onClick={(e) => handleVote(post.id, 1, e)}
-                          className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                          className={`w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-md transition-colors ${
                             post.user_vote === 1
                               ? "text-orange-500 bg-orange-50"
                               : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
@@ -271,13 +271,13 @@ export default function Explore() {
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
                             fill="currentColor"
-                            className="w-5 h-5"
+                            className="w-4 h-4 md:w-5 md:h-5"
                           >
                             <path d="M12 4l8 8h-6v8h-4v-8H4z" />
                           </svg>
                         </button>
                         <span
-                          className={`text-sm font-medium my-1 ${
+                          className={`text-xs md:text-sm font-medium my-1 ${
                             post.user_vote === 1
                               ? "text-orange-500"
                               : post.user_vote === -1
@@ -289,7 +289,7 @@ export default function Explore() {
                         </span>
                         <button
                           onClick={(e) => handleVote(post.id, -1, e)}
-                          className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                          className={`w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-md transition-colors ${
                             post.user_vote === -1
                               ? "text-blue-500 bg-blue-50"
                               : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
@@ -301,7 +301,7 @@ export default function Explore() {
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
                             fill="currentColor"
-                            className="w-5 h-5"
+                            className="w-4 h-4 md:w-5 md:h-5"
                           >
                             <path d="M12 20l-8-8h6V4h4v8h6z" />
                           </svg>
@@ -310,13 +310,13 @@ export default function Explore() {
 
                       {/* Post content - right side */}
                       <div
-                        className="p-4 w-full cursor-pointer"
+                        className="p-3 md:p-4 flex-1 min-w-0 cursor-pointer"
                         onClick={() => router.push(`/posts/${post.id}`)}
                       >
                         {/* Post header with user info */}
-                        <div className="flex items-center mb-3">
+                        <div className="flex items-center mb-3 min-w-0">
                           {/* User avatar */}
-                          <div className="flex-shrink-0 mr-3">
+                          <div className="flex-shrink-0 mr-2 md:mr-3">
                             <Avatar
                               avatar={post.author.avatar}
                               firstName={post.author.first_name}
@@ -327,16 +327,16 @@ export default function Explore() {
                           </div>
 
                           {/* Post metadata */}
-                          <div className="flex flex-col">
-                            <div className="flex items-center">
-                              <span className="font-semibold text-gray-900 mr-1 text-sm">
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <div className="flex items-center min-w-0">
+                              <span className="font-semibold text-gray-900 mr-1 text-sm truncate">
                                 {post.author.first_name} {post.author.last_name}
                               </span>
                             </div>
-                            <div className="flex items-center text-xs text-gray-500">
-                              <span>{formatDate(post.created_at)}</span>
-                              <span className="mx-1">·</span>
-                              <span className="flex items-center">
+                            <div className="flex items-center text-xs text-gray-500 min-w-0">
+                              <span className="truncate">{formatDate(post.created_at)}</span>
+                              <span className="mx-1 flex-shrink-0">·</span>
+                              <span className="flex items-center flex-shrink-0">
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
                                   className="h-3 w-3 mr-1"
@@ -358,12 +358,12 @@ export default function Explore() {
                         </div>
 
                         {/* Post title */}
-                        <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                        <h3 className="text-base md:text-lg font-medium mb-2 text-gray-900 leading-snug break-words">
                           {post.title || post.content.split("\n")[0]}
                         </h3>
 
                         {/* Post content */}
-                        <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
+                        <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3 break-words overflow-hidden">
                           {post.content}
                         </div>
 
@@ -389,9 +389,9 @@ export default function Explore() {
                         )}
 
                         {/* Post footer with actions */}
-                        <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-600 pt-2 border-t border-gray-100 min-w-0">
                           <div
-                            className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                            className="flex items-center py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer flex-shrink-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(`/posts/${post.id}`);
@@ -399,7 +399,7 @@ export default function Explore() {
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4 mr-1.5 text-gray-500"
+                              className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-1.5 text-gray-500"
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
@@ -411,10 +411,10 @@ export default function Explore() {
                                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                               />
                             </svg>
-                            <span>{post.comment_count || 0} Comments</span>
+                            <span className="text-xs">{post.comment_count || 0} Comments</span>
                           </div>
                           <div
-                            className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                            className="flex items-center py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer flex-shrink-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               navigator.clipboard
@@ -438,7 +438,7 @@ export default function Explore() {
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4 mr-1.5 text-gray-500"
+                              className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-1.5 text-gray-500"
                               fill="none"
                               viewBox="0 0 24 24"
                               stroke="currentColor"
@@ -450,7 +450,7 @@ export default function Explore() {
                                 d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
                               />
                             </svg>
-                            <span>Share</span>
+                            <span className="text-xs">Share</span>
                           </div>
                         </div>
                       </div>

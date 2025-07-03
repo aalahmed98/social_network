@@ -216,28 +216,28 @@ export default function Home() {
   };
 
   return (
-    <div className="py-6">
-      <div className="max-w-6xl mx-auto px-4">
+    <div className="py-4 sm:py-6">
+      <div className="max-w-4xl mx-auto px-2 sm:px-4">
         {!isLoggedIn && (
-          <div className="max-w-3xl mx-auto px-8 py-16 bg-white rounded-xl shadow-lg text-center transition-all hover:shadow-xl">
-            <h2 className="text-4xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 sm:py-16 bg-white rounded-xl shadow-lg text-center transition-all hover:shadow-xl">
+            <h2 className="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6 bg-gradient-to-r from-blue-600 to-indigo-700 text-transparent bg-clip-text">
               Welcome to S-Network
             </h2>
-            <p className="text-xl mb-10 text-gray-600 max-w-lg mx-auto leading-relaxed">
+            <p className="text-base sm:text-xl mb-6 sm:mb-10 text-gray-600 max-w-lg mx-auto leading-relaxed">
               Connect with colleagues, share ideas, and build your professional
               network with our secure and modern platform
             </p>
 
-            <div className="flex gap-6 justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center">
               <Link
                 href="/login"
-                className="px-8 py-4 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium"
+                className="px-6 sm:px-8 py-3 sm:py-4 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 font-medium"
               >
                 Sign In
               </Link>
               <Link
                 href="/register"
-                className="px-8 py-4 border-2 border-blue-600 text-blue-600 rounded-lg shadow-md hover:bg-blue-50 transition-all transform hover:-translate-y-1 font-medium"
+                className="px-6 sm:px-8 py-3 sm:py-4 border-2 border-blue-600 text-blue-600 rounded-lg shadow-md hover:bg-blue-50 transition-all transform hover:-translate-y-1 font-medium"
               >
                 Create Account
               </Link>
@@ -246,32 +246,32 @@ export default function Home() {
         )}
 
         {isLoggedIn && (
-          <div className="flex flex-col md:flex-row gap-6">
+          <div className="flex flex-col md:flex-row gap-4 sm:gap-6 min-w-0">
             {/* Main Content - Posts feed */}
-            <div className="flex-1">
-              <h2 className="text-xl font-semibold mb-5 text-gray-800 flex items-center"></h2>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-5 text-gray-800 flex items-center"></h2>
 
               {postsLoading && (
-                <div className="bg-white shadow-md rounded-lg p-8 flex justify-center items-center">
-                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-                  <span className="ml-3 text-gray-600">Loading posts...</span>
+                <div className="bg-white shadow-md rounded-lg p-6 sm:p-8 flex justify-center items-center">
+                  <div className="animate-spin rounded-full h-8 w-8 sm:h-10 sm:w-10 border-b-2 border-indigo-600"></div>
+                  <span className="ml-3 text-gray-600 text-sm sm:text-base">Loading posts...</span>
                 </div>
               )}
 
               {!postsLoading && posts.length > 0 && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {posts.map((post) => (
                     <div
                       key={post.id}
                       className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-all overflow-hidden"
                     >
-                      {/* Modern post layout */}
-                      <div className="flex">
-                        {/* Vote buttons - left side */}
-                        <div className="bg-gray-50 w-12 flex flex-col items-center py-4 border-r border-gray-100">
+                      {/* Mobile-optimized post layout */}
+                      <div className="flex min-w-0">
+                        {/* Vote buttons - left side - optimized for mobile */}
+                        <div className="bg-gray-50 w-8 sm:w-10 md:w-12 flex flex-col items-center py-3 sm:py-4 border-r border-gray-100 flex-shrink-0">
                           <button
                             onClick={(e) => handleVote(post.id, 1, e)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                            className={`w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 flex items-center justify-center rounded-md transition-colors ${
                               post.user_vote === 1
                                 ? "text-orange-500 bg-orange-50"
                                 : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
@@ -283,13 +283,13 @@ export default function Home() {
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                               fill="currentColor"
-                              className="w-5 h-5"
+                              className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5"
                             >
                               <path d="M12 4l8 8h-6v8h-4v-8H4z" />
                             </svg>
                           </button>
                           <span
-                            className={`text-sm font-medium my-1 ${
+                            className={`text-xs sm:text-sm font-medium my-1 px-1 ${
                               post.user_vote === 1
                                 ? "text-orange-500"
                                 : post.user_vote === -1
@@ -301,7 +301,7 @@ export default function Home() {
                           </span>
                           <button
                             onClick={(e) => handleVote(post.id, -1, e)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+                            className={`w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 flex items-center justify-center rounded-md transition-colors ${
                               post.user_vote === -1
                                 ? "text-blue-500 bg-blue-50"
                                 : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
@@ -313,43 +313,43 @@ export default function Home() {
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                               fill="currentColor"
-                              className="w-5 h-5"
+                              className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5"
                             >
                               <path d="M12 20l-8-8h6V4h4v8h6z" />
                             </svg>
                           </button>
                         </div>
 
-                        {/* Post content - right side */}
+                        {/* Post content - right side - mobile optimized */}
                         <div
-                          className="p-4 w-full cursor-pointer"
+                          className="p-2 sm:p-3 md:p-4 flex-1 min-w-0 cursor-pointer overflow-hidden"
                           onClick={() => router.push(`/posts/${post.id}`)}
                         >
-                          {/* Post header with user info */}
-                          <div className="flex items-center mb-3">
+                          {/* Post header with user info - mobile optimized */}
+                          <div className="flex items-center mb-2 sm:mb-3 min-w-0">
                             {/* User avatar */}
-                            <div className="flex-shrink-0 mr-3">
+                            <div className="flex-shrink-0 mr-2">
                               <Avatar
                                 avatar={post.author.avatar}
                                 firstName={post.author.first_name}
                                 lastName={post.author.last_name}
-                                size="md"
-                                className="border-2 border-gray-100"
+                                size="sm"
+                                className="border-2 border-gray-100 w-6 h-6 sm:w-8 sm:h-8"
                               />
                             </div>
 
                             {/* Post metadata */}
-                            <div className="flex flex-col">
-                              <div className="flex items-center">
-                                <span className="font-semibold text-gray-900 mr-1 text-sm">
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <div className="flex items-center min-w-0">
+                                <span className="font-medium text-gray-900 mr-1 text-xs sm:text-sm truncate">
                                   {post.author.first_name}{" "}
                                   {post.author.last_name}
                                 </span>
                               </div>
-                              <div className="flex items-center text-xs text-gray-500">
-                                <span>{formatDate(post.created_at)}</span>
-                                <span className="mx-1">·</span>
-                                <span className="flex items-center">
+                              <div className="flex items-center text-xs text-gray-500 min-w-0">
+                                <span className="truncate">{formatDate(post.created_at)}</span>
+                                <span className="mx-1 flex-shrink-0">·</span>
+                                <span className="flex items-center flex-shrink-0">
                                   {post.privacy === "public" ? (
                                     <>
                                       <svg
@@ -366,7 +366,7 @@ export default function Home() {
                                           d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                         />
                                       </svg>
-                                      Public
+                                      <span className="hidden sm:inline">Public</span>
                                     </>
                                   ) : post.privacy === "almost_private" ? (
                                     <>
@@ -384,7 +384,7 @@ export default function Home() {
                                           d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
                                         />
                                       </svg>
-                                      Followers
+                                      <span className="hidden sm:inline">Followers</span>
                                     </>
                                   ) : (
                                     <>
@@ -402,7 +402,7 @@ export default function Home() {
                                           d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
                                         />
                                       </svg>
-                                      Private
+                                      <span className="hidden sm:inline">Private</span>
                                     </>
                                   )}
                                 </span>
@@ -416,12 +416,12 @@ export default function Home() {
                                   showDeletePost(post.id, e);
                                 }}
                                 disabled={deleting}
-                                className="ml-auto text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                                className="ml-auto text-gray-400 hover:text-red-500 p-1 sm:p-2 rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
                                 title="Delete post"
                               >
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
-                                  className="h-5 w-5"
+                                  className="h-4 w-4 sm:h-5 sm:w-5"
                                   fill="none"
                                   viewBox="0 0 24 24"
                                   stroke="currentColor"
@@ -438,40 +438,36 @@ export default function Home() {
                           </div>
 
                           {/* Post title */}
-                          <h3 className="text-lg font-medium mb-2 text-gray-900 leading-snug">
+                          <h3 className="text-sm sm:text-base md:text-lg font-medium mb-2 text-gray-900 leading-snug break-words line-clamp-2">
                             {post.title || post.content.split("\n")[0]}
                           </h3>
 
                           {/* Post content */}
-                          <div className="mb-4 text-sm text-gray-800 leading-relaxed line-clamp-3">
+                          <div className="mb-3 sm:mb-4 text-xs sm:text-sm text-gray-800 leading-relaxed line-clamp-3 break-words overflow-hidden">
                             {post.content}
                           </div>
 
-                          {/* Post image */}
+                          {/* Post image - mobile optimized */}
                           {post.image_url && (
-                            <div className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
-                              <div
-                                className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
-                                style={{
-                                  backgroundImage: `url(${getImageUrl(
-                                    post.image_url
-                                  )})`,
-                                }}
-                              ></div>
-                              <div className="relative z-10 flex justify-center bg-transparent">
+                            <div className="mb-3 sm:mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
+                              <div className="w-full">
                                 <img
                                   src={getImageUrl(post.image_url)}
                                   alt="Post image"
-                                  className="max-w-full mx-auto max-h-72 object-contain"
+                                  className="w-full h-auto max-h-48 sm:max-h-64 md:max-h-72 object-cover"
+                                  style={{
+                                    maxWidth: '100%',
+                                    height: 'auto'
+                                  }}
                                 />
                               </div>
                             </div>
                           )}
 
-                          {/* Post footer with actions */}
-                          <div className="flex text-xs text-gray-600 pt-2 border-t border-gray-100">
+                          {/* Post footer with actions - mobile optimized */}
+                          <div className="flex flex-wrap gap-2 text-xs text-gray-600 pt-2 border-t border-gray-100 min-w-0">
                             <div
-                              className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                              className="flex items-center py-1.5 px-2 rounded-full hover:bg-gray-100 transition-colors cursor-pointer flex-shrink-0"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 router.push(`/posts/${post.id}`);
@@ -479,7 +475,7 @@ export default function Home() {
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4 mr-1.5 text-gray-500"
+                                className="h-3 w-3 sm:h-4 sm:w-4 mr-1 text-gray-500"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -491,10 +487,10 @@ export default function Home() {
                                   d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                                 />
                               </svg>
-                              <span>{post.comment_count || 0} Comments</span>
+                              <span className="text-xs">{post.comment_count || 0} <span className="hidden sm:inline">Comments</span></span>
                             </div>
                             <div
-                              className="flex items-center mr-4 py-1.5 px-2.5 rounded-full hover:bg-gray-100 transition-colors"
+                              className="flex items-center py-1.5 px-2 rounded-full hover:bg-gray-100 transition-colors cursor-pointer flex-shrink-0"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 navigator.clipboard
@@ -518,7 +514,7 @@ export default function Home() {
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4 mr-1.5 text-gray-500"
+                                className="h-3 w-3 sm:h-4 sm:w-4 mr-1 text-gray-500"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -530,7 +526,7 @@ export default function Home() {
                                   d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
                                 />
                               </svg>
-                              <span>Share</span>
+                              <span className="text-xs"><span className="hidden sm:inline">Share</span><span className="sm:hidden">↗</span></span>
                             </div>
                           </div>
                         </div>
@@ -541,10 +537,10 @@ export default function Home() {
               )}
 
               {!postsLoading && posts.length === 0 && (
-                <div className="bg-white shadow-md rounded-lg p-10 text-center border border-gray-200 transition-all hover:shadow-lg">
+                <div className="bg-white shadow-md rounded-lg p-6 sm:p-10 text-center border border-gray-200 transition-all hover:shadow-lg">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-16 w-16 mx-auto text-gray-400 mb-5"
+                    className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-gray-400 mb-4 sm:mb-5"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -556,16 +552,16 @@ export default function Home() {
                       d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
                     />
                   </svg>
-                  <p className="text-gray-500 mb-5 text-lg">
+                  <p className="text-gray-500 mb-4 sm:mb-5 text-base sm:text-lg">
                     No posts to display yet.
                   </p>
                   <Link
                     href="/posts"
-                    className="inline-flex items-center justify-center px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm hover:shadow"
+                    className="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm hover:shadow text-sm sm:text-base"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5 mr-2"
+                      className="h-4 w-4 sm:h-5 sm:w-5 mr-2"
                       viewBox="0 0 20 20"
                       fill="currentColor"
                     >

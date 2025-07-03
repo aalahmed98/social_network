@@ -7,11 +7,11 @@ import { useSearch } from "@/context/SearchContext";
 export default function MinimalSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { expandSearch, isSearchExpanded, collapseSearch } = useSearch();
+  const { toggleSearchExpanded, isSearchExpanded, collapseSearch } = useSearch();
 
   const handleSearchClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    expandSearch();
+    toggleSearchExpanded();
   };
 
   const handleLinkClick = (e: React.MouseEvent, path: string) => {

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { SearchProvider, useSearch } from "@/context/SearchContext";
-import { Navbar, Sidebar, MinimalSidebar } from "@/components/layout";
+import { Navbar, Sidebar, MinimalSidebar, MobileBottomNavigation } from "@/components/layout";
 import { SearchSidebar } from "@/components/features/search";
 import { NotificationSidebar } from "@/components/features/notifications";
 import {
@@ -86,7 +86,10 @@ function AppLayoutInner({ children }: AppLayoutProps) {
             {/* Show minimal sidebar on mobile, full sidebar on desktop */}
             {isSearchExpanded ? (
               <>
-                <MinimalSidebar />
+                {/* Hide minimal sidebar on mobile, show on desktop when search is expanded */}
+                <div className="hidden md:block">
+                  <MinimalSidebar />
+                </div>
                 <SearchSidebar />
               </>
             ) : (
@@ -95,10 +98,7 @@ function AppLayoutInner({ children }: AppLayoutProps) {
                 <div className="hidden md:block">
                   <Sidebar />
                 </div>
-                {/* Visible on mobile, hidden on desktop */}
-                <div className="md:hidden">
-                  <MinimalSidebar />
-                </div>
+                {/* Mobile sidebar completely hidden, replaced with bottom navigation */}
               </>
             )}
           </>
@@ -108,14 +108,17 @@ function AppLayoutInner({ children }: AppLayoutProps) {
           className={`flex-1 ${
             showSidebar
               ? isSearchExpanded
-                ? "ml-96" // 64px (minimal sidebar) + 320px (search sidebar) = 384px
-                : "ml-16 md:ml-64" // 16px on mobile, 64px on desktop
+                ? "ml-80 md:ml-96" // Mobile: 320px (search sidebar only), Desktop: 384px (minimal + search)
+                : "md:ml-64" // No margin on mobile, 64px on desktop
               : ""
-          }`}
+          } ${showSidebar ? "pb-16 md:pb-0" : ""}`} // Add bottom padding for mobile navigation
         >
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      {showSidebar && <MobileBottomNavigation />}
 
       {/* Notification Sidebar */}
       {isLoggedIn && (

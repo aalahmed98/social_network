@@ -46,7 +46,7 @@ next-env.d.ts
 *.sqlite3
 *.db-journal
 backend/data/
-s-network/backend/data/
+s-network/backend/data/ 
 data/
 database/
 

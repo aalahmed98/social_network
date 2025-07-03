@@ -1,5 +1,10 @@
 export const getImageUrl = (path: string | null | undefined): string => {
-  if (!path) return "/default-avatar.svg"; // fallback image
+  if (!path) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug("getImageUrl: No path provided, using default avatar");
+    }
+    return "/default-avatar.svg";
+  }
 
   // Normalize slashes (fix Windows-style backslashes)
   let normalized = path.replace(/\\/g, "/");
@@ -14,15 +19,28 @@ export const getImageUrl = (path: string | null | undefined): string => {
 
   const backendUrl =
     process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-  return `${backendUrl}/${normalized}`;
+  const fullUrl = `${backendUrl}/${normalized}`;
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`getImageUrl: Generated URL for path "${path}": ${fullUrl}`);
+  }
+  return fullUrl;
 };
 
 // Enhanced avatar URL handler with better fallback logic
 export const getAvatarUrl = (avatar: string | null | undefined): string => {
-  if (!avatar) return "/default-avatar.svg";
+  if (!avatar) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug("getAvatarUrl: No avatar provided, using default");
+    }
+    return "/default-avatar.svg";
+  }
 
   // Handle full URLs (already formatted)
   if (avatar.startsWith("http://") || avatar.startsWith("https://")) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`getAvatarUrl: Using provided full URL: ${avatar}`);
+    }
     return avatar;
   }
 
@@ -33,16 +51,26 @@ export const getAvatarUrl = (avatar: string | null | undefined): string => {
     avatar === "/default-avatar.png" ||
     avatar === "default-avatar.png"
   ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug("getAvatarUrl: Using default avatar");
+    }
     return "/default-avatar.svg";
   }
 
   // Handle placeholder avatars
   if (avatar === "avatar_placeholder.jpg" || avatar.includes("placeholder")) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug("getAvatarUrl: Placeholder detected, using default");
+    }
     return "/default-avatar.svg";
   }
 
   // Use getImageUrl for relative paths
-  return getImageUrl(avatar);
+  const result = getImageUrl(avatar);
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`getAvatarUrl: Generated avatar URL: ${result}`);
+  }
+  return result;
 };
 
 // Generate initials from name for avatar fallback
@@ -158,4 +186,24 @@ export const isValidImageUrl = (url: string): boolean => {
 
   // For other URLs, assume they might be valid (backend will handle validation)
   return true;
+};
+
+// Test image URL accessibility
+export const testImageUrl = async (url: string): Promise<boolean> => {
+  try {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`Testing image URL: ${url}`);
+    }
+    const response = await fetch(url, { method: 'HEAD' });
+    const isValid = response.ok;
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`Image URL test result for ${url}: ${isValid ? 'SUCCESS' : 'FAILED'} (${response.status})`);
+    }
+    return isValid;
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`Failed to test image URL ${url}:`, error);
+    }
+    return false;
+  }
 };

@@ -98,7 +98,7 @@ export default function ChatWindow({
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
-  const [showEventsPanel, setShowEventsPanel] = useState(chat.isGroup || false);
+  const [showEventsPanel, setShowEventsPanel] = useState(false);
   const [newEvent, setNewEvent] = useState({
     title: "",
     description: "",
@@ -188,6 +188,11 @@ export default function ChatWindow({
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // Reset events panel when chat changes
+  useEffect(() => {
+    setShowEventsPanel(false);
+  }, [chat.id]);
 
   // Helper function to create toast notifications
   const createNotification = (message: string, color: string) => {
@@ -2990,7 +2995,7 @@ export default function ChatWindow({
         isMobile ? "flex-col" : ""
       }`}
     >
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Enhanced Chat Header - Device Specific */}
         <div
           className={`${
@@ -3004,12 +3009,13 @@ export default function ChatWindow({
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
               {/* Back Button for Mobile/Tablet */}
-              {(isMobile || isTablet) && onBackClick && (
+              {(isMobile || isTablet) && (
                 <button
                   onClick={onBackClick}
                   className={`rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 transition-all duration-200 transform hover:scale-105 active:scale-95 mr-2 ${
                     deviceType === "phone" ? "p-1.5" : "p-2"
                   }`}
+                  title="Back to chat list"
                 >
                   <FaArrowLeft size={deviceType === "phone" ? 14 : 16} />
                 </button>
@@ -3269,7 +3275,7 @@ export default function ChatWindow({
 
         {/* Modern Messages Container - Responsive */}
         <div
-          className={`flex-1 overflow-y-auto ${
+          className={`flex-1 overflow-y-auto min-h-0 ${
             isMobile ? "p-4 space-y-4" : "p-6 space-y-6"
           }`}
         >
