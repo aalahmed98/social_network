@@ -57,17 +57,12 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
-
 	conversations, err := db.GetUserConversations(int64(userID))
 	if err != nil {
 		log.Printf("❌ GetConversations: Error getting conversations: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
-
-
 
 	// Enhance conversations with additional data
 	result := make([]map[string]interface{}, 0)
@@ -193,7 +188,7 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 					avatar = group.Avatar
 				}
 			}
-	
+
 		} else {
 			// For direct conversations, use the other participant's name
 			for _, p := range participants {
@@ -223,18 +218,13 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 			"created_at":   conv.CreatedAt,
 		}
 
-
-
 		result = append(result, conversationData)
 	}
-
-
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"conversations": result,
 	})
-
 
 }
 
@@ -311,6 +301,7 @@ func GetConversation(w http.ResponseWriter, r *http.Request) {
 func GetMessages(w http.ResponseWriter, r *http.Request) {
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
+		log.Printf("❌ GetMessages: Unauthorized - %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -319,23 +310,32 @@ func GetMessages(w http.ResponseWriter, r *http.Request) {
 	conversationIDStr := vars["id"]
 	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
 	if err != nil {
+		log.Printf("❌ GetMessages: Invalid conversation ID - %s", conversationIDStr)
 		http.Error(w, "Invalid conversation ID", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("🔍 GetMessages: User %d requesting messages for conversation %d", userID, conversationID)
+
 	// Check if user has access to this conversation
 	hasAccess, err := canAccessConversation(int64(userID), conversationID)
 	if err != nil || !hasAccess {
+		log.Printf("❌ GetMessages: Access denied - user %d, conversation %d, hasAccess: %t, err: %v", userID, conversationID, hasAccess, err)
 		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
+	log.Printf("✅ GetMessages: Access granted for user %d to conversation %d", userID, conversationID)
+
 	// Get conversation info to determine if it's a group
 	conversation, err := db.GetConversation(conversationID)
 	if err != nil || conversation == nil {
+		log.Printf("❌ GetMessages: Conversation not found - %d, err: %v", conversationID, err)
 		http.Error(w, "Conversation not found", http.StatusNotFound)
 		return
 	}
+
+	log.Printf("🔍 GetMessages: Conversation %d details - IsGroup: %t, GroupID: %v", conversationID, conversation.IsGroup, conversation.GroupID)
 
 	// Parse pagination parameters
 	limitStr := r.URL.Query().Get("limit")
@@ -357,16 +357,22 @@ func GetMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	log.Printf("🔍 GetMessages: Pagination - limit: %d, offset: %d", limit, offset)
+
 	// Process messages based on conversation type
 	result := make([]map[string]interface{}, 0)
 
 	if conversation.IsGroup && conversation.GroupID != nil {
+		log.Printf("🔍 GetMessages: Processing GROUP messages for group %d", *conversation.GroupID)
 		// Handle group messages
 		groupMessages, err := db.GetGroupMessages(*conversation.GroupID, limit, offset)
 		if err != nil {
+			log.Printf("❌ GetMessages: Error fetching group messages - %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+
+		log.Printf("🔍 GetMessages: Found %d group messages", len(groupMessages))
 
 		for _, msg := range groupMessages {
 			// Get sender info
@@ -410,12 +416,16 @@ func GetMessages(w http.ResponseWriter, r *http.Request) {
 			result = append(result, messageData)
 		}
 	} else {
+		log.Printf("🔍 GetMessages: Processing DIRECT messages for conversation %d", conversationID)
 		// Handle direct messages
 		messages, err := db.GetConversationMessages(conversationID, limit, offset)
 		if err != nil {
+			log.Printf("❌ GetMessages: Error fetching direct messages - %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+
+		log.Printf("🔍 GetMessages: Found %d direct messages", len(messages))
 
 		for _, msg := range messages {
 			// Get sender info
@@ -424,6 +434,12 @@ func GetMessages(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Error getting sender: %v", err)
 				continue
 			}
+
+			contentPreview := msg.Content
+			if len(contentPreview) > 50 {
+				contentPreview = contentPreview[:50] + "..."
+			}
+			log.Printf("🔍 GetMessages: Processing message %d from user %d: %s", msg.ID, msg.SenderID, contentPreview)
 
 			// Format message
 			messageData := map[string]interface{}{
@@ -462,9 +478,14 @@ func GetMessages(w http.ResponseWriter, r *http.Request) {
 		// Update last read message for direct conversations
 		if len(result) > 0 {
 			lastMsgID := result[len(result)-1]["id"].(int64)
-			db.UpdateLastReadMessage(conversationID, int64(userID), lastMsgID)
+			err := db.UpdateLastReadMessage(conversationID, int64(userID), lastMsgID)
+			if err != nil {
+				log.Printf("❌ GetMessages: Error updating last read message - %v", err)
+			}
 		}
 	}
+
+	log.Printf("✅ GetMessages: Returning %d messages for conversation %d", len(result), conversationID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -538,11 +559,11 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 					conversationData, _ := json.Marshal(map[string]interface{}{
 						"type":            "conversation_created",
 						"conversation_id": conversation.ID,
-						"name":           conversation.Name,
-						"is_group":       conversation.IsGroup,
-						"group_id":       conversation.GroupID,
-						"created_by":     userID,
-						"created_at":     conversation.CreatedAt,
+						"name":            conversation.Name,
+						"is_group":        conversation.IsGroup,
+						"group_id":        conversation.GroupID,
+						"created_by":      userID,
+						"created_at":      conversation.CreatedAt,
 					})
 
 					chatHub.mutex.Lock()
@@ -615,11 +636,11 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 			conversationData, _ := json.Marshal(map[string]interface{}{
 				"type":            "conversation_created",
 				"conversation_id": createdConversation.ID,
-				"name":           createdConversation.Name,
-				"is_group":       createdConversation.IsGroup,
-				"group_id":       createdConversation.GroupID,
-				"created_by":     userID,
-				"created_at":     createdConversation.CreatedAt,
+				"name":            createdConversation.Name,
+				"is_group":        createdConversation.IsGroup,
+				"group_id":        createdConversation.GroupID,
+				"created_by":      userID,
+				"created_at":      createdConversation.CreatedAt,
 			})
 
 			// Send to all globally registered users who are participants
@@ -641,7 +662,7 @@ func CreateConversation(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			chatHub.mutex.Unlock()
-			
+
 			log.Printf("💬 Broadcasted new conversation %d to participants", conversationID)
 		}
 	}
@@ -709,6 +730,8 @@ func RegisterChatRoutes(router *mux.Router) {
 	router.HandleFunc("/conversations/{id}/messages", GetMessages).Methods("GET", "OPTIONS")
 	// Add POST handler for sending messages
 	router.HandleFunc("/conversations/{id}/messages", SendMessage).Methods("POST", "OPTIONS")
+	// Debug endpoint
+	router.HandleFunc("/conversations/{id}/debug", DebugConversation).Methods("GET", "OPTIONS")
 }
 
 // RegisterChatWebSocketRoutes registers WebSocket routes on the main router
@@ -721,6 +744,7 @@ func RegisterChatWebSocketRoutes(router *mux.Router) {
 func SendMessage(w http.ResponseWriter, r *http.Request) {
 	userID, err := getUserIDFromSession(r)
 	if err != nil {
+		log.Printf("❌ SendMessage: Unauthorized - %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -729,13 +753,17 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	conversationIDStr := vars["id"]
 	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
 	if err != nil {
+		log.Printf("❌ SendMessage: Invalid conversation ID - %s", conversationIDStr)
 		http.Error(w, "Invalid conversation ID", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("📤 SendMessage: User %d sending message to conversation %d", userID, conversationID)
+
 	// Check if user has access to this conversation
 	hasAccess, err := canAccessConversation(int64(userID), conversationID)
 	if err != nil || !hasAccess {
+		log.Printf("❌ SendMessage: Access denied - user %d, conversation %d, hasAccess: %t, err: %v", userID, conversationID, hasAccess, err)
 		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
@@ -743,25 +771,38 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	// Get conversation info to determine if it's a group
 	conversation, err := db.GetConversation(conversationID)
 	if err != nil || conversation == nil {
+		log.Printf("❌ SendMessage: Conversation not found - %d, err: %v", conversationID, err)
 		http.Error(w, "Conversation not found", http.StatusNotFound)
 		return
 	}
+
+	log.Printf("🔍 SendMessage: Conversation %d details - IsGroup: %t, GroupID: %v", conversationID, conversation.IsGroup, conversation.GroupID)
 
 	// Parse request body
 	var req struct {
 		Content string `json:"content"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("❌ SendMessage: Invalid request body - %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 	if req.Content == "" {
+		log.Printf("❌ SendMessage: Empty message content")
 		http.Error(w, "Message content cannot be empty", http.StatusBadRequest)
 		return
 	}
 
+	contentPreview := req.Content
+	if len(contentPreview) > 100 {
+		contentPreview = contentPreview[:100] + "..."
+	}
+	log.Printf("💬 SendMessage: Message content: %s", contentPreview)
+
 	// Save the message based on conversation type
+	var messageID int64
 	if conversation.IsGroup && conversation.GroupID != nil {
+		log.Printf("🔍 SendMessage: Saving as GROUP message to group %d", *conversation.GroupID)
 		// Save as group message
 		groupMsg := &sqlite.GroupMessage{
 			GroupID:   *conversation.GroupID,
@@ -770,12 +811,15 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 			IsDeleted: false,
 			CreatedAt: time.Now(),
 		}
-		_, err = db.CreateGroupMessage(groupMsg)
+		messageID, err = db.CreateGroupMessage(groupMsg)
 		if err != nil {
+			log.Printf("❌ SendMessage: Failed to save group message - %v", err)
 			http.Error(w, "Failed to save group message", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("✅ SendMessage: Group message saved with ID %d", messageID)
 	} else {
+		log.Printf("🔍 SendMessage: Saving as DIRECT message to conversation %d", conversationID)
 		// Save as direct message
 		msg := &sqlite.ChatMessage{
 			ConversationID: conversationID,
@@ -784,13 +828,105 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 			IsDeleted:      false,
 			CreatedAt:      time.Now(),
 		}
-		_, err = db.CreateMessage(msg)
+		messageID, err = db.CreateMessage(msg)
 		if err != nil {
+			log.Printf("❌ SendMessage: Failed to save direct message - %v", err)
 			http.Error(w, "Failed to save message", http.StatusInternalServerError)
 			return
+		}
+		log.Printf("✅ SendMessage: Direct message saved with ID %d", messageID)
+	}
+
+	log.Printf("✅ SendMessage: Message successfully sent - ID: %d, User: %d, Conversation: %d", messageID, userID, conversationID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"message_id": messageID,
+	})
+}
+
+// DebugConversation provides debug information about a conversation
+func DebugConversation(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conversationIDStr := vars["id"]
+	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid conversation ID", http.StatusBadRequest)
+		return
+	}
+
+	debugInfo := map[string]interface{}{
+		"conversation_id": conversationID,
+		"timestamp":       time.Now().Format(time.RFC3339),
+	}
+
+	// Check session
+	userID, err := getUserIDFromSession(r)
+	if err != nil {
+		debugInfo["session_error"] = err.Error()
+		debugInfo["has_session"] = false
+	} else {
+		debugInfo["user_id"] = userID
+		debugInfo["has_session"] = true
+	}
+
+	// Check if conversation exists
+	conversation, err := db.GetConversation(conversationID)
+	if err != nil {
+		debugInfo["conversation_error"] = err.Error()
+		debugInfo["conversation_exists"] = false
+	} else if conversation == nil {
+		debugInfo["conversation_exists"] = false
+		debugInfo["conversation"] = nil
+	} else {
+		debugInfo["conversation_exists"] = true
+		debugInfo["conversation"] = map[string]interface{}{
+			"id":       conversation.ID,
+			"name":     conversation.Name,
+			"is_group": conversation.IsGroup,
+			"group_id": conversation.GroupID,
+		}
+	}
+
+	// Check access
+	if userID > 0 {
+		hasAccess, err := canAccessConversation(int64(userID), conversationID)
+		if err != nil {
+			debugInfo["access_error"] = err.Error()
+		}
+		debugInfo["has_access"] = hasAccess
+
+		// Get participants
+		participants, err := db.GetConversationParticipants(conversationID)
+		if err != nil {
+			debugInfo["participants_error"] = err.Error()
+		} else {
+			debugInfo["participants"] = participants
+		}
+	}
+
+	// Check message count
+	if userID > 0 && conversation != nil {
+		if conversation.IsGroup && conversation.GroupID != nil {
+			groupMessages, err := db.GetGroupMessages(*conversation.GroupID, 100, 0)
+			if err != nil {
+				debugInfo["messages_error"] = err.Error()
+			} else {
+				debugInfo["message_count"] = len(groupMessages)
+				debugInfo["message_type"] = "group"
+			}
+		} else {
+			messages, err := db.GetConversationMessages(conversationID, 100, 0)
+			if err != nil {
+				debugInfo["messages_error"] = err.Error()
+			} else {
+				debugInfo["message_count"] = len(messages)
+				debugInfo["message_type"] = "direct"
+			}
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(debugInfo)
 }

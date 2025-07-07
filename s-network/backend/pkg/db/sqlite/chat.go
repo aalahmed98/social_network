@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"log"
 	"time"
 )
 
@@ -25,10 +26,10 @@ type ChatConversation struct {
 }
 
 type ChatParticipant struct {
-	ConversationID    int64      `json:"conversation_id"`
-	UserID            int64      `json:"user_id"`
-	JoinedAt          time.Time  `json:"joined_at"`
-	LastReadMessageID *int64     `json:"last_read_message_id"`
+	ConversationID    int64     `json:"conversation_id"`
+	UserID            int64     `json:"user_id"`
+	JoinedAt          time.Time `json:"joined_at"`
+	LastReadMessageID *int64    `json:"last_read_message_id"`
 }
 
 type ChatMessage struct {
@@ -39,20 +40,20 @@ type ChatMessage struct {
 	IsDeleted      bool      `json:"is_deleted"`
 	CreatedAt      time.Time `json:"created_at"`
 	// Nested structs for related data
-	Sender      *User              `json:"sender,omitempty"`
-	Attachments []*ChatAttachment  `json:"attachments,omitempty"`
+	Sender      *User             `json:"sender,omitempty"`
+	Attachments []*ChatAttachment `json:"attachments,omitempty"`
 }
 
 // GroupMessage represents a message in a group chat
 type GroupMessage struct {
-	ID          int64     `json:"id"`
-	GroupID     int64     `json:"group_id"`
-	SenderID    int64     `json:"sender_id"`
-	Content     string    `json:"content"`
-	IsDeleted   bool      `json:"is_deleted"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID        int64     `json:"id"`
+	GroupID   int64     `json:"group_id"`
+	SenderID  int64     `json:"sender_id"`
+	Content   string    `json:"content"`
+	IsDeleted bool      `json:"is_deleted"`
+	CreatedAt time.Time `json:"created_at"`
 	// Nested structs for related data
-	Sender      *User                   `json:"sender,omitempty"`
+	Sender      *User                     `json:"sender,omitempty"`
 	Attachments []*GroupMessageAttachment `json:"attachments,omitempty"`
 }
 
@@ -81,12 +82,12 @@ type GroupMessageAttachment struct {
 func (db *DB) CreateConversation(conversation *ChatConversation) (int64, error) {
 	query := `INSERT INTO chat_conversations (name, is_group, group_id) 
 	          VALUES (?, ?, ?)`
-	
+
 	result, err := db.Exec(query, conversation.Name, conversation.IsGroup, conversation.GroupID)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return result.LastInsertId()
 }
 
@@ -94,11 +95,11 @@ func (db *DB) CreateConversation(conversation *ChatConversation) (int64, error) 
 func (db *DB) GetConversation(id int64) (*ChatConversation, error) {
 	query := `SELECT id, name, is_group, group_id, created_at, updated_at 
 	          FROM chat_conversations WHERE id = ?`
-	
+
 	var conversation ChatConversation
 	var groupID sql.NullInt64
 	var name sql.NullString
-	
+
 	err := db.QueryRow(query, id).Scan(
 		&conversation.ID,
 		&name,
@@ -107,14 +108,14 @@ func (db *DB) GetConversation(id int64) (*ChatConversation, error) {
 		&conversation.CreatedAt,
 		&conversation.UpdatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	
+
 	if groupID.Valid {
 		conversation.GroupID = &groupID.Int64
 	}
@@ -123,7 +124,7 @@ func (db *DB) GetConversation(id int64) (*ChatConversation, error) {
 	} else {
 		conversation.Name = ""
 	}
-	
+
 	return &conversation, nil
 }
 
@@ -131,7 +132,7 @@ func (db *DB) GetConversation(id int64) (*ChatConversation, error) {
 func (db *DB) AddParticipant(conversationID, userID int64) error {
 	query := `INSERT INTO chat_participants (conversation_id, user_id) 
 	          VALUES (?, ?)`
-	
+
 	_, err := db.Exec(query, conversationID, userID)
 	return err
 }
@@ -140,7 +141,7 @@ func (db *DB) AddParticipant(conversationID, userID int64) error {
 func (db *DB) RemoveParticipant(conversationID, userID int64) error {
 	query := `DELETE FROM chat_participants 
 	          WHERE conversation_id = ? AND user_id = ?`
-	
+
 	_, err := db.Exec(query, conversationID, userID)
 	return err
 }
@@ -150,18 +151,18 @@ func (db *DB) GetConversationParticipants(conversationID int64) ([]*ChatParticip
 	query := `SELECT conversation_id, user_id, joined_at, last_read_message_id 
 	          FROM chat_participants 
 	          WHERE conversation_id = ?`
-	
+
 	rows, err := db.Query(query, conversationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var participants []*ChatParticipant
 	for rows.Next() {
 		var participant ChatParticipant
 		var lastReadID sql.NullInt64
-		
+
 		if err := rows.Scan(
 			&participant.ConversationID,
 			&participant.UserID,
@@ -170,18 +171,18 @@ func (db *DB) GetConversationParticipants(conversationID int64) ([]*ChatParticip
 		); err != nil {
 			return nil, err
 		}
-		
+
 		if lastReadID.Valid {
 			participant.LastReadMessageID = &lastReadID.Int64
 		}
-		
+
 		participants = append(participants, &participant)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	return participants, nil
 }
 
@@ -192,19 +193,19 @@ func (db *DB) GetUserConversations(userID int64) ([]*ChatConversation, error) {
 	          JOIN chat_participants p ON c.id = p.conversation_id
 	          WHERE p.user_id = ?
 	          ORDER BY c.updated_at DESC`
-	
+
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var conversations []*ChatConversation
 	for rows.Next() {
 		var conversation ChatConversation
 		var groupID sql.NullInt64
 		var name sql.NullString
-		
+
 		if err := rows.Scan(
 			&conversation.ID,
 			&name,
@@ -225,11 +226,11 @@ func (db *DB) GetUserConversations(userID int64) ([]*ChatConversation, error) {
 		}
 		conversations = append(conversations, &conversation)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	return conversations, nil
 }
 
@@ -237,27 +238,36 @@ func (db *DB) GetUserConversations(userID int64) ([]*ChatConversation, error) {
 func (db *DB) CreateMessage(message *ChatMessage) (int64, error) {
 	query := `INSERT INTO chat_messages (conversation_id, sender_id, content) 
 	          VALUES (?, ?, ?)`
-	
+
+	log.Printf("🔍 DB CreateMessage: Inserting message - conversation %d, sender %d", message.ConversationID, message.SenderID)
+
 	result, err := db.Exec(query, message.ConversationID, message.SenderID, message.Content)
 	if err != nil {
+		log.Printf("❌ DB CreateMessage: Insert failed - %v", err)
 		return 0, err
 	}
-	
+
 	id, err := result.LastInsertId()
 	if err != nil {
+		log.Printf("❌ DB CreateMessage: Failed to get last insert ID - %v", err)
 		return 0, err
 	}
-	
+
+	log.Printf("✅ DB CreateMessage: Message created with ID %d", id)
+
 	// Update conversation's updated_at timestamp
 	updateQuery := `UPDATE chat_conversations 
 	                SET updated_at = CURRENT_TIMESTAMP 
 	                WHERE id = ?`
-	
+
 	_, err = db.Exec(updateQuery, message.ConversationID)
 	if err != nil {
+		log.Printf("❌ DB CreateMessage: Failed to update conversation timestamp - %v", err)
 		return id, err
 	}
-	
+
+	log.Printf("✅ DB CreateMessage: Updated conversation %d timestamp", message.ConversationID)
+
 	return id, nil
 }
 
@@ -265,7 +275,7 @@ func (db *DB) CreateMessage(message *ChatMessage) (int64, error) {
 func (db *DB) GetMessage(id int64) (*ChatMessage, error) {
 	query := `SELECT id, conversation_id, sender_id, content, is_deleted, created_at 
 	          FROM chat_messages WHERE id = ?`
-	
+
 	var message ChatMessage
 	err := db.QueryRow(query, id).Scan(
 		&message.ID,
@@ -275,14 +285,14 @@ func (db *DB) GetMessage(id int64) (*ChatMessage, error) {
 		&message.IsDeleted,
 		&message.CreatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	
+
 	return &message, nil
 }
 
@@ -293,13 +303,16 @@ func (db *DB) GetConversationMessages(conversationID int64, limit, offset int) (
 	          WHERE conversation_id = ? 
 	          ORDER BY created_at ASC 
 	          LIMIT ? OFFSET ?`
-	
+
+	log.Printf("🔍 DB GetConversationMessages: Query for conversation %d, limit %d, offset %d", conversationID, limit, offset)
+
 	rows, err := db.Query(query, conversationID, limit, offset)
 	if err != nil {
+		log.Printf("❌ DB GetConversationMessages: Query failed - %v", err)
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var messages []*ChatMessage
 	for rows.Next() {
 		var message ChatMessage
@@ -311,23 +324,31 @@ func (db *DB) GetConversationMessages(conversationID int64, limit, offset int) (
 			&message.IsDeleted,
 			&message.CreatedAt,
 		); err != nil {
+			log.Printf("❌ DB GetConversationMessages: Row scan failed - %v", err)
 			return nil, err
 		}
-		
-		// Fetch message attachments
+
+		log.Printf("🔍 DB GetConversationMessages: Found message %d from user %d", message.ID, message.SenderID)
+
+		// Fetch message attachments (optional - graceful degradation if table doesn't exist)
 		attachments, err := db.GetMessageAttachments(message.ID)
 		if err != nil {
-			return nil, err
+			log.Printf("⚠️ DB GetConversationMessages: Could not get attachments for message %d - %v (continuing without attachments)", message.ID, err)
+			message.Attachments = []*ChatAttachment{} // Empty slice instead of nil
+		} else {
+			message.Attachments = attachments
 		}
-		message.Attachments = attachments
-		
+
 		messages = append(messages, &message)
 	}
-	
+
 	if err := rows.Err(); err != nil {
+		log.Printf("❌ DB GetConversationMessages: Rows error - %v", err)
 		return nil, err
 	}
-	
+
+	log.Printf("✅ DB GetConversationMessages: Retrieved %d messages for conversation %d", len(messages), conversationID)
+
 	return messages, nil
 }
 
@@ -336,7 +357,7 @@ func (db *DB) MarkMessageAsDeleted(id int64) error {
 	query := `UPDATE chat_messages 
 	          SET is_deleted = TRUE 
 	          WHERE id = ?`
-	
+
 	_, err := db.Exec(query, id)
 	return err
 }
@@ -346,7 +367,7 @@ func (db *DB) UpdateLastReadMessage(conversationID, userID, messageID int64) err
 	query := `UPDATE chat_participants 
 	          SET last_read_message_id = ? 
 	          WHERE conversation_id = ? AND user_id = ?`
-	
+
 	_, err := db.Exec(query, messageID, conversationID, userID)
 	return err
 }
@@ -355,19 +376,19 @@ func (db *DB) UpdateLastReadMessage(conversationID, userID, messageID int64) err
 func (db *DB) AddAttachment(attachment *ChatAttachment) (int64, error) {
 	query := `INSERT INTO chat_attachments (message_id, file_url, file_type, file_name, file_size) 
 	          VALUES (?, ?, ?, ?, ?)`
-	
+
 	result, err := db.Exec(
-		query, 
-		attachment.MessageID, 
-		attachment.FileURL, 
-		attachment.FileType, 
-		attachment.FileName, 
+		query,
+		attachment.MessageID,
+		attachment.FileURL,
+		attachment.FileType,
+		attachment.FileName,
 		attachment.FileSize,
 	)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return result.LastInsertId()
 }
 
@@ -376,13 +397,13 @@ func (db *DB) GetMessageAttachments(messageID int64) ([]*ChatAttachment, error) 
 	query := `SELECT id, message_id, file_url, file_type, file_name, file_size, created_at 
 	          FROM chat_attachments 
 	          WHERE message_id = ?`
-	
+
 	rows, err := db.Query(query, messageID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var attachments []*ChatAttachment
 	for rows.Next() {
 		var attachment ChatAttachment
@@ -399,11 +420,11 @@ func (db *DB) GetMessageAttachments(messageID int64) ([]*ChatAttachment, error) 
 		}
 		attachments = append(attachments, &attachment)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	return attachments, nil
 }
 
@@ -414,18 +435,20 @@ func (db *DB) GetUnreadMessageCount(conversationID, userID int64) (int, error) {
 	          WHERE m.conversation_id = ? 
 	          AND p.user_id = ?
 	          AND (p.last_read_message_id IS NULL OR m.id > p.last_read_message_id)`
-	
+
 	var count int
 	err := db.QueryRow(query, conversationID, userID).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return count, nil
 }
 
 // GetOrCreateDirectConversation gets an existing direct conversation between two users or creates a new one
 func (db *DB) GetOrCreateDirectConversation(user1ID, user2ID int64) (int64, error) {
+	log.Printf("🔍 DB GetOrCreateDirectConversation: Looking for conversation between users %d and %d", user1ID, user2ID)
+
 	// First, check if a direct conversation already exists between the users
 	query := `SELECT c.id FROM chat_conversations c
 	          JOIN chat_participants p1 ON c.id = p1.conversation_id
@@ -434,60 +457,74 @@ func (db *DB) GetOrCreateDirectConversation(user1ID, user2ID int64) (int64, erro
 	          AND p1.user_id = ?
 	          AND p2.user_id = ?
 	          AND (SELECT COUNT(*) FROM chat_participants WHERE conversation_id = c.id) = 2`
-	
+
 	var conversationID int64
 	err := db.QueryRow(query, user1ID, user2ID).Scan(&conversationID)
-	
+
 	if err == nil {
+		log.Printf("✅ DB GetOrCreateDirectConversation: Found existing conversation %d", conversationID)
 		// Conversation already exists
 		return conversationID, nil
 	}
-	
+
 	if err != sql.ErrNoRows {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Query error - %v", err)
 		// Unexpected error
 		return 0, err
 	}
-	
+
+	log.Printf("🔍 DB GetOrCreateDirectConversation: No existing conversation found, creating new one")
+
 	// Conversation doesn't exist, create a new one
 	tx, err := db.Begin()
 	if err != nil {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Failed to begin transaction - %v", err)
 		return 0, err
 	}
-	
+
 	// Create the conversation
 	createQuery := `INSERT INTO chat_conversations (is_group) VALUES (0)`
 	result, err := tx.Exec(createQuery)
 	if err != nil {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Failed to create conversation - %v", err)
 		tx.Rollback()
 		return 0, err
 	}
-	
+
 	newConversationID, err := result.LastInsertId()
 	if err != nil {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Failed to get conversation ID - %v", err)
 		tx.Rollback()
 		return 0, err
 	}
-	
+
+	log.Printf("✅ DB GetOrCreateDirectConversation: Created conversation %d", newConversationID)
+
 	// Add first participant
-	_, err = tx.Exec(`INSERT INTO chat_participants (conversation_id, user_id) VALUES (?, ?)`, 
+	_, err = tx.Exec(`INSERT INTO chat_participants (conversation_id, user_id) VALUES (?, ?)`,
 		newConversationID, user1ID)
 	if err != nil {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Failed to add participant %d - %v", user1ID, err)
 		tx.Rollback()
 		return 0, err
 	}
-	
+
 	// Add second participant
-	_, err = tx.Exec(`INSERT INTO chat_participants (conversation_id, user_id) VALUES (?, ?)`, 
+	_, err = tx.Exec(`INSERT INTO chat_participants (conversation_id, user_id) VALUES (?, ?)`,
 		newConversationID, user2ID)
 	if err != nil {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Failed to add participant %d - %v", user2ID, err)
 		tx.Rollback()
 		return 0, err
 	}
-	
+
 	if err := tx.Commit(); err != nil {
+		log.Printf("❌ DB GetOrCreateDirectConversation: Failed to commit transaction - %v", err)
 		return 0, err
 	}
-	
+
+	log.Printf("✅ DB GetOrCreateDirectConversation: Successfully created conversation %d with participants %d and %d", newConversationID, user1ID, user2ID)
+
 	return newConversationID, nil
 }
 
@@ -497,12 +534,12 @@ func (db *DB) GetOrCreateDirectConversation(user1ID, user2ID int64) (int64, erro
 func (db *DB) CreateGroupMessage(message *GroupMessage) (int64, error) {
 	query := `INSERT INTO group_messages (group_id, sender_id, content) 
 	          VALUES (?, ?, ?)`
-	
+
 	result, err := db.Exec(query, message.GroupID, message.SenderID, message.Content)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return result.LastInsertId()
 }
 
@@ -510,7 +547,7 @@ func (db *DB) CreateGroupMessage(message *GroupMessage) (int64, error) {
 func (db *DB) GetGroupMessage(id int64) (*GroupMessage, error) {
 	query := `SELECT id, group_id, sender_id, content, is_deleted, created_at 
 	          FROM group_messages WHERE id = ?`
-	
+
 	var message GroupMessage
 	err := db.QueryRow(query, id).Scan(
 		&message.ID,
@@ -520,14 +557,14 @@ func (db *DB) GetGroupMessage(id int64) (*GroupMessage, error) {
 		&message.IsDeleted,
 		&message.CreatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	
+
 	return &message, nil
 }
 
@@ -538,13 +575,13 @@ func (db *DB) GetGroupMessages(groupID int64, limit, offset int) ([]*GroupMessag
 	          WHERE group_id = ? AND is_deleted = FALSE
 	          ORDER BY created_at ASC 
 	          LIMIT ? OFFSET ?`
-	
+
 	rows, err := db.Query(query, groupID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var messages []*GroupMessage
 	for rows.Next() {
 		var message GroupMessage
@@ -558,21 +595,23 @@ func (db *DB) GetGroupMessages(groupID int64, limit, offset int) ([]*GroupMessag
 		); err != nil {
 			return nil, err
 		}
-		
-		// Fetch message attachments
+
+		// Fetch message attachments (optional - graceful degradation if table doesn't exist)
 		attachments, err := db.GetGroupMessageAttachments(message.ID)
 		if err != nil {
-			return nil, err
+			log.Printf("⚠️ DB GetGroupMessages: Could not get attachments for message %d - %v (continuing without attachments)", message.ID, err)
+			message.Attachments = []*GroupMessageAttachment{} // Empty slice instead of nil
+		} else {
+			message.Attachments = attachments
 		}
-		message.Attachments = attachments
-		
+
 		messages = append(messages, &message)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	return messages, nil
 }
 
@@ -581,7 +620,7 @@ func (db *DB) MarkGroupMessageAsDeleted(id int64) error {
 	query := `UPDATE group_messages 
 	          SET is_deleted = TRUE 
 	          WHERE id = ?`
-	
+
 	_, err := db.Exec(query, id)
 	return err
 }
@@ -590,19 +629,19 @@ func (db *DB) MarkGroupMessageAsDeleted(id int64) error {
 func (db *DB) AddGroupMessageAttachment(attachment *GroupMessageAttachment) (int64, error) {
 	query := `INSERT INTO group_message_attachments (message_id, file_url, file_type, file_name, file_size) 
 	          VALUES (?, ?, ?, ?, ?)`
-	
+
 	result, err := db.Exec(
-		query, 
-		attachment.MessageID, 
-		attachment.FileURL, 
-		attachment.FileType, 
-		attachment.FileName, 
+		query,
+		attachment.MessageID,
+		attachment.FileURL,
+		attachment.FileType,
+		attachment.FileName,
 		attachment.FileSize,
 	)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return result.LastInsertId()
 }
 
@@ -611,13 +650,13 @@ func (db *DB) GetGroupMessageAttachments(messageID int64) ([]*GroupMessageAttach
 	query := `SELECT id, message_id, file_url, file_type, file_name, file_size, created_at 
 	          FROM group_message_attachments 
 	          WHERE message_id = ?`
-	
+
 	rows, err := db.Query(query, messageID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var attachments []*GroupMessageAttachment
 	for rows.Next() {
 		var attachment GroupMessageAttachment
@@ -634,11 +673,11 @@ func (db *DB) GetGroupMessageAttachments(messageID int64) ([]*GroupMessageAttach
 		}
 		attachments = append(attachments, &attachment)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	return attachments, nil
 }
 
@@ -649,7 +688,7 @@ func (db *DB) GetLatestGroupMessage(groupID int64) (*GroupMessage, error) {
 	          WHERE group_id = ? AND is_deleted = FALSE
 	          ORDER BY created_at DESC 
 	          LIMIT 1`
-	
+
 	var message GroupMessage
 	err := db.QueryRow(query, groupID).Scan(
 		&message.ID,
@@ -659,13 +698,13 @@ func (db *DB) GetLatestGroupMessage(groupID int64) (*GroupMessage, error) {
 		&message.IsDeleted,
 		&message.CreatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	
+
 	return &message, nil
-} 
+}

@@ -876,7 +876,10 @@ export default function ChatWindow({
 
   // Function to fetch and combine messages with posts for group chats (initial load only)
   const fetchMessagesWithPosts = async (isInitialLoad = false) => {
-    if (!chat.id || !currentUser) return;
+    if (!chat.id || !currentUser) {
+      console.log("❌ fetchMessagesWithPosts: Missing chat.id or currentUser", { chatId: chat.id, currentUser: currentUser?.id });
+      return;
+    }
 
     // Only do full reload on initial load, otherwise use smart merging
     if (!isInitialLoad && messages.length > 0) {
@@ -884,9 +887,13 @@ export default function ChatWindow({
       return;
     }
 
+    console.log("🔍 fetchMessagesWithPosts: Starting initial load for chat", chat.id);
+
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      console.log("📡 fetchMessagesWithPosts: Fetching messages from API", `${backendUrl}/api/conversations/${chat.id}/messages`);
 
       // Fetch regular messages
       const messagesResponse = await fetch(
@@ -897,10 +904,22 @@ export default function ChatWindow({
         }
       );
 
+      console.log("📡 fetchMessagesWithPosts: API response received", {
+        status: messagesResponse.status,
+        statusText: messagesResponse.statusText,
+        ok: messagesResponse.ok,
+        url: `${backendUrl}/api/conversations/${chat.id}/messages`
+      });
+
       let allMessages: Message[] = [];
 
       if (messagesResponse.ok) {
         const messagesData = await messagesResponse.json();
+        console.log("📡 fetchMessagesWithPosts: Messages data received", {
+          hasMessages: !!messagesData.messages,
+          messagesCount: messagesData.messages?.length || 0,
+          messagesData: messagesData
+        });
 
         if (messagesData.messages && Array.isArray(messagesData.messages)) {
           const formattedMessages: Message[] = messagesData.messages.map(
@@ -908,6 +927,14 @@ export default function ChatWindow({
               const isCurrentUser =
                 String(msg.sender.id) === String(currentUser?.id) ||
                 Number(msg.sender.id) === Number(currentUser?.id);
+
+              console.log("🔍 fetchMessagesWithPosts: Processing message", {
+                messageId: msg.id,
+                senderId: msg.sender.id,
+                content: msg.content?.substring(0, 50),
+                isCurrentUser,
+                currentUserId: currentUser?.id
+              });
 
               return {
                 id: `msg-${msg.id}`,
@@ -924,11 +951,30 @@ export default function ChatWindow({
           );
 
           allMessages = [...formattedMessages];
+          console.log("✅ fetchMessagesWithPosts: Formatted messages", { count: formattedMessages.length });
+        } else {
+          console.log("❌ fetchMessagesWithPosts: No messages in response or not an array");
+        }
+      } else {
+        console.error("❌ fetchMessagesWithPosts: API response not ok", {
+          status: messagesResponse.status,
+          statusText: messagesResponse.statusText,
+          url: `${backendUrl}/api/conversations/${chat.id}/messages`,
+          chatId: chat.id,
+          currentUserId: currentUser?.id
+        });
+        // Try to get error details
+        try {
+          const errorData = await messagesResponse.text();
+          console.error("❌ fetchMessagesWithPosts: Error response body", errorData);
+        } catch (e) {
+          console.error("❌ fetchMessagesWithPosts: Could not read error response", e);
         }
       }
 
       // If it's a group chat, also fetch posts
       if (chat.isGroup && chat.groupId) {
+        console.log("🔍 fetchMessagesWithPosts: Fetching group posts for group", chat.groupId);
         const postsResponse = await fetch(
           `${backendUrl}/api/groups/${chat.groupId}/posts`,
           {
@@ -970,6 +1016,7 @@ export default function ChatWindow({
             );
 
             allMessages = [...allMessages, ...formattedPosts];
+            console.log("✅ fetchMessagesWithPosts: Added group posts", { postsCount: formattedPosts.length });
           }
         }
       }
@@ -981,9 +1028,10 @@ export default function ChatWindow({
         return timeA - timeB;
       });
 
+      console.log("✅ fetchMessagesWithPosts: Final message count", { totalMessages: allMessages.length });
       setMessages(allMessages);
     } catch (error) {
-      console.error("Error fetching messages with posts:", error);
+      console.error("❌ fetchMessagesWithPosts: Exception occurred", error);
       setError("Failed to load messages. Please try again later.");
     }
   };
