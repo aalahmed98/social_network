@@ -43,8 +43,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Minimal configuration for stable builds
-  swcMinify: true,
 };
 
 export default nextConfig;
