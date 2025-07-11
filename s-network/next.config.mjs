@@ -2,8 +2,15 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ["localhost", "127.0.0.1"],
+    domains: [],
     remotePatterns: [
+      // Production backend domain - update this with your deployed backend URL
+      {
+        protocol: "https",
+        hostname: "your-backend-domain.com",
+        pathname: "/uploads/**",
+      },
+      // Development domains
       {
         protocol: "http",
         hostname: "localhost",
@@ -19,18 +26,22 @@ const nextConfig = {
     ],
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
-    // Add error handling for external images
+    // Unoptimized images for better performance on Vercel
     unoptimized: process.env.NODE_ENV === 'development',
   },
+  // Remove localhost-specific rewrites for production
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: "http://localhost:8080/api/:path*",
-      },
-    ];
+    if (process.env.NODE_ENV === 'development') {
+      return [
+        {
+          source: "/api/:path*",
+          destination: "http://localhost:8080/api/:path*",
+        },
+      ];
+    }
+    return [];
   },
-  // Add headers for better debugging
+  // Add headers for better performance
   async headers() {
     return [
       {
@@ -42,7 +53,20 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: "/uploads/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400",
+          },
+        ],
+      },
     ];
+  },
+  // Enable experimental features for better performance
+  experimental: {
+    optimizeCss: true,
   },
 };
 

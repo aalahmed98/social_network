@@ -28,10 +28,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 		// Get the origin from the request
 		origin := r.Header.Get("Origin")
 
-		// Check if the origin is from localhost (any port)
+		// Check if the origin is from localhost (any port) or production domains
 		if strings.HasPrefix(origin, "http://localhost:") ||
 			strings.HasPrefix(origin, "https://localhost:") ||
-			origin == "http://localhost" {
+			origin == "http://localhost" ||
+			origin == "https://social-network-nu-umber.vercel.app" ||
+			strings.HasSuffix(origin, ".vercel.app") {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		} else {
 			// Default to the Next.js development server
@@ -66,7 +68,7 @@ func (e *ErrorResponseWriter) WriteHeader(statusCode int) {
 		e.errorSent = true
 		e.ResponseWriter.Header().Set("Content-Type", "application/json")
 		e.ResponseWriter.WriteHeader(statusCode)
-		
+
 		var errorMsg string
 		switch statusCode {
 		case http.StatusBadRequest:
@@ -78,7 +80,7 @@ func (e *ErrorResponseWriter) WriteHeader(statusCode int) {
 		default:
 			errorMsg = "Internal Server Error"
 		}
-		
+
 		json.NewEncoder(e.ResponseWriter).Encode(map[string]string{
 			"error": errorMsg,
 		})
@@ -204,8 +206,8 @@ func init() {
 	logger.Println("Setting up session store...")
 	store = sessions.NewCookieStore(sessionKey)
 
-	// In development, we don't need SameSite=None and Secure
-	isDev := true // Set to false in production
+	// Check if we're in development or production
+	isDev := os.Getenv("NODE_ENV") != "production"
 
 	storeOptions := &sessions.Options{
 		Path:     "/",
