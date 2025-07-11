@@ -1,3 +1,5 @@
+import path from 'path';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -42,6 +44,15 @@ const nextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  // Add webpack configuration to resolve aliases
+  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+    // Add alias configuration
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve('./src'),
+    };
+    return config;
   },
 };
 
