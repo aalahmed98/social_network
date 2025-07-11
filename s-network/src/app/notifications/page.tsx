@@ -93,7 +93,9 @@ export default function NotificationsPage() {
       }
 
       const data = await response.json();
-      console.log("Notifications data:", data); // Debug log
+              if (process.env.NODE_ENV === 'development') {
+          console.log("Notifications data:", data); // Debug log
+        }
 
       // Process notifications to ensure all fields are properly structured
       const processedNotifications = (data.notifications || []).map(

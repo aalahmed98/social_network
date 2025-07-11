@@ -4,10 +4,10 @@ const nextConfig = {
   images: {
     domains: [],
     remotePatterns: [
-      // Production backend domain - update this with your deployed backend URL
+      // Production backend domain
       {
         protocol: "https",
-        hostname: "your-backend-domain.com",
+        hostname: "social-network-backend-2p9j.onrender.com",
         pathname: "/uploads/**",
       },
       // Development domains

@@ -223,7 +223,9 @@ export default function ChatWindow({
         if (response.ok) {
           const userData = await response.json();
           setCurrentUser(userData);
+          if (process.env.NODE_ENV === 'development') {
           console.log("Current user fetched:", userData);
+        }
         }
       } catch (error) {
         console.error("Error fetching current user:", error);
@@ -242,15 +244,19 @@ export default function ChatWindow({
 
     // Don't attempt to connect if not authenticated
     if (!currentUser) {
-      console.log("⏸️ Skipping WebSocket connection - no current user");
+              if (process.env.NODE_ENV === 'development') {
+          console.log("⏸️ Skipping WebSocket connection - no current user");
+        }
       return;
     }
 
-    console.log("👤 Current user for WebSocket:", {
-      id: currentUser.id,
-      firstName: currentUser.firstName,
-      lastName: currentUser.lastName,
-    });
+          if (process.env.NODE_ENV === 'development') {
+        console.log("👤 Current user for WebSocket:", {
+          id: currentUser.id,
+          firstName: currentUser.firstName,
+          lastName: currentUser.lastName,
+        });
+      }
 
     let wsConnected = false;
     const backendUrl =
@@ -261,26 +267,34 @@ export default function ChatWindow({
       ""
     )}/ws/chat`;
 
-    console.log("🔌 Attempting WebSocket connection to:", wsUrl);
+          if (process.env.NODE_ENV === 'development') {
+        console.log("🔌 Attempting WebSocket connection to:", wsUrl);
+      }
 
     const newSocket = new WebSocket(wsUrl);
 
     const connectionTimeout = setTimeout(() => {
       if (!wsConnected) {
-        console.log("⏰ WebSocket connection timeout, closing socket");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("⏰ WebSocket connection timeout, closing socket");
+        }
         newSocket.close();
         setError("WebSocket connection timeout. Using polling instead.");
       }
     }, 5000); // 5 second timeout
 
     newSocket.onopen = () => {
-      console.log("✅ WebSocket connection established");
+              if (process.env.NODE_ENV === 'development') {
+          console.log("✅ WebSocket connection established");
+        }
       wsConnected = true;
       clearTimeout(connectionTimeout);
       setError(null);
       // Register for this conversation
       if (newSocket.readyState === WebSocket.OPEN) {
-        console.log("📝 Registering for conversation:", chat.id);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("📝 Registering for conversation:", chat.id);
+        }
         newSocket.send(
           JSON.stringify({
             type: "register",
@@ -293,7 +307,9 @@ export default function ChatWindow({
     newSocket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("📨 Received WebSocket message:", data.type);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("📨 Received WebSocket message:", data.type);
+        }
 
         // Handle different message types
         if (data.type === "registered") {
@@ -471,10 +487,12 @@ export default function ChatWindow({
               });
             }
 
-            console.log(
-              "✅ Message processing complete, total messages:",
-              updatedMessages.length
-            );
+            if (process.env.NODE_ENV === 'development') {
+              console.log(
+                "✅ Message processing complete, total messages:",
+                updatedMessages.length
+              );
+            }
             return updatedMessages;
           });
 
@@ -487,7 +505,9 @@ export default function ChatWindow({
           data.group_id === chat.groupId
         ) {
           // Handle post deletion notification - optimistic update
-          console.log("🗑️ Post deleted:", data.post_id);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🗑️ Post deleted:", data.post_id);
+          }
 
           // Remove from posts list without refresh
           setGroupPosts((prevPosts) =>
@@ -744,7 +764,9 @@ export default function ChatWindow({
     };
 
     newSocket.onclose = (event) => {
-      console.log("🔌 WebSocket connection closed");
+              if (process.env.NODE_ENV === 'development') {
+          console.log("🔌 WebSocket connection closed");
+        }
       wsConnected = false;
       clearTimeout(connectionTimeout);
 
@@ -764,7 +786,9 @@ export default function ChatWindow({
     const startPolling = () => {
       // Only start polling if WebSocket is not connected
       if (!wsConnected) {
-        console.log("🔄 Starting polling fallback");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("🔄 Starting polling fallback");
+        }
         // Poll every 10 seconds (reduced from 3 seconds)
         pollingInterval = setInterval(() => {
           // Only poll if window is visible to reduce unnecessary requests
@@ -778,7 +802,9 @@ export default function ChatWindow({
     // Give WebSocket 5 seconds to connect, then start polling if needed
     const pollingTimeout = setTimeout(() => {
       if (!wsConnected) {
-        console.log("⏰ WebSocket didn't connect in time, starting polling");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("⏰ WebSocket didn't connect in time, starting polling");
+        }
         startPolling();
       }
     }, 5000);
@@ -869,25 +895,33 @@ export default function ChatWindow({
   const fetchLatestMessages = async () => {
     if (!chat.id || !currentUser) return;
     // This function is now deprecated to prevent visible refreshes
-    console.warn(
-      "fetchLatestMessages is deprecated - using quiet polling instead"
-    );
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(
+        "fetchLatestMessages is deprecated - using quiet polling instead"
+      );
+    }
   };
 
   // Function to fetch and combine messages with posts for group chats (initial load only)
   const fetchMessagesWithPosts = async (isInitialLoad = false) => {
     if (!chat.id || !currentUser) {
-      console.log("❌ fetchMessagesWithPosts: Missing chat.id or currentUser", { chatId: chat.id, currentUser: currentUser?.id });
+      if (process.env.NODE_ENV === 'development') {
+        console.log("❌ fetchMessagesWithPosts: Missing chat.id or currentUser", { chatId: chat.id, currentUser: currentUser?.id });
+      }
       return;
     }
 
     // Only do full reload on initial load, otherwise use smart merging
     if (!isInitialLoad && messages.length > 0) {
-      console.log("Skipping full reload - use smart updates instead");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Skipping full reload - use smart updates instead");
+      }
       return;
     }
 
-    console.log("🔍 fetchMessagesWithPosts: Starting initial load for chat", chat.id);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔍 fetchMessagesWithPosts: Starting initial load for chat", chat.id);
+    }
 
     try {
       const backendUrl =

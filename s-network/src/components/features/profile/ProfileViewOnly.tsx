@@ -77,7 +77,9 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
 
         if (response.ok) {
           const userData = await response.json();
+          if (process.env.NODE_ENV === 'development') {
           console.log("Current user data:", userData);
+        }
           setCurrentUser(userData);
         } else {
           console.error("Failed to fetch current user:", await response.text());
@@ -94,7 +96,9 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
   useEffect(() => {
     async function loadData() {
       try {
+        if (process.env.NODE_ENV === 'development') {
         console.log("Loading profile data for userId:", userId);
+      }
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
@@ -112,7 +116,9 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
         }
         const uData: User = await uRes.json();
         setUser(uData);
-        console.log("User data loaded:", uData);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("User data loaded:", uData);
+        }
 
         // 2) Fetch posts by this user
         const pRes = await fetch(`${backendUrl}/api/posts?userId=${userId}`, {
@@ -132,7 +138,9 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
           ? pJson.posts.filter((post: Post) => post.user_id === userId)
           : [];
         setPosts(userPosts);
-        console.log("Posts loaded:", userPosts.length);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Posts loaded:", userPosts.length);
+        }
 
         // 3) Fetch followers list
         const fRes = await fetch(
@@ -151,7 +159,9 @@ export default function ProfileViewOnly({ userId }: ProfileViewOnlyProps) {
         }
         const fJson = await fRes.json();
         setFollowers(fJson.followers || []);
-        console.log("Followers loaded:", fJson.followers?.length || 0);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Followers loaded:", fJson.followers?.length || 0);
+        }
 
         // 4) Fetch following list
         const flRes = await fetch(

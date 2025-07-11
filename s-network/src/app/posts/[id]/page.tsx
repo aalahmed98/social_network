@@ -135,7 +135,9 @@ export default function PostDetail() {
     setDeleting(true);
 
     try {
-      console.log(`Attempting to delete post with ID: ${postId}`);
+              if (process.env.NODE_ENV === 'development') {
+          console.log(`Attempting to delete post with ID: ${postId}`);
+        }
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(`${backendUrl}/api/posts/${postId}`, {
@@ -146,10 +148,14 @@ export default function PostDetail() {
         },
       });
 
-      console.log(`Delete post response status: ${response.status}`);
+              if (process.env.NODE_ENV === 'development') {
+          console.log(`Delete post response status: ${response.status}`);
+        }
 
       if (response.ok) {
-        console.log("Post deleted successfully");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Post deleted successfully");
+        }
         router.push("/");
       } else {
         const errorText = await response.text();

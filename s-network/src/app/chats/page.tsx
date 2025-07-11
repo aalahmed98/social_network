@@ -213,10 +213,12 @@ export default function ChatPage() {
         );
 
         data.conversations.forEach((conv: any) => {
+                  if (process.env.NODE_ENV === 'development') {
           console.log(`Processing conversation ${conv.id}:`);
           console.log(`  - is_group: ${conv.is_group}`);
           console.log(`  - group_id: ${conv.group_id}`);
           console.log(`  - name: ${conv.name}`);
+        }
 
           const chat: Chat = {
             id: conv.id.toString(),
@@ -270,9 +272,11 @@ export default function ChatPage() {
           }
         });
 
-        console.log("=== FINAL GROUPS ARRAY ===");
-        console.log("Groups:", JSON.stringify(groups, null, 2));
-        console.log("==============================");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("=== FINAL GROUPS ARRAY ===");
+          console.log("Groups:", JSON.stringify(groups, null, 2));
+          console.log("==============================");
+        }
       }
 
       setChats(directChats);
@@ -422,7 +426,9 @@ export default function ChatPage() {
     if (!isLoggedIn || !currentUser) {
       // Clean up existing socket if logged out
       if (chatListSocketRef.current) {
-        console.log("💬 Cleaning up chat list WebSocket connection");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("💬 Cleaning up chat list WebSocket connection");
+        }
         chatListSocketRef.current.close();
         chatListSocketRef.current = null;
       }

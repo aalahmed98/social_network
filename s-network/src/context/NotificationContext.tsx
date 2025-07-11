@@ -97,15 +97,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           })
         );
 
-        console.log(
-          "🔔 Fetched notifications:",
-          processedNotifications.length,
-          "total"
-        );
-        console.log(
-          "🔔 Unread count:",
-          processedNotifications.filter((n: Notification) => !n.is_read).length
-        );
+        if (process.env.NODE_ENV === 'development') {
+          console.log(
+            "🔔 Fetched notifications:",
+            processedNotifications.length,
+            "total"
+          );
+          console.log(
+            "🔔 Unread count:",
+            processedNotifications.filter((n: Notification) => !n.is_read).length
+          );
+        }
 
         flushSync(() => {
           setNotifications(processedNotifications);
@@ -135,11 +137,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         if (response.ok) {
           const userData = await response.json();
-          console.log(
-            "🔔 Current user loaded:",
-            userData.id,
-            userData.first_name
-          );
+          if (process.env.NODE_ENV === 'development') {
+            console.log(
+              "🔔 Current user loaded:",
+              userData.id,
+              userData.first_name
+            );
+          }
           setCurrentUser(userData);
         }
       } catch (error) {
@@ -155,17 +159,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!isLoggedIn || !currentUser) {
       // Clean up existing socket if logged out
       if (socketRef.current) {
-        console.log("🔔 Cleaning up WebSocket connection");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("🔔 Cleaning up WebSocket connection");
+        }
         socketRef.current.close();
         socketRef.current = null;
       }
       return;
     }
 
-    console.log(
-      "🔔 Setting up GLOBAL WebSocket for notifications, user:",
-      currentUser.id
-    );
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        "🔔 Setting up GLOBAL WebSocket for notifications, user:",
+        currentUser.id
+      );
+    }
 
     const backendUrl =
       process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
@@ -175,13 +183,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       ""
     )}/ws/chat`;
 
-    console.log("🔔 Connecting to WebSocket:", wsUrl);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔔 Connecting to WebSocket:", wsUrl);
+    }
 
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
     socket.onopen = () => {
-      console.log("🔔 GLOBAL WebSocket notification connection established");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🔔 GLOBAL WebSocket notification connection established");
+      }
 
       // Register for global notifications (not specific conversations)
       if (socket.readyState === WebSocket.OPEN) {
@@ -189,7 +201,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           type: "register_global",
           user_id: currentUser.id,
         };
-        console.log("🔔 Sending global registration:", registrationMessage);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("🔔 Sending global registration:", registrationMessage);
+        }
         socket.send(JSON.stringify(registrationMessage));
       }
     };
@@ -197,20 +211,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("🔔 Received GLOBAL message:", data);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("🔔 Received GLOBAL message:", data);
+        }
 
         // Handle registration confirmation
         if (data.type === "registered_global") {
-          console.log(
-            "✅ Global notification registration confirmed for user:",
-            data.user_id
-          );
+          if (process.env.NODE_ENV === 'development') {
+            console.log(
+              "✅ Global notification registration confirmed for user:",
+              data.user_id
+            );
+          }
           return;
         }
 
         // Handle connection confirmation
         if (data.type === "connected") {
-          console.log("✅ WebSocket connection established:", data.status);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("✅ WebSocket connection established:", data.status);
+          }
           return;
         }
 
@@ -221,14 +241,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             String(data.sender_id) === String(currentUser.id) ||
             Number(data.sender_id) === Number(currentUser.id);
 
-          console.log(
-            "🔔 Chat message received, from current user?",
-            isFromCurrentUser,
-            "sender:",
-            data.sender_id,
-            "current:",
-            currentUser.id
-          );
+          if (process.env.NODE_ENV === 'development') {
+            console.log(
+              "🔔 Chat message received, from current user?",
+              isFromCurrentUser,
+              "sender:",
+              data.sender_id,
+              "current:",
+              currentUser.id
+            );
+          }
 
           if (!isFromCurrentUser) {
             // Check if this is a group message or direct message
@@ -251,7 +273,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               is_read: false,
             };
 
-            console.log("🔔 Adding message notification:", notification);
+            if (process.env.NODE_ENV === 'development') {
+              console.log("🔔 Adding message notification:", notification);
+            }
             addNotification(notification);
             showNotificationAlert(
               isGroupMessage
@@ -282,7 +306,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             is_read: false,
           };
 
-          console.log("🔔 Adding post notification:", notification);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding post notification:", notification);
+          }
           addNotification(notification);
           showNotificationAlert("📝 New post in group", "success");
         } else if (
@@ -304,7 +330,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             is_read: false,
           };
 
-          console.log("🔔 Adding event notification:", notification);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding event notification:", notification);
+          }
           addNotification(notification);
           showNotificationAlert("📅 New event created", "info");
         } else if (
@@ -329,11 +357,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             is_read: false,
           };
 
-          console.log("🔔 Adding comment notification:", notification);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding comment notification:", notification);
+          }
           addNotification(notification);
           showNotificationAlert("💬 New comment added", "info");
         } else {
-          console.log("🔔 Received other message type:", data.type);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Received other message type:", data.type);
+          }
         }
       } catch (error) {
         console.error("Error parsing global notification message:", error);
@@ -368,7 +400,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     // Cleanup function
     return () => {
       if (socket.readyState === WebSocket.OPEN) {
-        console.log("🔔 Closing WebSocket connection on cleanup");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("🔔 Closing WebSocket connection on cleanup");
+        }
         socket.close(1000, "Component unmounting");
       }
     };
@@ -456,7 +490,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Add a new notification to the list
   const addNotification = (notification: Notification) => {
-    console.log("🔔 Adding notification to state, current count:", unreadCount);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔔 Adding notification to state, current count:", unreadCount);
+    }
 
     // Force immediate state updates without batching
     flushSync(() => {
@@ -465,7 +501,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (!notification.is_read) {
         setUnreadCount((prev) => {
           const newCount = prev + 1;
-          console.log("🔔 Updated unread count:", newCount);
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Updated unread count:", newCount);
+          }
           return newCount;
         });
       }
@@ -477,7 +515,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     message: string,
     type: "info" | "success" | "warning" | "error" = "info"
   ) => {
-    console.log("🔔 Showing notification alert:", message);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔔 Showing notification alert:", message);
+    }
 
     // Create a temporary visual notification
     const notification = document.createElement("div");

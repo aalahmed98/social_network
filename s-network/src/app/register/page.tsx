@@ -85,7 +85,8 @@ export default function Register() {
       if (formData.aboutMe) data.append("aboutMe", formData.aboutMe);
       if (formData.avatar) data.append("avatar", formData.avatar);
 
-      const response = await fetch(`/api/auth/register`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/auth/register`, {
         method: "POST",
         body: data,
         credentials: "include",

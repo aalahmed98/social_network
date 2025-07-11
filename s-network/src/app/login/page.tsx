@@ -44,7 +44,8 @@ export default function Login() {
     }
 
     try {
-      const response = await fetch(`/api/auth/login`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -7,7 +7,9 @@ export const checkBackendConnection = async (): Promise<{
 }> => {
   try {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+    if (process.env.NODE_ENV === 'development') {
     console.log(`Checking backend connection to: ${backendUrl}`);
+  }
     
     const response = await fetch(`${backendUrl}/api/health`, {
       method: 'GET',
@@ -36,7 +38,9 @@ export const checkImageEndpoint = async (): Promise<{
   try {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
     const testUrl = `${backendUrl}/uploads/`;
+    if (process.env.NODE_ENV === 'development') {
     console.log(`Checking image endpoint: ${testUrl}`);
+  }
     
     const response = await fetch(testUrl, {
       method: 'HEAD',
@@ -60,11 +64,15 @@ export const debugImageUrl = (imagePath: string | null | undefined) => {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
   
   console.group(`🖼️ Image Debug for: ${imagePath}`);
-  console.log('Backend URL:', backendUrl);
-  console.log('Raw image path:', imagePath);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Backend URL:', backendUrl);
+    console.log('Raw image path:', imagePath);
+  }
   
   if (!imagePath) {
-    console.log('❌ No image path provided - will use default avatar');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('❌ No image path provided - will use default avatar');
+    }
     console.groupEnd();
     return;
   }
@@ -77,20 +85,28 @@ export const debugImageUrl = (imagePath: string | null | undefined) => {
   }
   
   const finalUrl = `${backendUrl}/${normalized}`;
-  console.log('Normalized path:', normalized);
-  console.log('Final URL:', finalUrl);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Normalized path:', normalized);
+    console.log('Final URL:', finalUrl);
+  }
   
   // Test the URL
   fetch(finalUrl, { method: 'HEAD' })
     .then(response => {
       if (response.ok) {
+        if (process.env.NODE_ENV === 'development') {
         console.log('✅ Image URL is accessible');
+      }
       } else {
+        if (process.env.NODE_ENV === 'development') {
         console.log(`❌ Image URL returned ${response.status} - ${response.statusText}`);
+      }
       }
     })
     .catch(error => {
+      if (process.env.NODE_ENV === 'development') {
       console.log('❌ Image URL failed to load:', error.message);
+    }
     })
     .finally(() => {
       console.groupEnd();
@@ -102,10 +118,14 @@ export const runImageDiagnostics = async () => {
   console.group('🔍 Image System Diagnostics');
   
   const backendCheck = await checkBackendConnection();
-  console.log('Backend connection:', backendCheck);
-  
+    if (process.env.NODE_ENV === 'development') {
+    console.log('Backend connection:', backendCheck);
+  }
+
   const imageCheck = await checkImageEndpoint();
-  console.log('Image endpoint:', imageCheck);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Image endpoint:', imageCheck);
+  }
   
   if (!backendCheck.isConnected) {
     console.warn('⚠️ Backend is not responding. Make sure your backend server is running on port 8080.');
