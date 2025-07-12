@@ -235,30 +235,40 @@ export default function ChatWindow({
     fetchCurrentUser();
   }, [isLoggedIn]);
 
-  // WebSocket connection
+  // WebSocket connection with race condition prevention
   useEffect(() => {
-    // Close any existing socket connection
+    // Connection state tracking
+    let wsConnected = false;
+    let connectionCancelled = false;
+    let connectionTimeout: NodeJS.Timeout | null = null;
+    let pollingInterval: NodeJS.Timeout | null = null;
+    let pollingTimeout: NodeJS.Timeout | null = null;
+
+    // Close any existing socket connection with proper cleanup
     if (socket) {
-      socket.close();
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🔌 Closing existing WebSocket connection");
+      }
+      socket.close(1000, "Chat switched");
+      setSocket(null);
     }
 
     // Don't attempt to connect if not authenticated
     if (!currentUser) {
-              if (process.env.NODE_ENV === 'development') {
-          console.log("⏸️ Skipping WebSocket connection - no current user");
-        }
+      if (process.env.NODE_ENV === 'development') {
+        console.log("⏸️ Skipping WebSocket connection - no current user");
+      }
       return;
     }
 
-          if (process.env.NODE_ENV === 'development') {
-        console.log("👤 Current user for WebSocket:", {
-          id: currentUser.id,
-          firstName: currentUser.firstName,
-          lastName: currentUser.lastName,
-        });
-      }
+    if (process.env.NODE_ENV === 'development') {
+      console.log("👤 Current user for WebSocket:", {
+        id: currentUser.id,
+        firstName: currentUser.firstName,
+        lastName: currentUser.lastName,
+      });
+    }
 
-    let wsConnected = false;
     const backendUrl =
       process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -267,29 +277,39 @@ export default function ChatWindow({
       ""
     )}/ws/chat`;
 
-          if (process.env.NODE_ENV === 'development') {
-        console.log("🔌 Attempting WebSocket connection to:", wsUrl);
-      }
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔌 Attempting WebSocket connection to:", wsUrl);
+    }
 
     const newSocket = new WebSocket(wsUrl);
 
-    const connectionTimeout = setTimeout(() => {
-      if (!wsConnected) {
+    connectionTimeout = setTimeout(() => {
+      if (!wsConnected && !connectionCancelled) {
         if (process.env.NODE_ENV === 'development') {
           console.log("⏰ WebSocket connection timeout, closing socket");
         }
+        connectionCancelled = true;
         newSocket.close();
         setError("WebSocket connection timeout. Using polling instead.");
       }
     }, 5000); // 5 second timeout
 
     newSocket.onopen = () => {
-              if (process.env.NODE_ENV === 'development') {
-          console.log("✅ WebSocket connection established");
+      if (connectionCancelled) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log("⏸️ WebSocket connection cancelled, closing");
         }
+        newSocket.close();
+        return;
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log("✅ WebSocket connection established");
+      }
       wsConnected = true;
-      clearTimeout(connectionTimeout);
+      if (connectionTimeout) clearTimeout(connectionTimeout);
       setError(null);
+      
       // Register for this conversation
       if (newSocket.readyState === WebSocket.OPEN) {
         if (process.env.NODE_ENV === 'development') {
@@ -755,23 +775,25 @@ export default function ChatWindow({
     };
 
     newSocket.onerror = (error) => {
+      if (connectionCancelled) return;
+      
       console.error("❌ WebSocket error occurred:", error);
       setError(
         "WebSocket connection failed. Check if the server is running. Falling back to polling."
       );
       wsConnected = false;
-      clearTimeout(connectionTimeout);
+      if (connectionTimeout) clearTimeout(connectionTimeout);
     };
 
     newSocket.onclose = (event) => {
-              if (process.env.NODE_ENV === 'development') {
-          console.log("🔌 WebSocket connection closed");
-        }
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🔌 WebSocket connection closed");
+      }
       wsConnected = false;
-      clearTimeout(connectionTimeout);
+      if (connectionTimeout) clearTimeout(connectionTimeout);
 
-      // Show error message if connection was closed unexpectedly
-      if (!event.wasClean && event.code !== 1000) {
+      // Show error message if connection was closed unexpectedly (but not if cancelled)
+      if (!event.wasClean && event.code !== 1000 && !connectionCancelled) {
         setError(
           `WebSocket connection lost (${event.code}). Using polling instead.`
         );
@@ -781,18 +803,16 @@ export default function ChatWindow({
     setSocket(newSocket);
 
     // Polling fallback - much less aggressive
-    let pollingInterval: NodeJS.Timeout | null = null;
-
     const startPolling = () => {
-      // Only start polling if WebSocket is not connected
-      if (!wsConnected) {
+      // Only start polling if WebSocket is not connected and not cancelled
+      if (!wsConnected && !connectionCancelled) {
         if (process.env.NODE_ENV === 'development') {
           console.log("🔄 Starting polling fallback");
         }
         // Poll every 10 seconds (reduced from 3 seconds)
         pollingInterval = setInterval(() => {
-          // Only poll if window is visible to reduce unnecessary requests
-          if (!document.hidden) {
+          // Only poll if window is visible and connection not cancelled
+          if (!document.hidden && !connectionCancelled) {
             fetchLatestMessagesQuietly();
           }
         }, 10000);
@@ -800,8 +820,8 @@ export default function ChatWindow({
     };
 
     // Give WebSocket 5 seconds to connect, then start polling if needed
-    const pollingTimeout = setTimeout(() => {
-      if (!wsConnected) {
+    pollingTimeout = setTimeout(() => {
+      if (!wsConnected && !connectionCancelled) {
         if (process.env.NODE_ENV === 'development') {
           console.log("⏰ WebSocket didn't connect in time, starting polling");
         }
@@ -811,12 +831,19 @@ export default function ChatWindow({
 
     // Cleanup function
     return () => {
-      console.log("🧹 Cleaning up WebSocket connection");
-      clearTimeout(connectionTimeout);
-      clearTimeout(pollingTimeout);
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🧹 Cleaning up WebSocket connection");
       }
+      
+      // Cancel connection to prevent race conditions
+      connectionCancelled = true;
+      
+      // Clear all timeouts and intervals
+      if (connectionTimeout) clearTimeout(connectionTimeout);
+      if (pollingTimeout) clearTimeout(pollingTimeout);
+      if (pollingInterval) clearInterval(pollingInterval);
+      
+      // Close socket if open
       if (newSocket && newSocket.readyState === WebSocket.OPEN) {
         newSocket.close(1000, "Component unmounting");
       }
