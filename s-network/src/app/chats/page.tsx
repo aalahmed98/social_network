@@ -22,7 +22,14 @@ export interface Chat {
   avatar?: string;
   isGroup?: boolean;
   groupId?: number;
-  members?: { id: number; name: string; avatar?: string; status?: string }[];
+  members?: { 
+    id: number; 
+    name: string; 
+    avatar?: string; 
+    status?: string;
+    role?: string;
+    isCreator?: boolean;
+  }[];
 }
 
 export default function ChatPage() {
@@ -263,6 +270,8 @@ export default function ChatPage() {
                 name: `${p.first_name} ${p.last_name}`,
                 avatar: p.avatar,
                 status: p.status || "member",
+                role: p.role || "member",
+                isCreator: p.is_creator || false,
               }));
             }
             console.log(`  - Adding to groups with groupId: ${chat.groupId}`);

@@ -307,10 +307,34 @@ func (db *DB) GetGroupMembers(groupID int64) ([]*GroupMember, error) {
 
 // GetGroupMembersWithPending retrieves all members and pending invitations for a group
 func (db *DB) GetGroupMembersWithPending(groupID int64) ([]*GroupMember, error) {
-	// First get confirmed members
-	members, err := db.GetGroupMembers(groupID)
+	// Get confirmed members with creator first
+	query := `SELECT gm.group_id, gm.user_id, gm.role, gm.joined_at,
+	                 u.first_name, u.last_name, u.avatar, u.email
+	          FROM group_members gm
+	          JOIN users u ON gm.user_id = u.id
+	          JOIN groups g ON gm.group_id = g.id
+	          WHERE gm.group_id = ?
+	          ORDER BY 
+	            CASE WHEN gm.user_id = g.creator_id THEN 0 ELSE 1 END,
+	            gm.joined_at ASC`
+
+	rows, err := db.Query(query, groupID)
 	if err != nil {
 		return nil, err
+	}
+	defer rows.Close()
+
+	var members []*GroupMember
+	for rows.Next() {
+		var member GroupMember
+		if err := rows.Scan(
+			&member.GroupID, &member.UserID, &member.Role, &member.JoinedAt,
+			&member.FirstName, &member.LastName, &member.Avatar, &member.Email,
+		); err != nil {
+			return nil, err
+		}
+		member.Status = "member" // Set status for confirmed members
+		members = append(members, &member)
 	}
 
 	// Then get pending invitations
@@ -321,15 +345,15 @@ func (db *DB) GetGroupMembersWithPending(groupID int64) ([]*GroupMember, error) 
 	                    WHERE gi.group_id = ? AND gi.status = 'pending'
 	                    ORDER BY gi.created_at ASC`
 
-	rows, err := db.Query(invitationQuery, groupID)
+	invRows, err := db.Query(invitationQuery, groupID)
 	if err != nil {
 		return members, nil // Return confirmed members even if pending query fails
 	}
-	defer rows.Close()
+	defer invRows.Close()
 
-	for rows.Next() {
+	for invRows.Next() {
 		var member GroupMember
-		if err := rows.Scan(
+		if err := invRows.Scan(
 			&member.GroupID, &member.UserID, &member.JoinedAt,
 			&member.FirstName, &member.LastName, &member.Avatar, &member.Email,
 		); err != nil {
@@ -355,109 +379,114 @@ func (db *DB) UpdateGroup(group *Group) error {
 
 // DeleteGroup removes a group from the database
 func (db *DB) DeleteGroup(id int64) error {
+	log.Printf("🗑️ Starting deletion of group %d", id)
+	
 	// Start a transaction to ensure all deletions happen atomically
 	tx, err := db.Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to begin transaction: %v", err)
 	}
 	defer tx.Rollback()
 
-	// Enable foreign keys for this transaction
+	// Temporarily disable foreign keys to avoid constraint issues
+	_, err = tx.Exec("PRAGMA foreign_keys = OFF")
+	if err != nil {
+		return fmt.Errorf("failed to disable foreign keys: %v", err)
+	}
+
+	// Delete in the order that avoids most foreign key issues
+	deletions := []struct {
+		query string
+		desc  string
+	}{
+		// 1. Delete notifications related to this group
+		{"DELETE FROM notifications WHERE type = 'group_invitation' AND reference_id = ?", "group notifications"},
+		
+		// 2. Delete group post comment votes (if table exists)
+		{"DELETE FROM group_post_comment_votes WHERE comment_id IN (SELECT id FROM group_post_comments WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?))", "group post comment votes"},
+		
+		// 3. Delete group post comments
+		{"DELETE FROM group_post_comments WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?)", "group post comments"},
+		
+		// 4. Delete group post likes/votes
+		{"DELETE FROM group_post_likes WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?)", "group post likes"},
+		
+		// 5. Delete group posts
+		{"DELETE FROM group_posts WHERE group_id = ?", "group posts"},
+		
+		// 6. Delete group event responses
+		{"DELETE FROM group_event_responses WHERE event_id IN (SELECT id FROM group_events WHERE group_id = ?)", "group event responses"},
+		
+		// 7. Delete group events
+		{"DELETE FROM group_events WHERE group_id = ?", "group events"},
+		
+		// 8. Delete group message attachments (if table exists)
+		{"DELETE FROM group_message_attachments WHERE message_id IN (SELECT id FROM group_messages WHERE group_id = ?)", "group message attachments"},
+		
+		// 9. Delete group messages
+		{"DELETE FROM group_messages WHERE group_id = ?", "group messages"},
+		
+		// 10. Delete chat messages in group conversations
+		{"DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE group_id = ?)", "chat messages"},
+		
+		// 11. Delete chat participants for this group
+		{"DELETE FROM chat_participants WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE group_id = ?)", "chat participants"},
+		
+		// 12. Delete group conversations
+		{"DELETE FROM chat_conversations WHERE group_id = ?", "group conversations"},
+		
+		// 13. Delete group invitations
+		{"DELETE FROM group_invitations WHERE group_id = ?", "group invitations"},
+		
+		// 14. Delete group join requests
+		{"DELETE FROM group_join_requests WHERE group_id = ?", "group join requests"},
+		
+		// 15. Delete group members
+		{"DELETE FROM group_members WHERE group_id = ?", "group members"},
+	}
+
+	// Execute all deletions
+	for _, deletion := range deletions {
+		result, err := tx.Exec(deletion.query, id)
+		if err != nil {
+			log.Printf("⚠️ Warning: Error deleting %s for group %d: %v", deletion.desc, id, err)
+			// Continue with other deletions even if some fail
+		} else {
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected > 0 {
+				log.Printf("✅ Deleted %d rows from %s", rowsAffected, deletion.desc)
+			}
+		}
+	}
+
+	// Finally delete the group itself
+	result, err := tx.Exec("DELETE FROM groups WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete group: %v", err)
+	}
+
+	// Check if the group was actually deleted
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check affected rows: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("group with ID %d not found", id)
+	}
+
+	// Re-enable foreign keys
 	_, err = tx.Exec("PRAGMA foreign_keys = ON")
 	if err != nil {
-		return err
-	}
-
-	// Delete related data in the correct order to avoid foreign key violations
-	// Use IGNORE to skip errors if tables don't exist
-
-	// 1. Delete group message attachments
-	_, err = tx.Exec("DELETE FROM group_message_attachments WHERE message_id IN (SELECT id FROM group_messages WHERE group_id = ?)", id)
-	if err != nil {
-		return err
-	}
-
-	// 2. Delete group messages
-	_, err = tx.Exec("DELETE FROM group_messages WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 3. Delete group event responses
-	_, err = tx.Exec("DELETE FROM group_event_responses WHERE event_id IN (SELECT id FROM group_events WHERE group_id = ?)", id)
-	if err != nil {
-		return err
-	}
-
-	// 4. Delete group events
-	_, err = tx.Exec("DELETE FROM group_events WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 5. Delete group post comments
-	_, err = tx.Exec("DELETE FROM group_post_comments WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?)", id)
-	if err != nil {
-		return err
-	}
-
-	// 6. Delete group post likes (if table exists)
-	_, err = tx.Exec("DELETE FROM group_post_likes WHERE post_id IN (SELECT id FROM group_posts WHERE group_id = ?)", id)
-	if err != nil {
-		// Log the error but continue - the table might not exist
-		log.Printf("Warning: Error deleting group post likes: %v", err)
-	}
-
-	// 7. Delete group posts
-	_, err = tx.Exec("DELETE FROM group_posts WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 8. Delete group invitations
-	_, err = tx.Exec("DELETE FROM group_invitations WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 9. Delete group join requests
-	_, err = tx.Exec("DELETE FROM group_join_requests WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 10. Delete conversation participants for this group
-	_, err = tx.Exec("DELETE FROM chat_participants WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE group_id = ?)", id)
-	if err != nil {
-		return err
-	}
-
-	// 11. Delete messages in group conversations
-	_, err = tx.Exec("DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE group_id = ?)", id)
-	if err != nil {
-		return err
-	}
-
-	// 12. Delete group conversations
-	_, err = tx.Exec("DELETE FROM chat_conversations WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 13. Delete group members
-	_, err = tx.Exec("DELETE FROM group_members WHERE group_id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	// 14. Finally delete the group itself
-	_, err = tx.Exec("DELETE FROM groups WHERE id = ?", id)
-	if err != nil {
-		return err
+		log.Printf("⚠️ Warning: Failed to re-enable foreign keys: %v", err)
 	}
 
 	// Commit the transaction
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	log.Printf("✅ Successfully deleted group %d", id)
+	return nil
 }
 
 // GetUserGroups retrieves all groups a user is a member of
@@ -964,7 +993,7 @@ func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
 	// Extract date and time separately from EventDate
 	eventDate := event.EventDate.Format("2006-01-02")
 	eventTime := event.EventDate.Format("15:04")
-	
+
 	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date, event_time) 
 	          VALUES (?, ?, ?, ?, ?, ?)`
 

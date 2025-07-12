@@ -58,7 +58,30 @@ export default function NotificationSidebar({
     [key: string]: { message: string; type: "success" | "error" };
   }>({});
 
-  // Notifications are automatically refreshed via the NotificationContext
+  // Auto-mark all notifications as read when sidebar opens
+  useEffect(() => {
+    if (isOpen) {
+      markAllNotificationsAsRead();
+    }
+  }, [isOpen]);
+
+  // Mark all notifications as read when sidebar opens
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        // Notifications will be automatically updated via the NotificationContext
+      }
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+    }
+  };
 
   // Auto-hide notifications after 1 minute
   useEffect(() => {

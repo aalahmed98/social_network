@@ -3953,7 +3953,8 @@ export default function ChatWindow({
                               {member.name || "Unknown User"}
                             </p>
                             <div className="flex items-center gap-2 mt-1">
-                              {index === 0 && (
+                              {/* Show Group Creator based on actual creator flag */}
+                              {(member as any).isCreator && (
                                 <div className="flex items-center gap-1">
                                   <div className="h-1.5 w-1.5 bg-amber-500 rounded-full"></div>
                                   <p className="text-xs font-medium text-amber-600">
@@ -3976,26 +3977,10 @@ export default function ChatWindow({
                           {/* Remove Member Button */}
                           {currentUser && (
                             <>
-                              {/* Check if current user is creator using groupInfo */}
-                              {groupInfo &&
-                                groupInfo.creatorId === currentUser.id &&
-                                index !== 0 && (
-                                  <button
-                                    onClick={() => handleRemoveMember(member)}
-                                    className="ml-2 p-2 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 rounded-xl transition-all duration-200 transform hover:scale-105 opacity-0 group-hover:opacity-100"
-                                    title={`Remove ${member.name} from group`}
-                                  >
-                                    <FaTrash size={12} />
-                                  </button>
-                                )}
-
-                              {/* Fallback check if groupInfo is not available */}
-                              {!groupInfo &&
-                                chat.members &&
-                                chat.members.length > 0 &&
-                                (chat.members[0].id === currentUser.id ||
-                                  chat.members[0].id === currentUser.id) &&
-                                index !== 0 && (
+                              {/* Check if current user is creator and this member is not the creator */}
+                              {((groupInfo && groupInfo.creatorId === currentUser.id) ||
+                                (chat.members && chat.members.some((m: any) => m.id === currentUser.id && m.isCreator))) &&
+                                !(member as any).isCreator && (
                                   <button
                                     onClick={() => handleRemoveMember(member)}
                                     className="ml-2 p-2 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 rounded-xl transition-all duration-200 transform hover:scale-105 opacity-0 group-hover:opacity-100"
@@ -4023,11 +4008,10 @@ export default function ChatWindow({
                       if (groupInfo && groupInfo.creatorId) {
                         isCreator = groupInfo.creatorId === currentUser.id;
                       }
-                      // Fallback method: Check if user is first member AND has creator-like privileges
-                      // This is a backup when groupInfo isn't loaded yet
+                      // Secondary method: Check if user has isCreator flag in members list
                       else if (chat.members && chat.members.length > 0) {
-                        // Assume first member might be creator, but this is just a fallback
-                        isCreator = chat.members[0].id === currentUser.id;
+                        const currentUserMember = chat.members.find((m: any) => m.id === currentUser.id);
+                        isCreator = currentUserMember && currentUserMember.isCreator;
                       }
 
                       return isCreator ? (

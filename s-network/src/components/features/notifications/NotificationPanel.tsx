@@ -80,12 +80,35 @@ export default function NotificationPanel() {
     }
   };
 
-  // Fetch notifications when the panel is opened
+  // Fetch notifications when the panel is opened and mark all as read
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
+      markAllNotificationsAsRead();
     }
   }, [isOpen]);
+
+  // Mark all notifications as read when panel opens
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        // Update local state to mark all notifications as read
+        setNotifications(prevNotifications => 
+          prevNotifications.map(n => ({ ...n, is_read: true }))
+        );
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+    }
+  };
 
   // Poll for new notifications every 30 seconds
   useEffect(() => {

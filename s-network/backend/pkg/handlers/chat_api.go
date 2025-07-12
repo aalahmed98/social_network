@@ -138,15 +138,25 @@ func GetConversations(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Printf("❌ Error getting group members with pending for group %d: %v", *conv.GroupID, err)
 			} else {
+				// Get group info to identify creator
+				group, groupErr := db.GetGroup(*conv.GroupID)
 				for _, member := range groupMembers {
-					participantDetails = append(participantDetails, map[string]interface{}{
+					participantData := map[string]interface{}{
 						"id":         member.UserID,
 						"first_name": member.FirstName,
 						"last_name":  member.LastName,
 						"avatar":     member.Avatar,
 						"joined_at":  member.JoinedAt,
 						"status":     member.Status, // "member" or "pending"
-					})
+						"role":       member.Role,   // "admin" or "member" or "pending"
+					}
+
+					// Add creator flag if we have group info
+					if groupErr == nil && group != nil {
+						participantData["is_creator"] = (member.UserID == group.CreatorID)
+					}
+
+					participantDetails = append(participantDetails, participantData)
 				}
 			}
 		} else {

@@ -176,4 +176,4 @@ After deployment, test persistence:
 6. Verify the user and post still exist
 7. Check that uploaded images still load
 
-Your social network should now maintain all data across deployments! 🎉 
+Your social network should now maintain all data across deployments! 🎉
