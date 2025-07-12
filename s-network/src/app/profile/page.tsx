@@ -17,6 +17,7 @@ import {
   FiCalendar,
   FiSettings,
   FiX,
+  FiImage,
 } from "react-icons/fi";
 import { BiArrowBack } from "react-icons/bi";
 
@@ -55,6 +56,7 @@ export default function Profile() {
     aboutMe: "",
     isPublic: true,
     avatar: null as File | null,
+    banner: null as File | null,
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -110,6 +112,7 @@ export default function Profile() {
           aboutMe: userData.about_me || "",
           isPublic: userData.is_public === false ? false : true,
           avatar: null,
+          banner: null,
         });
 
         // Fetch followers
@@ -194,7 +197,82 @@ export default function Profile() {
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFormData((prev) => ({ ...prev, avatar: e.target.files![0] }));
+      const fieldName = e.target.name as 'avatar' | 'banner';
+      setFormData((prev) => ({ ...prev, [fieldName]: e.target.files![0] }));
+    }
+  };
+
+  const handleBannerUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const bannerFile = e.target.files[0];
+      
+      // Validate file type and size
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+      if (!allowedTypes.includes(bannerFile.type)) {
+        showError("Invalid File Type", "Please select a JPEG, PNG, or GIF image.");
+        return;
+      }
+      
+      if (bannerFile.size > 10 * 1024 * 1024) { // 10MB
+        showError("File Too Large", "Please select an image smaller than 10MB.");
+        return;
+      }
+      
+      try {
+        setUpdating(true);
+        
+        // Create form data for banner upload
+        const data = new FormData();
+        data.append("firstName", formData.firstName);
+        data.append("lastName", formData.lastName);
+        data.append("nickname", formData.nickname);
+        data.append("aboutMe", formData.aboutMe);
+        data.append("isPublic", formData.isPublic.toString());
+        data.append("banner", bannerFile);
+        
+        // Use backend API directly
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+        const response = await fetch(`${backendUrl}/api/profile/update`, {
+          method: "POST",
+          credentials: "include",
+          body: data,
+        });
+
+        if (!response.ok) {
+          let errorMessage = "Failed to update banner";
+          try {
+            const result = await response.json();
+            errorMessage = result.error || errorMessage;
+          } catch (e) {
+            // If JSON parsing fails, use the default message
+          }
+          throw new Error(errorMessage);
+        }
+
+        showSuccess("Banner Updated", "Your profile banner has been updated successfully!");
+        
+        // Refresh user data
+        const updatedResponse = await fetch(`${backendUrl}/api/profile`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (updatedResponse.ok) {
+          const updatedUserData = await updatedResponse.json();
+          setUser(updatedUserData);
+          setFormData(prev => ({
+            ...prev,
+            banner: null, // Clear the form banner since it's now saved
+          }));
+        }
+      } catch (error) {
+        console.error("Banner upload error:", error);
+        showError("Upload Failed", error instanceof Error ? error.message : "Failed to upload banner");
+      } finally {
+        setUpdating(false);
+      }
     }
   };
 
@@ -215,6 +293,10 @@ export default function Profile() {
 
       if (formData.avatar) {
         data.append("avatar", formData.avatar);
+      }
+
+      if (formData.banner) {
+        data.append("banner", formData.banner);
       }
 
       // Use backend API directly
@@ -371,11 +453,29 @@ export default function Profile() {
       <div className="max-w-2xl w-full mx-auto px-2 sm:px-4 md:px-6 lg:px-8">
         {/* Profile Header */}
         <div className="bg-white rounded-xl shadow-md mb-6 border border-gray-200">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-32 sm:h-40 md:h-48 relative">
-            {/* Camera icon for cover photo (decoration only in this version) */}
-            <button className="absolute bottom-3 right-3 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md text-gray-700 hover:bg-white transition-colors">
+          <div className="relative h-32 sm:h-40 md:h-48 overflow-hidden rounded-t-xl">
+            {/* Banner Image */}
+            {user?.banner ? (
+              <img
+                src={getImageUrl(user.banner)}
+                alt="Profile banner"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 w-full h-full"></div>
+            )}
+            
+            {/* Camera icon for banner photo upload */}
+            <label className="absolute bottom-3 right-3 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md text-gray-700 hover:bg-white transition-colors cursor-pointer">
               <FiCamera size={18} />
-            </button>
+              <input
+                type="file"
+                name="banner"
+                accept="image/*"
+                onChange={handleBannerUpload}
+                className="sr-only"
+              />
+            </label>
           </div>
 
           <div className="px-6 py-6 md:px-8 md:py-6 relative">
@@ -817,6 +917,53 @@ export default function Profile() {
                           <input
                             id="avatar"
                             name="avatar"
+                            type="file"
+                            onChange={handleFileChange}
+                            accept="image/*"
+                            className="sr-only"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Banner Upload Section */}
+                  <div className="mt-6">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Profile Banner (Optional)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <div className="flex-shrink-0 w-16 h-10 rounded overflow-hidden bg-gray-100">
+                        {formData.banner ? (
+                          <img
+                            src={URL.createObjectURL(formData.banner)}
+                            alt="Banner preview"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : user?.banner ? (
+                          <img
+                            src={getImageUrl(user.banner)}
+                            alt="Current banner"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center bg-gradient-to-r from-blue-600 to-indigo-700">
+                            <FiImage className="text-white text-sm" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="ml-4 flex">
+                        <div className="relative bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm flex items-center hover:bg-gray-50 cursor-pointer">
+                          <label
+                            htmlFor="banner"
+                            className="cursor-pointer flex items-center text-sm font-medium text-gray-700"
+                          >
+                            <FiCamera className="mr-2" />
+                            Change Banner
+                          </label>
+                          <input
+                            id="banner"
+                            name="banner"
                             type="file"
                             onChange={handleFileChange}
                             accept="image/*"

@@ -79,7 +79,7 @@ func createAuthToken(userID int, tokenType string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Set expiry based on token type
 	var expiryDuration time.Duration
 	switch tokenType {
@@ -92,15 +92,15 @@ func createAuthToken(userID int, tokenType string) (string, error) {
 	default:
 		expiryDuration = 24 * time.Hour // 1 day default
 	}
-	
+
 	expiryTime := time.Now().Add(expiryDuration)
-	
+
 	// Use the existing database method
 	err = db.CreateAuthToken(token, userID, tokenType, expiryTime.Format(time.RFC3339))
 	if err != nil {
 		return "", fmt.Errorf("failed to save auth token: %v", err)
 	}
-	
+
 	return token, nil
 }
 
@@ -116,11 +116,11 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	var req RegisterRequest
-	
+
 	contentType := r.Header.Get("Content-Type")
-	
+
 	// Parse request based on Content-Type
 	if contentType == "application/json" {
 		// Handle JSON request
@@ -143,7 +143,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		// Extract fields from form
 		req.Email = r.FormValue("email")
 		req.Password = r.FormValue("password")
@@ -152,12 +152,12 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		req.DOB = r.FormValue("dob")
 		req.Nickname = r.FormValue("nickname")
 		req.AboutMe = r.FormValue("aboutMe")
-		
+
 		// Handle avatar file if present
 		file, header, err := r.FormFile("avatar")
 		if err == nil {
 			defer file.Close()
-			
+
 			// Validate file type and size
 			allowedTypes := map[string]bool{
 				"image/jpeg": true,
@@ -165,7 +165,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				"image/png":  true,
 				"image/gif":  true,
 			}
-			
+
 			contentType := header.Header.Get("Content-Type")
 			if !allowedTypes[contentType] {
 				w.Header().Set("Content-Type", "application/json")
@@ -175,7 +175,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-			
+
 			// Check file size (max 10MB)
 			const maxSize = 10 * 1024 * 1024 // 10MB
 			if header.Size > maxSize {
@@ -186,11 +186,11 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-			
+
 			// Generate unique filename
 			ext := filepath.Ext(header.Filename)
 			filename := fmt.Sprintf("avatar_%s_%d%s", uuid.New().String(), time.Now().Unix(), ext)
-			
+
 			// Create uploads directory if it doesn't exist
 			uploadsDir := "./uploads/avatars"
 			if err := os.MkdirAll(uploadsDir, 0755); err != nil {
@@ -201,7 +201,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-			
+
 			// Save file
 			filePath := filepath.Join(uploadsDir, filename)
 			dst, err := os.Create(filePath)
@@ -214,7 +214,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer dst.Close()
-			
+
 			_, err = io.Copy(dst, file)
 			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
@@ -224,7 +224,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-			
+
 			// Set the avatar path in the request
 			req.Avatar = fmt.Sprintf("uploads/avatars/%s", filename)
 		}
@@ -239,7 +239,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		req.Email = r.FormValue("email")
 		req.Password = r.FormValue("password")
 		req.FirstName = r.FormValue("firstName")
@@ -265,7 +265,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Password does not meet security requirements: " + strings.Join(passwordValidation.Errors, ", "),
+			"error":           "Password does not meet security requirements: " + strings.Join(passwordValidation.Errors, ", "),
 			"password_errors": passwordValidation.Errors,
 		})
 		return
@@ -343,7 +343,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		req.Email = r.FormValue("email")
 		req.Password = r.FormValue("password")
 	}
@@ -408,7 +408,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		"user_id": user["id"],
 		"email":   user["email"],
 	}
-	
+
 	sessionDataJSON, err := json.Marshal(sessionData)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -421,7 +421,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	// Set expiry for 7 days
 	expiryTime := time.Now().Add(7 * 24 * time.Hour).Format(time.RFC3339)
-	
+
 	// Save session to database
 	err = db.SaveSession(sessionID, user["id"].(int), string(sessionDataJSON), expiryTime)
 	if err != nil {
@@ -441,7 +441,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	session.Options.MaxAge = 60 * 60 * 24 * 7 // 7 days
 	session.Options.HttpOnly = true
 	session.Options.Path = "/"
-	
+
 	// For development, we don't need these settings
 	// In production, set these to true
 	isDev := true
@@ -449,7 +449,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		session.Options.SameSite = http.SameSiteNoneMode
 		session.Options.Secure = true
 	}
-	
+
 	err = session.Save(r, w)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -488,19 +488,19 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	session, _ := store.Get(r, SessionCookieName)
-	
+
 	// Get user ID from session to delete auth tokens
 	userID, userIDOk := session.Values["user_id"].(int)
-	
+
 	// Get session ID from cookie
 	sessionID, ok := session.Values["session_id"].(string)
 	if ok {
 		// Delete session from database
 		db.DeleteSession(sessionID)
 	}
-	
+
 	// Delete all auth tokens for this user
 	if userIDOk && userID > 0 {
 		err := deleteUserAuthTokens(userID)
@@ -508,7 +508,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("\033[33m[WARNING] Failed to delete auth tokens for user %d: %v\033[0m\n", userID, err)
 		}
 	}
-	
+
 	// Clear the cookie
 	session.Options.MaxAge = -1
 	session.Save(r, w)
@@ -527,7 +527,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	session, _ := store.Get(r, SessionCookieName)
 	sessionID, ok := session.Values["session_id"].(string)
 	if !ok {
@@ -538,7 +538,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Get session from database
 	dbSession, err := db.GetSession(sessionID)
 	if err != nil {
@@ -549,7 +549,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Get user ID from session
 	userID := dbSession["user_id"].(int)
 
@@ -581,14 +581,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		
+
 		// Verify session in database
 		_, err := db.GetSession(sessionID)
 		if err != nil {
 			http.Error(w, "Session expired or invalid", http.StatusUnauthorized)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -600,7 +600,7 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	session, err := store.Get(r, SessionCookieName)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -610,10 +610,10 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Check if user is authenticated (same pattern as AuthMiddleware)
 	auth, ok := session.Values["authenticated"].(bool)
-	
+
 	if !ok || !auth {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -622,10 +622,10 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Get user ID from session
 	userID, ok := session.Values["user_id"].(int)
-	
+
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -634,7 +634,7 @@ func CheckAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -730,14 +730,59 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	if err == nil && handler != nil {
 		defer file.Close()
 
-		// Create unique filename
-		fileExt := filepath.Ext(handler.Filename)
-		filename := fmt.Sprintf("%d_%s%s", time.Now().Unix(), uuid.New().String(), fileExt)
-		uploadPath := filepath.Join("uploads", filename)
-		fullPath := filepath.Join(".", uploadPath)
+		// Validate image file format
+		if err := ValidateImageFile(file, handler); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Invalid avatar image: " + err.Error(),
+			})
+			return
+		}
 
-		// Ensure directory exists
-		os.MkdirAll(filepath.Dir(fullPath), 0755)
+		// Create uploads directory if it doesn't exist
+		uploadsDir := "./uploads/avatars"
+		err = os.MkdirAll(uploadsDir, 0755)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to create upload directory",
+			})
+			return
+		}
+
+		// Generate a unique filename with proper extension based on content type
+		mimeType, err := GetImageMimeType(file)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to determine image type",
+			})
+			return
+		}
+
+		var ext string
+		switch mimeType {
+		case "image/jpeg":
+			ext = ".jpg"
+		case "image/png":
+			ext = ".png"
+		case "image/gif":
+			ext = ".gif"
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Unsupported image format",
+			})
+			return
+		}
+
+		filename := fmt.Sprintf("avatar_%d_%s%s", time.Now().Unix(), uuid.New().String(), ext)
+		uploadPath := "/uploads/avatars/" + filename
+		fullPath := filepath.Join(uploadsDir, filename)
 
 		// Create file
 		dst, err := os.Create(fullPath)
@@ -763,6 +808,91 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 		// Add avatar path to update data
 		updateData["avatar"] = uploadPath
+	}
+
+	// Handle banner upload if present
+	bannerFile, bannerHandler, err := r.FormFile("banner")
+	if err == nil && bannerHandler != nil {
+		defer bannerFile.Close()
+
+		// Validate image file format
+		if err := ValidateImageFile(bannerFile, bannerHandler); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Invalid banner image: " + err.Error(),
+			})
+			return
+		}
+
+		// Create uploads directory if it doesn't exist
+		uploadsDir := "./uploads/banners"
+		err = os.MkdirAll(uploadsDir, 0755)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to create upload directory",
+			})
+			return
+		}
+
+		// Generate a unique filename with proper extension based on content type
+		mimeType, err := GetImageMimeType(bannerFile)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to determine image type",
+			})
+			return
+		}
+
+		var ext string
+		switch mimeType {
+		case "image/jpeg":
+			ext = ".jpg"
+		case "image/png":
+			ext = ".png"
+		case "image/gif":
+			ext = ".gif"
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Unsupported image format",
+			})
+			return
+		}
+
+		filename := fmt.Sprintf("banner_%d_%s%s", time.Now().Unix(), uuid.New().String(), ext)
+		uploadPath := "/uploads/banners/" + filename
+		fullPath := filepath.Join(uploadsDir, filename)
+
+		// Create file
+		dst, err := os.Create(fullPath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to save banner: " + err.Error(),
+			})
+			return
+		}
+		defer dst.Close()
+
+		// Copy file data
+		if _, err = io.Copy(dst, bannerFile); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to save banner: " + err.Error(),
+			})
+			return
+		}
+
+		// Add banner path to update data
+		updateData["banner"] = uploadPath
 	}
 
 	// Get current user data to check if privacy status is changing

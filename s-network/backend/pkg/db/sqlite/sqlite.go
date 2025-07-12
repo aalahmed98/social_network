@@ -74,6 +74,7 @@ func (db *DB) InitializeTables() error {
 			last_name TEXT NOT NULL,
 			date_of_birth TEXT NOT NULL,
 			avatar TEXT,
+			banner TEXT,
 			nickname TEXT,
 			about_me TEXT,
 			is_public BOOLEAN DEFAULT 1,
@@ -244,6 +245,12 @@ func (db *DB) InitializeTables() error {
 	}
 
 	_, err = db.Exec(`ALTER TABLE group_events ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return err
+	}
+
+	// Add banner column to users table for existing databases
+	_, err = db.Exec(`ALTER TABLE users ADD COLUMN banner TEXT`)
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		return err
 	}
