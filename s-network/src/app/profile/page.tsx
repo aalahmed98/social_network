@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getImageUrl, createAvatarFallback } from "@/utils/image";
 import { useToast } from "@/context/ToastContext";
 import { Avatar } from "@/components/ui";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   FiEdit3,
   FiCamera,
@@ -69,6 +70,10 @@ export default function Profile() {
 
   const [showFollowersPopup, setShowFollowersPopup] = useState(false);
   const [showFollowingPopup, setShowFollowingPopup] = useState(false);
+  const [showRemoveFollowerConfirm, setShowRemoveFollowerConfirm] = useState(false);
+  const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
+  const [selectedFollowerId, setSelectedFollowerId] = useState<number | null>(null);
+  const [selectedUnfollowUserId, setSelectedUnfollowUserId] = useState<number | null>(null);
 
   useEffect(() => {
     // Fetch user data
@@ -382,15 +387,18 @@ export default function Profile() {
   };
 
   const handleRemoveFollower = async (followerId: number) => {
-    if (!confirm("Are you sure you want to remove this follower?")) {
-      return;
-    }
+    setSelectedFollowerId(followerId);
+    setShowRemoveFollowerConfirm(true);
+  };
+
+  const confirmRemoveFollower = async () => {
+    if (!selectedFollowerId) return;
 
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
       const response = await fetch(
-        `${backendUrl}/api/followers/remove/${followerId}`,
+        `${backendUrl}/api/followers/remove/${selectedFollowerId}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -399,7 +407,7 @@ export default function Profile() {
 
       if (response.ok) {
         // Remove the follower from the local state
-        setFollowers(followers.filter((f) => f.id !== followerId));
+        setFollowers(followers.filter((f) => f.id !== selectedFollowerId));
         showSuccess("Follower Removed", "Follower removed successfully");
       } else {
         const errorText = await response.text();
@@ -408,25 +416,31 @@ export default function Profile() {
     } catch (error) {
       console.error("Error removing follower:", error);
       showError("Remove Error", "Failed to remove follower. Please try again.");
+    } finally {
+      setShowRemoveFollowerConfirm(false);
+      setSelectedFollowerId(null);
     }
   };
 
   const handleUnfollow = async (userId: number) => {
-    if (!confirm("Are you sure you want to unfollow this user?")) {
-      return;
-    }
+    setSelectedUnfollowUserId(userId);
+    setShowUnfollowConfirm(true);
+  };
+
+  const confirmUnfollow = async () => {
+    if (!selectedUnfollowUserId) return;
 
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/follow/${userId}`, {
+      const response = await fetch(`${backendUrl}/api/follow/${selectedUnfollowUserId}`, {
         method: "DELETE",
         credentials: "include",
       });
 
       if (response.ok) {
         // Remove the user from the following list
-        setFollowing(following.filter((f) => f.id !== userId));
+        setFollowing(following.filter((f) => f.id !== selectedUnfollowUserId));
         showSuccess("Unfollowed", "User unfollowed successfully");
       } else {
         const errorText = await response.text();
@@ -435,6 +449,9 @@ export default function Profile() {
     } catch (error) {
       console.error("Error unfollowing user:", error);
       showError("Unfollow Error", "Failed to unfollow user. Please try again.");
+    } finally {
+      setShowUnfollowConfirm(false);
+      setSelectedUnfollowUserId(null);
     }
   };
 
@@ -1374,6 +1391,36 @@ export default function Profile() {
           )}
         </div>
       </div>
+
+      {/* Remove Follower Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showRemoveFollowerConfirm}
+        onClose={() => {
+          setShowRemoveFollowerConfirm(false);
+          setSelectedFollowerId(null);
+        }}
+        onConfirm={confirmRemoveFollower}
+        title="Remove Follower"
+        message="Are you sure you want to remove this follower? They will no longer be able to see your posts."
+        confirmText="Remove Follower"
+        cancelText="Cancel"
+        variant="warning"
+      />
+
+      {/* Unfollow Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showUnfollowConfirm}
+        onClose={() => {
+          setShowUnfollowConfirm(false);
+          setSelectedUnfollowUserId(null);
+        }}
+        onConfirm={confirmUnfollow}
+        title="Unfollow User"
+        message="Are you sure you want to unfollow this user? You will no longer see their posts in your feed."
+        confirmText="Unfollow"
+        cancelText="Cancel"
+        variant="warning"
+      />
     </div>
   );
 }

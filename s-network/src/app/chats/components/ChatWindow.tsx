@@ -21,6 +21,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 import Avatar, { ChatAvatar } from "@/components/ui/Avatar";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 interface Comment {
   id: string | number;
@@ -148,6 +149,12 @@ export default function ChatWindow({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
+  const [showDeleteEventConfirm, setShowDeleteEventConfirm] = useState(false);
+  const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState(false);
+  const [selectedPostForDelete, setSelectedPostForDelete] = useState<number | null>(null);
+  const [selectedEventForDelete, setSelectedEventForDelete] = useState<number | null>(null);
+  const [selectedMemberForRemove, setSelectedMemberForRemove] = useState<any>(null);
   const [groupInfo, setGroupInfo] = useState<{
     id: number;
     name: string;
@@ -1701,15 +1708,18 @@ export default function ChatWindow({
   };
 
   const handleDeletePost = async (postId: number) => {
-    if (!confirm("Are you sure you want to delete this post?")) {
-      return;
-    }
+    setSelectedPostForDelete(postId);
+    setShowDeletePostConfirm(true);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!selectedPostForDelete) return;
 
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
-      const res = await fetch(`${backendUrl}/api/groups/posts/${postId}`, {
+      const res = await fetch(`${backendUrl}/api/groups/posts/${selectedPostForDelete}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -1719,10 +1729,10 @@ export default function ChatWindow({
 
         // Remove post from the list immediately (optimistic update)
         setGroupPosts((prevPosts) =>
-          prevPosts.filter((post) => post.id !== postId)
+          prevPosts.filter((post) => post.id !== selectedPostForDelete)
         );
         setMessages((prevMessages) =>
-          prevMessages.filter((msg) => msg.id !== `post-${postId}`)
+          prevMessages.filter((msg) => msg.id !== `post-${selectedPostForDelete}`)
         );
 
         // Send WebSocket notification to other users in the group
@@ -1731,11 +1741,14 @@ export default function ChatWindow({
             JSON.stringify({
               type: "post_deleted",
               group_id: chat.groupId,
-              post_id: postId,
+              post_id: selectedPostForDelete,
               deleted_by: currentUser?.id,
             })
           );
         }
+
+        // Show success toast
+        showSuccess("Post Deleted", "Post has been deleted successfully.");
       } else {
         const errorText = await res.text();
         console.error("Failed to delete post:", res.status, errorText);
@@ -1747,17 +1760,27 @@ export default function ChatWindow({
         "Delete Error",
         "Error deleting post. Please check your connection."
       );
+    } finally {
+      setShowDeletePostConfirm(false);
+      setSelectedPostForDelete(null);
     }
   };
 
   const handleDeleteEvent = async (eventId: number) => {
+    setSelectedEventForDelete(eventId);
+    setShowDeleteEventConfirm(true);
+  };
+
+  const confirmDeleteEvent = async () => {
+    if (!selectedEventForDelete) return;
+
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
-      console.log("Deleting event:", eventId);
+      console.log("Deleting event:", selectedEventForDelete);
 
-      const res = await fetch(`${backendUrl}/api/groups/events/${eventId}`, {
+      const res = await fetch(`${backendUrl}/api/groups/events/${selectedEventForDelete}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -1767,7 +1790,7 @@ export default function ChatWindow({
 
         // Remove event from the list immediately (optimistic update)
         setGroupEvents((prevEvents) =>
-          prevEvents.filter((event) => event.id !== eventId)
+          prevEvents.filter((event) => event.id !== selectedEventForDelete)
         );
 
         // Send WebSocket notification to other users in the group
@@ -1776,11 +1799,14 @@ export default function ChatWindow({
             JSON.stringify({
               type: "event_deleted",
               group_id: chat.groupId,
-              event_id: eventId,
+              event_id: selectedEventForDelete,
               deleted_by: currentUser?.id,
             })
           );
         }
+
+        // Show success toast
+        showSuccess("Event Deleted", "Event has been deleted successfully.");
       } else {
         const errorText = await res.text();
         console.error("Failed to delete event:", res.status, errorText);
@@ -1792,6 +1818,9 @@ export default function ChatWindow({
     } catch (error) {
       console.error("Error deleting event:", error);
       showError("Delete Error", "Error deleting event. Please try again.");
+    } finally {
+      setShowDeleteEventConfirm(false);
+      setSelectedEventForDelete(null);
     }
   };
 
@@ -2356,12 +2385,12 @@ export default function ChatWindow({
   };
 
   const handleRemoveMember = async (member: any) => {
-    // Confirm removal
-    const confirmRemoval = window.confirm(
-      `Are you sure you want to remove ${member.name} from this group?`
-    );
+    setSelectedMemberForRemove(member);
+    setShowRemoveMemberConfirm(true);
+  };
 
-    if (!confirmRemoval) return;
+  const confirmRemoveMember = async () => {
+    if (!selectedMemberForRemove) return;
 
     try {
       const backendUrl =
@@ -2374,7 +2403,7 @@ export default function ChatWindow({
       }
 
       const response = await fetch(
-        `${backendUrl}/api/groups/${groupIdToUse}/members/${member.id}`,
+        `${backendUrl}/api/groups/${groupIdToUse}/members/${selectedMemberForRemove.id}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -2384,14 +2413,14 @@ export default function ChatWindow({
       if (response.ok) {
         // Immediately update local chat state to remove the member from UI
         if (chat.members) {
-          chat.members = chat.members.filter((m) => m.id !== member.id);
+          chat.members = chat.members.filter((m) => m.id !== selectedMemberForRemove.id);
         }
 
         // Also refresh conversation data to ensure consistency
         onConversationUpdated();
         showSuccess(
           "Member Removed",
-          `${member.name} has been removed from the group.`
+          `${selectedMemberForRemove.name} has been removed from the group.`
         );
       } else {
         const errorData = await response.json();
@@ -2406,6 +2435,9 @@ export default function ChatWindow({
         "Remove Member Error",
         "Error removing member. Please try again."
       );
+    } finally {
+      setShowRemoveMemberConfirm(false);
+      setSelectedMemberForRemove(null);
     }
   };
 
@@ -3489,15 +3521,9 @@ export default function ChatWindow({
                                       currentUser.id)) && (
                                   <button
                                     onClick={() => {
-                                      if (
-                                        confirm(
-                                          "Are you sure you want to delete this post?"
-                                        )
-                                      ) {
-                                        handleDeletePost(
-                                          parseInt(msg.id.replace("post-", ""))
-                                        );
-                                      }
+                                      handleDeletePost(
+                                        parseInt(msg.id.replace("post-", ""))
+                                      );
                                     }}
                                     className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700 transition-colors duration-200 flex items-center justify-center text-sm font-bold shadow-sm hover:shadow-md"
                                     title="Delete post"
@@ -4503,13 +4529,7 @@ export default function ChatWindow({
                               groupInfo.creatorId === currentUser.id)) && (
                             <button
                               onClick={() => {
-                                if (
-                                  confirm(
-                                    "Are you sure you want to delete this event?"
-                                  )
-                                ) {
-                                  handleDeleteEvent(event.id);
-                                }
+                                handleDeleteEvent(event.id);
                               }}
                               className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700 transition-all duration-200 flex items-center justify-center text-sm font-bold shadow-md hover:shadow-lg transform hover:scale-105 z-10"
                               title="Delete event"
@@ -5622,6 +5642,51 @@ export default function ChatWindow({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {/* Delete Post Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeletePostConfirm}
+        onClose={() => {
+          setShowDeletePostConfirm(false);
+          setSelectedPostForDelete(null);
+        }}
+        onConfirm={confirmDeletePost}
+        title="Delete Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        confirmText="Delete Post"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      {/* Delete Event Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteEventConfirm}
+        onClose={() => {
+          setShowDeleteEventConfirm(false);
+          setSelectedEventForDelete(null);
+        }}
+        onConfirm={confirmDeleteEvent}
+        title="Delete Event"
+        message="Are you sure you want to delete this event? This action cannot be undone."
+        confirmText="Delete Event"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      {/* Remove Member Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showRemoveMemberConfirm}
+        onClose={() => {
+          setShowRemoveMemberConfirm(false);
+          setSelectedMemberForRemove(null);
+        }}
+        onConfirm={confirmRemoveMember}
+        title="Remove Member"
+        message={`Are you sure you want to remove ${selectedMemberForRemove?.name || 'this member'} from the group?`}
+        confirmText="Remove Member"
+        cancelText="Cancel"
+        variant="warning"
+      />
     </div>
   );
 }
