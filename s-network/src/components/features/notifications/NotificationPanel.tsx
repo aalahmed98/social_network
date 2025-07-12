@@ -195,6 +195,29 @@ export default function NotificationPanel() {
     }
   };
 
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(
+        `${backendUrl}/api/notifications/${notificationId}/read`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        setNotifications(notifications.map((n) => 
+          n.id === notificationId ? { ...n, is_read: true } : n
+        ));
+        setUnreadCount(prev => Math.max(prev - 1, 0));
+      }
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
+
   const handleNotificationAction = async (
     notification: Notification,
     action: "accept" | "decline" | "view"
@@ -202,6 +225,9 @@ export default function NotificationPanel() {
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+
+      // First mark the notification as read
+      await markNotificationAsRead(notification.id);
 
       // Handle follow request actions
       if (notification.type === "follow_request" && action !== "view") {
@@ -215,22 +241,18 @@ export default function NotificationPanel() {
           );
 
           if (response.ok) {
-            // Immediately remove the notification from the UI
             setNotifications((prev) =>
               prev.filter((n) => n.id !== notification.id)
             );
-
-            // Mark this notification as processed
             setProcessedNotifications(
               (prev) => new Set([...prev, notification.id])
             );
             showFeedback(
               notification.id,
-              `✅ Successfully joined ${notification.sender?.first_name} ${notification.sender?.last_name}!`,
+              `✅ Follow request accepted!`,
               "success"
             );
-
-            fetchNotifications(); // Refresh notifications
+            fetchNotifications();
           }
         } else if (action === "decline") {
           const response = await fetch(
@@ -242,29 +264,111 @@ export default function NotificationPanel() {
           );
 
           if (response.ok) {
-            // Immediately remove the notification from the UI
             setNotifications((prev) =>
               prev.filter((n) => n.id !== notification.id)
             );
-
-            // Mark this notification as processed
             setProcessedNotifications(
               (prev) => new Set([...prev, notification.id])
             );
             showFeedback(
               notification.id,
-              `❌ Declined invitation to ${notification.sender?.first_name} ${notification.sender?.last_name}`,
+              `❌ Follow request declined`,
               "success"
             );
+            fetchNotifications();
+          }
+        }
+      }
 
-            fetchNotifications(); // Refresh notifications
+      // Handle group invitation actions
+      if (notification.type === "group_invitation") {
+        if (processedNotifications.has(notification.id)) {
+          return;
+        }
+
+        setProcessedNotifications(
+          (prev) => new Set([...prev, notification.id])
+        );
+
+        if (action === "accept") {
+          const invitationsResponse = await fetch(
+            `${backendUrl}/api/invitations`,
+            {
+              method: "GET",
+              credentials: "include",
+            }
+          );
+
+          if (invitationsResponse.ok) {
+            const invitationsData = await invitationsResponse.json();
+            const invitation = invitationsData.invitations?.find(
+              (inv: any) => inv.group_id === notification.reference_id
+            );
+
+            if (invitation) {
+              const response = await fetch(
+                `${backendUrl}/api/invitations/${invitation.id}/accept`,
+                {
+                  method: "POST",
+                  credentials: "include",
+                }
+              );
+
+              if (response.ok) {
+                setNotifications((prev) =>
+                  prev.filter((n) => n.id !== notification.id)
+                );
+                showFeedback(
+                  notification.id,
+                  `✅ Successfully joined ${invitation.group_name}!`,
+                  "success"
+                );
+                fetchNotifications();
+              }
+            }
+          }
+        } else if (action === "decline") {
+          const invitationsResponse = await fetch(
+            `${backendUrl}/api/invitations`,
+            {
+              method: "GET",
+              credentials: "include",
+            }
+          );
+
+          if (invitationsResponse.ok) {
+            const invitationsData = await invitationsResponse.json();
+            const invitation = invitationsData.invitations?.find(
+              (inv: any) => inv.group_id === notification.reference_id
+            );
+
+            if (invitation) {
+              const response = await fetch(
+                `${backendUrl}/api/invitations/${invitation.id}/reject`,
+                {
+                  method: "POST",
+                  credentials: "include",
+                }
+              );
+
+              if (response.ok) {
+                setNotifications((prev) =>
+                  prev.filter((n) => n.id !== notification.id)
+                );
+                showFeedback(
+                  notification.id,
+                  `❌ Declined invitation to ${invitation.group_name}`,
+                  "success"
+                );
+                fetchNotifications();
+              }
+            }
           }
         }
       }
 
       // Handle view action for all notification types
       if (action === "view") {
-        // Navigate to relevant page
         if (
           notification.type === "follow_request" ||
           notification.type === "follow" ||
@@ -276,185 +380,10 @@ export default function NotificationPanel() {
           notification.type === "post_comment"
         ) {
           router.push(`/posts/${notification.reference_id}`);
+        } else if (notification.type === "message") {
+          router.push("/chats");
         } else if (notification.type === "event_created") {
-          // Navigate to chats page for group events
-          router.push(`/chats`);
-        }
-
-        // Mark as read
-        await fetch(`${backendUrl}/api/notifications/${notification.id}/read`, {
-          method: "POST",
-          credentials: "include",
-        });
-      }
-
-      // Handle group invitation actions
-      if (notification.type === "group_invitation") {
-        // Check if this notification has already been processed
-        if (processedNotifications.has(notification.id)) {
-          console.log("Notification already processed:", notification.id);
-          return;
-        }
-
-        // Mark as processed immediately to prevent duplicate processing
-        setProcessedNotifications(
-          (prev) => new Set([...prev, notification.id])
-        );
-
-        if (action === "accept") {
-          // First get the user's invitations to find the invitation ID for this group
-          const invitationsResponse = await fetch(
-            `${backendUrl}/api/invitations`,
-            {
-              method: "GET",
-              credentials: "include",
-            }
-          );
-
-          if (!invitationsResponse.ok) {
-            console.error(
-              "Failed to get invitations:",
-              invitationsResponse.status
-            );
-            showFeedback(
-              notification.id,
-              "Failed to load invitation details",
-              "error"
-            );
-            return;
-          }
-
-          const invitationsData = await invitationsResponse.json();
-          const invitation = invitationsData.invitations?.find(
-            (inv: any) => inv.group_id === notification.reference_id
-          );
-
-          if (!invitation) {
-            console.error(
-              "Invitation not found for group:",
-              notification.reference_id
-            );
-            showFeedback(
-              notification.id,
-              "This invitation may have already been processed",
-              "error"
-            );
-            return;
-          }
-
-          // Accept the invitation using the invitation ID
-          const response = await fetch(
-            `${backendUrl}/api/invitations/${invitation.id}/accept`,
-            {
-              method: "POST",
-              credentials: "include",
-            }
-          );
-
-          if (response.ok) {
-            // Immediately remove the notification from the UI
-            setNotifications((prev) =>
-              prev.filter((n) => n.id !== notification.id)
-            );
-
-            showFeedback(
-              notification.id,
-              `✅ Successfully joined ${invitation.group_name}!`,
-              "success"
-            );
-
-            fetchNotifications(); // Refresh notifications
-          } else {
-            console.error("Failed to accept invitation:", response.status);
-            showFeedback(
-              notification.id,
-              "Failed to accept invitation",
-              "error"
-            );
-            // Remove from processed if it failed
-            setProcessedNotifications((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(notification.id);
-              return newSet;
-            });
-          }
-        } else if (action === "decline") {
-          // First get the user's invitations to find the invitation ID for this group
-          const invitationsResponse = await fetch(
-            `${backendUrl}/api/invitations`,
-            {
-              method: "GET",
-              credentials: "include",
-            }
-          );
-
-          if (!invitationsResponse.ok) {
-            console.error(
-              "Failed to get invitations:",
-              invitationsResponse.status
-            );
-            showFeedback(
-              notification.id,
-              "Failed to load invitation details",
-              "error"
-            );
-            return;
-          }
-
-          const invitationsData = await invitationsResponse.json();
-          const invitation = invitationsData.invitations?.find(
-            (inv: any) => inv.group_id === notification.reference_id
-          );
-
-          if (!invitation) {
-            console.error(
-              "Invitation not found for group:",
-              notification.reference_id
-            );
-            showFeedback(
-              notification.id,
-              "This invitation may have already been processed",
-              "error"
-            );
-            return;
-          }
-
-          // Reject the invitation using the invitation ID
-          const response = await fetch(
-            `${backendUrl}/api/invitations/${invitation.id}/reject`,
-            {
-              method: "POST",
-              credentials: "include",
-            }
-          );
-
-          if (response.ok) {
-            // Immediately remove the notification from the UI
-            setNotifications((prev) =>
-              prev.filter((n) => n.id !== notification.id)
-            );
-
-            showFeedback(
-              notification.id,
-              `❌ Declined invitation to ${invitation.group_name}`,
-              "success"
-            );
-
-            fetchNotifications(); // Refresh notifications
-          } else {
-            console.error("Failed to reject invitation:", response.status);
-            showFeedback(
-              notification.id,
-              "Failed to decline invitation",
-              "error"
-            );
-            // Remove from processed if it failed
-            setProcessedNotifications((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(notification.id);
-              return newSet;
-            });
-          }
+          router.push("/chats");
         }
       }
     } catch (error) {
@@ -513,27 +442,6 @@ export default function NotificationPanel() {
     }
   };
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(
-        `${backendUrl}/api/notifications?mark_as_read=true`,
-        {
-          method: "GET",
-          credentials: "include",
-        }
-      );
-
-      if (response.ok) {
-        setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
-        setUnreadCount(0);
-      }
-    } catch (error) {
-      console.error("Error marking all as read:", error);
-    }
-  };
-
   return (
     <div className="relative">
       <button
@@ -560,14 +468,6 @@ export default function NotificationPanel() {
           >
             <div className="p-3 border-b flex justify-between items-center">
               <h3 className="font-semibold text-gray-800">Notifications</h3>
-              {unreadCount > 0 && (
-                <button
-                  onClick={handleMarkAllAsRead}
-                  className="text-xs text-blue-600 cursor-pointer hover:text-blue-800"
-                >
-                  Mark all as read
-                </button>
-              )}
             </div>
 
             <div className="max-h-[400px] overflow-y-auto">

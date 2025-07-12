@@ -44,8 +44,7 @@ export default function NotificationSidebar({
   onClose,
 }: NotificationSidebarProps) {
   const router = useRouter();
-  const { notifications, refreshNotifications, markAsRead, markAllAsRead } =
-    useNotifications();
+  const { notifications } = useNotifications();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -59,12 +58,7 @@ export default function NotificationSidebar({
     [key: string]: { message: string; type: "success" | "error" };
   }>({});
 
-  // Refresh notifications when sidebar opens
-  useEffect(() => {
-    if (isOpen) {
-      handleRefresh();
-    }
-  }, [isOpen]);
+  // Notifications are automatically refreshed via the NotificationContext
 
   // Auto-hide notifications after 1 minute
   useEffect(() => {
@@ -89,9 +83,6 @@ export default function NotificationSidebar({
             method: "POST",
             credentials: "include",
           });
-
-          // Refresh notifications to update the UI
-          await refreshNotifications();
         } catch (error) {
           console.error("Error cleaning up expired notifications:", error);
         }
@@ -100,7 +91,7 @@ export default function NotificationSidebar({
 
     const interval = setInterval(hideNotifications, 10000); // Check every 10 seconds
     return () => clearInterval(interval);
-  }, [notifications, refreshNotifications]);
+  }, [notifications]);
 
   // Show feedback message temporarily
   const showFeedback = (
@@ -123,18 +114,7 @@ export default function NotificationSidebar({
     }, 3000);
   };
 
-  const handleRefresh = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await refreshNotifications();
-    } catch (error) {
-      console.error("Error refreshing notifications:", error);
-      setError("Failed to load notifications");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Refresh functionality removed - notifications are automatically updated
 
   // Filtered notifications based on active filter
   const displayedNotifications = notifications.filter((notification) => {
@@ -185,8 +165,6 @@ export default function NotificationSidebar({
           (prev) => new Set([...prev, notification.id])
         );
         showFeedback(notification.id, `✅ Follow request accepted!`, "success");
-
-        await refreshNotifications(); // Refresh notifications
       }
     } catch (error) {
       console.error("Error accepting follow request:", error);
@@ -217,8 +195,6 @@ export default function NotificationSidebar({
           (prev) => new Set([...prev, notification.id])
         );
         showFeedback(notification.id, `❌ Follow request declined`, "success");
-
-        await refreshNotifications(); // Refresh notifications
       }
     } catch (error) {
       console.error("Error rejecting follow request:", error);
@@ -286,13 +262,11 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
-        showFeedback(
-          notification.id,
-          `✅ Successfully joined ${invitation.group_name}!`,
-          "success"
-        );
-
-        await refreshNotifications(); // Refresh notifications
+                    showFeedback(
+              notification.id,
+              `✅ Successfully joined ${invitation.group_name}!`,
+              "success"
+            );
       } else {
         console.error("Failed to accept invitation:", response.status);
         showFeedback(notification.id, "Failed to accept invitation", "error");
@@ -376,13 +350,11 @@ export default function NotificationSidebar({
       );
 
       if (response.ok) {
-        showFeedback(
-          notification.id,
-          `❌ Declined invitation to ${invitation.group_name}`,
-          "success"
-        );
-
-        await refreshNotifications(); // Refresh notifications
+                    showFeedback(
+              notification.id,
+              `❌ Declined invitation to ${invitation.group_name}`,
+              "success"
+            );
       } else {
         console.error("Failed to reject invitation:", response.status);
         showFeedback(notification.id, "Failed to decline invitation", "error");
@@ -450,7 +422,15 @@ export default function NotificationSidebar({
 
       // Mark as read if not already read
       if (!notification.is_read) {
-        await markAsRead(notificationId);
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        await fetch(
+          `${backendUrl}/api/notifications/${notificationId}/read`,
+          {
+            method: "POST",
+            credentials: "include",
+          }
+        );
       }
     } catch (error) {
       console.error("Error marking notification as read:", error);
@@ -606,55 +586,12 @@ export default function NotificationSidebar({
               </span>
             )}
           </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="text-gray-500 hover:text-indigo-600 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-            </button>
-            {notifications.length > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 mr-1"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                  <path
-                    fillRule="evenodd"
-                    d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Mark all read
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 p-1"
-            >
-              <IoMdClose size={24} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 p-1"
+          >
+            <IoMdClose size={24} />
+          </button>
         </div>
 
         {/* Filter tabs */}
@@ -742,12 +679,9 @@ export default function NotificationSidebar({
           ) : error ? (
             <div className="p-4 text-red-500 text-center">
               <p>{error}</p>
-              <button
-                onClick={handleRefresh}
-                className="mt-2 text-indigo-600 hover:text-indigo-800"
-              >
-                Try again
-              </button>
+              <p className="mt-2 text-gray-500 text-sm">
+                Notifications will refresh automatically
+              </p>
             </div>
           ) : notifications.length === 0 ? (
             <div className="text-center p-6">

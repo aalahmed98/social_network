@@ -278,28 +278,7 @@ export default function NotificationsPage() {
     router.push(`/posts/${postId}`);
   };
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        // Update all notifications to read
-        setNotifications(
-          notifications.map((notification) => ({
-            ...notification,
-            is_read: true,
-          }))
-        );
-      }
-    } catch (error) {
-      console.error("Error marking notifications as read:", error);
-    }
-  };
+  // Mark all as read functionality removed - notifications are auto-marked as read when clicked
 
   // Function to mark a single notification as read
   const markNotificationAsRead = async (

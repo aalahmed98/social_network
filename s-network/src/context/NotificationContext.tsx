@@ -44,9 +44,6 @@ interface NotificationContextType {
   openNotificationSidebar: () => void;
   closeNotificationSidebar: () => void;
   toggleNotificationSidebar: () => void;
-  refreshNotifications: () => Promise<void>;
-  markAsRead: (notificationId: string) => Promise<void>;
-  markAllAsRead: () => Promise<void>;
   addNotification: (notification: Notification) => void;
   showNotificationAlert: (
     message: string,
@@ -437,56 +434,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setIsNotificationSidebarOpen((prev) => !prev);
   };
 
-  const refreshNotifications = async () => {
-    await fetchNotifications();
-  };
-
-  const markAsRead = async (notificationId: string) => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(
-        `${backendUrl}/api/notifications/${notificationId}/read`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      if (response.ok) {
-        flushSync(() => {
-          setNotifications(
-            notifications.map((n) =>
-              n.id === notificationId ? { ...n, is_read: true } : n
-            )
-          );
-          setUnreadCount((prev) => Math.max(prev - 1, 0));
-        });
-      }
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        flushSync(() => {
-          setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
-          setUnreadCount(0);
-        });
-      }
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-    }
-  };
+  // Functions removed - notifications are automatically marked as read when clicked
 
   // Add a new notification to the list
   const addNotification = (notification: Notification) => {
@@ -571,9 +519,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         openNotificationSidebar,
         closeNotificationSidebar,
         toggleNotificationSidebar,
-        refreshNotifications,
-        markAsRead,
-        markAllAsRead,
         addNotification,
         showNotificationAlert,
       }}
