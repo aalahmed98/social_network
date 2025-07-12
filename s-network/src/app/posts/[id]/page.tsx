@@ -659,15 +659,20 @@ export default function PostDetail() {
               </div>
 
               {post?.image_url && (
-                <div className="mb-4 sm:mb-5 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shadow-sm">
-                  <div className="w-full">
+                <div className="mb-4 sm:mb-5 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
+                  <div
+                    className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                    style={{
+                      backgroundImage: `url(${getImageUrl(post.image_url)})`,
+                    }}
+                  ></div>
+                  <div className="relative z-10 flex justify-center bg-transparent">
                     <img
                       src={getImageUrl(post.image_url)}
                       alt="Post image"
                       className="w-full h-auto max-h-64 sm:max-h-80 md:max-h-96 object-contain"
-                      style={{
-                        maxWidth: '100%',
-                        height: 'auto'
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
                       }}
                     />
                   </div>

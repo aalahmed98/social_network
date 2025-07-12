@@ -25,6 +25,51 @@ export default function Register() {
     feedback: [] as string[],
   });
   const [showPasswordHelp, setShowPasswordHelp] = useState(false);
+  const [nicknameStatus, setNicknameStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message: string;
+  }>({
+    checking: false,
+    available: null,
+    message: "",
+  });
+
+  const checkNicknameAvailability = async (nickname: string) => {
+    if (!nickname || nickname.trim() === "") {
+      setNicknameStatus({ checking: false, available: null, message: "" });
+      return;
+    }
+
+    setNicknameStatus({ checking: true, available: null, message: "Checking availability..." });
+    
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/auth/check-nickname?nickname=${encodeURIComponent(nickname)}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        setNicknameStatus({
+          checking: false,
+          available: result.available,
+          message: result.available ? "Nickname is available!" : "Nickname is already taken",
+        });
+      } else {
+        setNicknameStatus({
+          checking: false,
+          available: null,
+          message: "Error checking nickname availability",
+        });
+      }
+    } catch (error) {
+      console.error("Error checking nickname:", error);
+      setNicknameStatus({
+        checking: false,
+        available: null,
+        message: "Error checking nickname availability",
+      });
+    }
+  };
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -36,6 +81,17 @@ export default function Register() {
     if (name === "password") {
       const validation = validatePasswordStrength(value);
       setPasswordValidation(validation);
+    }
+
+    // Check nickname availability in real-time
+    if (name === "nickname") {
+      // Debounce the nickname check
+      const timeoutId = setTimeout(() => {
+        checkNicknameAvailability(value);
+      }, 500);
+
+      // Clear previous timeout
+      return () => clearTimeout(timeoutId);
     }
   };
 
@@ -72,6 +128,13 @@ export default function Register() {
       return;
     }
 
+    // Validate nickname availability
+    if (formData.nickname && nicknameStatus.available === false) {
+      setError("Please choose a different nickname. The current one is already taken.");
+      setLoading(false);
+      return;
+    }
+
     try {
       // Create form data to handle file upload
       const data = new FormData();
@@ -101,6 +164,10 @@ export default function Register() {
       }
 
       if (!response.ok) {
+        // Handle different error types
+        if (response.status === 409) { // Conflict - duplicate email or nickname
+          throw new Error(result?.error || "Email or nickname already exists");
+        }
         throw new Error(result?.error || "Registration failed");
       }
 
@@ -342,14 +409,42 @@ export default function Register() {
             >
               Nickname (Optional)
             </label>
-            <input
-              type="text"
-              id="nickname"
-              name="nickname"
-              value={formData.nickname}
-              onChange={handleChange}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                id="nickname"
+                name="nickname"
+                value={formData.nickname}
+                onChange={handleChange}
+                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 ${
+                  formData.nickname
+                    ? nicknameStatus.available === true
+                      ? "border-green-300"
+                      : nicknameStatus.available === false
+                      ? "border-red-300"
+                      : "border-gray-300"
+                    : "border-gray-300"
+                }`}
+              />
+              {nicknameStatus.checking && (
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                </div>
+              )}
+            </div>
+            {formData.nickname && nicknameStatus.message && (
+              <p
+                className={`mt-1 text-sm ${
+                  nicknameStatus.available === true
+                    ? "text-green-600"
+                    : nicknameStatus.available === false
+                    ? "text-red-600"
+                    : "text-gray-600"
+                }`}
+              >
+                {nicknameStatus.message}
+              </p>
+            )}
           </div>
 
           <div>
@@ -389,9 +484,9 @@ export default function Register() {
           <div>
             <button
               type="submit"
-              disabled={loading || !passwordValidation.isValid}
+              disabled={loading || !passwordValidation.isValid || (formData.nickname && nicknameStatus.available === false)}
               className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                loading || !passwordValidation.isValid
+                loading || !passwordValidation.isValid || (formData.nickname && nicknameStatus.available === false)
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-indigo-600 hover:bg-indigo-700"
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}

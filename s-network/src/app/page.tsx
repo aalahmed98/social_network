@@ -447,22 +447,27 @@ export default function Home() {
                             {post.content}
                           </div>
 
-                          {/* Post image - mobile optimized */}
-                          {post.image_url && (
-                            <div className="mb-3 sm:mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
-                              <div className="w-full">
-                                <img
-                                  src={getImageUrl(post.image_url)}
-                                  alt="Post image"
-                                  className="w-full h-auto max-h-48 sm:max-h-64 md:max-h-72 object-cover"
-                                  style={{
-                                    maxWidth: '100%',
-                                    height: 'auto'
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          )}
+                                    {/* Post image - mobile optimized */}
+          {post.image_url && (
+            <div className="mb-3 sm:mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
+              <div
+                className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                style={{
+                  backgroundImage: `url(${getImageUrl(post.image_url)})`,
+                }}
+              ></div>
+              <div className="relative z-10 flex justify-center bg-transparent">
+                <img
+                  src={getImageUrl(post.image_url)}
+                  alt="Post image"
+                  className="w-full h-auto max-h-48 sm:max-h-64 md:max-h-72 object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
                           {/* Post footer with actions - mobile optimized */}
                           <div className="flex flex-wrap gap-2 text-xs text-gray-600 pt-2 border-t border-gray-100 min-w-0">

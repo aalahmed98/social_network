@@ -255,6 +255,12 @@ func (db *DB) InitializeTables() error {
 		return err
 	}
 
+	// Add unique constraint for nickname column if not already exists
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname) WHERE nickname IS NOT NULL AND nickname != ''`)
+	if err != nil {
+		return err
+	}
+
 	// Create group_event_responses table if it doesn't exist
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS group_event_responses (
@@ -543,17 +549,17 @@ func (db *DB) CreateUser(email, password, firstName, lastName, dob, avatar, nick
 
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
-	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public 
+	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, banner, nickname, about_me, is_public 
 			  FROM users WHERE email = ?`
 
 	row := db.QueryRow(query, email)
 
 	var id int
 	var password, firstName, lastName, dob string
-	var avatar, nickname, aboutMe sql.NullString
+	var avatar, banner, nickname, aboutMe sql.NullString
 	var isPublic bool
 
-	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &nickname, &aboutMe, &isPublic)
+	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &banner, &nickname, &aboutMe, &isPublic)
 	if err != nil {
 		return nil, err
 	}
@@ -570,6 +576,9 @@ func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
 
 	if avatar.Valid {
 		user["avatar"] = avatar.String
+	}
+	if banner.Valid {
+		user["banner"] = banner.String
 	}
 	if nickname.Valid {
 		user["nickname"] = nickname.String
@@ -583,16 +592,16 @@ func (db *DB) GetUserByEmail(email string) (map[string]interface{}, error) {
 
 // GetUserById retrieves a user by ID
 func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
-	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, nickname, about_me, is_public 
+	query := `SELECT id, email, password, first_name, last_name, date_of_birth, avatar, banner, nickname, about_me, is_public 
 			  FROM users WHERE id = ?`
 
 	row := db.QueryRow(query, id)
 
 	var email, password, firstName, lastName, dob string
-	var avatar, nickname, aboutMe sql.NullString
+	var avatar, banner, nickname, aboutMe sql.NullString
 	var isPublic bool
 
-	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &nickname, &aboutMe, &isPublic)
+	err := row.Scan(&id, &email, &password, &firstName, &lastName, &dob, &avatar, &banner, &nickname, &aboutMe, &isPublic)
 	if err != nil {
 		return nil, err
 	}
@@ -610,6 +619,9 @@ func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
 	if avatar.Valid {
 		user["avatar"] = avatar.String
 	}
+	if banner.Valid {
+		user["banner"] = banner.String
+	}
 	if nickname.Valid {
 		user["nickname"] = nickname.String
 	}
@@ -618,6 +630,47 @@ func (db *DB) GetUserById(id int) (map[string]interface{}, error) {
 	}
 
 	return user, nil
+}
+
+// CheckEmailExists checks if an email already exists in the database
+func (db *DB) CheckEmailExists(email string) (bool, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM users WHERE email = ?`
+	err := db.QueryRow(query, email).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// CheckNicknameExists checks if a nickname already exists in the database
+func (db *DB) CheckNicknameExists(nickname string) (bool, error) {
+	if nickname == "" {
+		return false, nil // Empty nicknames are allowed
+	}
+	
+	var count int
+	query := `SELECT COUNT(*) FROM users WHERE nickname = ?`
+	err := db.QueryRow(query, nickname).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// CheckNicknameExistsForUpdate checks if a nickname exists for other users (excluding current user)
+func (db *DB) CheckNicknameExistsForUpdate(nickname string, currentUserID int) (bool, error) {
+	if nickname == "" {
+		return false, nil // Empty nicknames are allowed
+	}
+	
+	var count int
+	query := `SELECT COUNT(*) FROM users WHERE nickname = ? AND id != ?`
+	err := db.QueryRow(query, nickname, currentUserID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // SaveSession creates a new session for a user
@@ -775,6 +828,11 @@ func (db *DB) UpdateUser(userID int, data map[string]interface{}) error {
 	if avatar, ok := data["avatar"]; ok {
 		parts = append(parts, "avatar = ?")
 		args = append(args, avatar)
+	}
+
+	if banner, ok := data["banner"]; ok {
+		parts = append(parts, "banner = ?")
+		args = append(args, banner)
 	}
 
 	if isPublic, ok := data["is_public"]; ok {

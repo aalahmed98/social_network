@@ -74,6 +74,15 @@ export default function Profile() {
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
   const [selectedFollowerId, setSelectedFollowerId] = useState<number | null>(null);
   const [selectedUnfollowUserId, setSelectedUnfollowUserId] = useState<number | null>(null);
+  const [nicknameStatus, setNicknameStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message: string;
+  }>({
+    checking: false,
+    available: null,
+    message: "",
+  });
 
   useEffect(() => {
     // Fetch user data
@@ -186,6 +195,48 @@ export default function Profile() {
     loadData();
   }, [user?.id]);
 
+  const checkNicknameAvailability = async (nickname: string) => {
+    if (!nickname || nickname.trim() === "") {
+      setNicknameStatus({ checking: false, available: null, message: "" });
+      return;
+    }
+
+    // Don't check if it's the same as current nickname
+    if (nickname === user?.nickname) {
+      setNicknameStatus({ checking: false, available: true, message: "Current nickname" });
+      return;
+    }
+
+    setNicknameStatus({ checking: true, available: null, message: "Checking availability..." });
+    
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${backendUrl}/api/auth/check-nickname?nickname=${encodeURIComponent(nickname)}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        setNicknameStatus({
+          checking: false,
+          available: result.available,
+          message: result.available ? "Nickname is available!" : "Nickname is already taken",
+        });
+      } else {
+        setNicknameStatus({
+          checking: false,
+          available: null,
+          message: "Error checking nickname availability",
+        });
+      }
+    } catch (error) {
+      console.error("Error checking nickname:", error);
+      setNicknameStatus({
+        checking: false,
+        available: null,
+        message: "Error checking nickname availability",
+      });
+    }
+  };
+
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -197,6 +248,17 @@ export default function Profile() {
       setFormData((prev) => ({ ...prev, [name]: target.checked }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
+      
+      // Check nickname availability in real-time
+      if (name === "nickname") {
+        // Debounce the nickname check
+        const timeoutId = setTimeout(() => {
+          checkNicknameAvailability(value);
+        }, 500);
+
+        // Clear previous timeout
+        return () => clearTimeout(timeoutId);
+      }
     }
   };
 
@@ -250,6 +312,11 @@ export default function Profile() {
           try {
             const result = await response.json();
             errorMessage = result.error || errorMessage;
+            
+            // Handle duplicate nickname error with specific message
+            if (response.status === 409 && result.field === "nickname") {
+              errorMessage = "This nickname is already taken. Please choose a different one.";
+            }
           } catch (e) {
             // If JSON parsing fails, use the default message
           }
@@ -287,6 +354,13 @@ export default function Profile() {
     setSuccess("");
     setUpdating(true);
 
+    // Validate nickname availability
+    if (formData.nickname && nicknameStatus.available === false) {
+      setError("Please choose a different nickname. The current one is already taken.");
+      setUpdating(false);
+      return;
+    }
+
     try {
       // Create form data for file upload
       const data = new FormData();
@@ -319,6 +393,11 @@ export default function Profile() {
         try {
           const result = await response.json();
           errorMessage = result.error || errorMessage;
+          
+          // Handle duplicate nickname error with specific message
+          if (response.status === 409 && result.field === "nickname") {
+            errorMessage = "This nickname is already taken. Please choose a different one.";
+          }
         } catch (e) {
           // If JSON parsing fails, use the default message
         }
@@ -850,19 +929,47 @@ export default function Profile() {
                     >
                       Nickname (Optional)
                     </label>
-                    <div className="mt-1 flex rounded-md shadow-sm">
-                      <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                        @
-                      </span>
-                      <input
-                        type="text"
-                        id="nickname"
-                        name="nickname"
-                        value={formData.nickname}
-                        onChange={handleChange}
-                        className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                      />
+                    <div className="mt-1 relative">
+                      <div className="flex rounded-md shadow-sm">
+                        <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                          @
+                        </span>
+                        <input
+                          type="text"
+                          id="nickname"
+                          name="nickname"
+                          value={formData.nickname}
+                          onChange={handleChange}
+                          className={`flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 ${
+                            formData.nickname
+                              ? nicknameStatus.available === true
+                                ? "border-green-300"
+                                : nicknameStatus.available === false
+                                ? "border-red-300"
+                                : "border-gray-300"
+                              : "border-gray-300"
+                          }`}
+                        />
+                        {nicknameStatus.checking && (
+                          <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    {formData.nickname && nicknameStatus.message && (
+                      <p
+                        className={`mt-1 text-sm ${
+                          nicknameStatus.available === true
+                            ? "text-green-600"
+                            : nicknameStatus.available === false
+                            ? "text-red-600"
+                            : "text-gray-600"
+                        }`}
+                      >
+                        {nicknameStatus.message}
+                      </p>
+                    )}
                   </div>
 
                   <div>

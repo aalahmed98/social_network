@@ -259,6 +259,48 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if email already exists
+	emailExists, err := db.CheckEmailExists(req.Email)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Server error",
+		})
+		return
+	}
+	if emailExists {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Email already exists",
+			"field": "email",
+		})
+		return
+	}
+
+	// Check if nickname already exists (if provided)
+	if req.Nickname != "" {
+		nicknameExists, err := db.CheckNicknameExists(req.Nickname)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Server error",
+			})
+			return
+		}
+		if nicknameExists {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Nickname already taken",
+				"field": "nickname",
+			})
+			return
+		}
+	}
+
 	// Validate password strength
 	passwordValidation := utils.ValidatePassword(req.Password)
 	if !passwordValidation.IsValid {
@@ -716,6 +758,28 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if nickname already exists for other users (if nickname is provided)
+	if nickname != "" {
+		nicknameExists, err := db.CheckNicknameExistsForUpdate(nickname, userID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Server error",
+			})
+			return
+		}
+		if nicknameExists {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Nickname already taken",
+				"field": "nickname",
+			})
+			return
+		}
+	}
+
 	// Prepare update data
 	updateData := map[string]interface{}{
 		"first_name": firstName,
@@ -986,4 +1050,51 @@ func GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	// Return user data
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
+}
+
+// CheckNicknameAvailability checks if a nickname is available
+func CheckNicknameAvailability(w http.ResponseWriter, r *http.Request) {
+	// Handle preflight OPTIONS request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Only allow GET method
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Method not allowed",
+		})
+		return
+	}
+
+	nickname := r.URL.Query().Get("nickname")
+	if nickname == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Nickname parameter is required",
+		})
+		return
+	}
+
+	// Check if nickname exists
+	exists, err := db.CheckNicknameExists(nickname)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Server error",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"available": !exists,
+		"nickname":  nickname,
+	})
 }
