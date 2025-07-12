@@ -228,11 +228,23 @@ func (db *DB) InitializeTables() error {
 			event_date DATE NOT NULL,
 			event_time TIME NOT NULL, 
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
 		)
 	`)
 	if err != nil {
+		return err
+	}
+
+	// Add missing columns to existing group_events table
+	_, err = db.Exec(`ALTER TABLE group_events ADD COLUMN event_time TIME DEFAULT '00:00'`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return err
+	}
+
+	_, err = db.Exec(`ALTER TABLE group_events ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		return err
 	}
 
@@ -1302,7 +1314,7 @@ func (db *DB) AutoApproveFollowRequests(userID int64) error {
 
 		// Only create the follow relationship if it doesn't already exist
 		if existingCount == 0 {
-			_, err = tx.Exec(`INSERT INTO followers (follower_id, following_id) VALUES (?, ?)`, 
+			_, err = tx.Exec(`INSERT INTO followers (follower_id, following_id) VALUES (?, ?)`,
 				request.FollowerID, request.FollowingID)
 			if err != nil {
 				return fmt.Errorf("failed to create follow relationship: %w", err)
@@ -1326,7 +1338,7 @@ func (db *DB) AutoApproveFollowRequests(userID int64) error {
 		}
 
 		notificationContent := fmt.Sprintf("%s %s accepted your follow request", firstName, lastName)
-		
+
 		// Insert notification
 		_, err = tx.Exec(`
 			INSERT INTO notifications (user_id, sender_id, type, content, reference_id, created_at) 

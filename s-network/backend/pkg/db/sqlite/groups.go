@@ -961,10 +961,14 @@ func (db *DB) DeleteGroupPostComment(commentID int64) error {
 
 // CreateGroupEvent creates a new event in a group
 func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
-	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date) 
-	          VALUES (?, ?, ?, ?, ?)`
+	// Extract date and time separately from EventDate
+	eventDate := event.EventDate.Format("2006-01-02")
+	eventTime := event.EventDate.Format("15:04")
+	
+	query := `INSERT INTO group_events (group_id, creator_id, title, description, event_date, event_time) 
+	          VALUES (?, ?, ?, ?, ?, ?)`
 
-	result, err := db.Exec(query, event.GroupID, event.CreatorID, event.Title, event.Description, event.EventDate)
+	result, err := db.Exec(query, event.GroupID, event.CreatorID, event.Title, event.Description, eventDate, eventTime)
 	if err != nil {
 		return 0, err
 	}
@@ -975,12 +979,12 @@ func (db *DB) CreateGroupEvent(event *GroupEvent) (int64, error) {
 // GetGroupEvents retrieves all events for a group
 func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error) {
 	query := `SELECT ge.id, ge.group_id, ge.creator_id, ge.title, ge.description, 
-	                 ge.event_date, ge.created_at, ge.updated_at,
+	                 ge.event_date, ge.event_time, ge.created_at, ge.updated_at,
 	                 u.first_name || ' ' || u.last_name as creator_name
 	          FROM group_events ge
 	          JOIN users u ON ge.creator_id = u.id
 	          WHERE ge.group_id = ?
-	          ORDER BY ge.event_date ASC`
+	          ORDER BY ge.event_date ASC, ge.event_time ASC`
 
 	rows, err := db.Query(query, groupID)
 	if err != nil {
@@ -991,11 +995,18 @@ func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error)
 	var events []*GroupEvent
 	for rows.Next() {
 		var event GroupEvent
+		var eventDate, eventTime string
 		if err := rows.Scan(
 			&event.ID, &event.GroupID, &event.CreatorID, &event.Title, &event.Description,
-			&event.EventDate, &event.CreatedAt, &event.UpdatedAt, &event.CreatorName,
+			&eventDate, &eventTime, &event.CreatedAt, &event.UpdatedAt, &event.CreatorName,
 		); err != nil {
 			return nil, err
+		}
+
+		// Combine date and time back into EventDate
+		dateTimeStr := eventDate + " " + eventTime
+		if parsedDateTime, err := time.Parse("2006-01-02 15:04", dateTimeStr); err == nil {
+			event.EventDate = parsedDateTime
 		}
 
 		// Get response counts
@@ -1013,16 +1024,17 @@ func (db *DB) GetGroupEvents(groupID int64, userID int64) ([]*GroupEvent, error)
 // GetGroupEvent retrieves a specific group event by ID
 func (db *DB) GetGroupEvent(eventID int64, userID int64) (*GroupEvent, error) {
 	query := `SELECT ge.id, ge.group_id, ge.creator_id, ge.title, ge.description, 
-	                 ge.event_date, ge.created_at, ge.updated_at,
+	                 ge.event_date, ge.event_time, ge.created_at, ge.updated_at,
 	                 u.first_name || ' ' || u.last_name as creator_name
 	          FROM group_events ge
 	          JOIN users u ON ge.creator_id = u.id
 	          WHERE ge.id = ?`
 
 	var event GroupEvent
+	var eventDate, eventTime string
 	err := db.QueryRow(query, eventID).Scan(
 		&event.ID, &event.GroupID, &event.CreatorID, &event.Title, &event.Description,
-		&event.EventDate, &event.CreatedAt, &event.UpdatedAt, &event.CreatorName,
+		&eventDate, &eventTime, &event.CreatedAt, &event.UpdatedAt, &event.CreatorName,
 	)
 
 	if err != nil {
@@ -1030,6 +1042,12 @@ func (db *DB) GetGroupEvent(eventID int64, userID int64) (*GroupEvent, error) {
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	// Combine date and time back into EventDate
+	dateTimeStr := eventDate + " " + eventTime
+	if parsedDateTime, err := time.Parse("2006-01-02 15:04", dateTimeStr); err == nil {
+		event.EventDate = parsedDateTime
 	}
 
 	// Get response counts
