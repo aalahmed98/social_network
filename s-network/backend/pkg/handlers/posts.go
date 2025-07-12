@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"s-network/backend/pkg/db/sqlite"
+	"s-network/backend/pkg/utils"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -82,13 +83,13 @@ func CreatePostHandler(w http.ResponseWriter, r *http.Request) {
 		defer file.Close()
 
 		// Create uploads directory if it doesn't exist
-		uploadsDir := "./uploads/posts"
+		uploadsDir := utils.GetUploadSubdir("posts")
 		os.MkdirAll(uploadsDir, 0755)
 
 		// Generate a unique filename
 		ext := filepath.Ext(handler.Filename)
 		filename := uuid.New().String() + ext
-		imageURL = "/uploads/posts/" + filename
+		imageURL = utils.GetUploadURL(filename, "posts")
 
 		// Create the file
 		dst, err := os.Create(filepath.Join(uploadsDir, filename))
@@ -388,13 +389,13 @@ func AddCommentHandler(w http.ResponseWriter, r *http.Request) {
 		defer file.Close()
 
 		// Create uploads directory if it doesn't exist
-		uploadsDir := "./uploads/comments"
+		uploadsDir := utils.GetUploadSubdir("comments")
 		os.MkdirAll(uploadsDir, 0755)
 
 		// Generate a unique filename
 		ext := filepath.Ext(handler.Filename)
 		filename := uuid.New().String() + ext
-		imageURL = "/uploads/comments/" + filename
+		imageURL = utils.GetUploadURL(filename, "comments")
 
 		// Create the file
 		dst, err := os.Create(filepath.Join(uploadsDir, filename))
@@ -602,7 +603,7 @@ func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "User followed successfully",
-			"status": "followed",
+			"status":  "followed",
 		})
 	} else {
 		// Create follow request for private accounts
@@ -616,7 +617,7 @@ func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"message": "Follow request already sent",
-				"status": "request_sent",
+				"status":  "request_sent",
 			})
 			return
 		}
@@ -643,8 +644,8 @@ func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": "Follow request sent successfully",
-			"status": "request_sent",
+			"message":   "Follow request sent successfully",
+			"status":    "request_sent",
 			"requestId": requestID,
 		})
 	}
@@ -695,7 +696,7 @@ func GetFollowStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"isFollowing": isFollowing,
+		"isFollowing":       isFollowing,
 		"followRequestSent": followRequestSent,
 	})
 }

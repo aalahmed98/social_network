@@ -140,16 +140,58 @@ func init() {
 	startTime := time.Now()
 	logger.Println("Starting initialization...")
 
+	// Get database path from environment variable or use default
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		// Check if we're in production (Render sets NODE_ENV)
+		if os.Getenv("NODE_ENV") == "production" || os.Getenv("RENDER") != "" {
+			// Use /opt/render/project/data for Render.com persistent storage
+			dbPath = "/opt/render/project/data/social-network.db"
+		} else {
+			// Use local path for development
+			dbPath = "./data/social-network.db"
+		}
+	}
+	logger.Printf("Using database path: %s", dbPath)
+
 	// Create database directory if it doesn't exist
-	dbDir := "./data"
+	dbDir := filepath.Dir(dbPath)
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
-		os.MkdirAll(dbDir, 0755)
+		err = os.MkdirAll(dbDir, 0755)
+		if err != nil {
+			logger.Fatalf("Failed to create database directory: %v", err)
+		}
+		logger.Printf("Created database directory: %s", dbDir)
 	}
 
-	// Create uploads directory if it doesn't exist
-	uploadsDir := "./uploads"
+	// Get uploads path from environment variable or use default
+	uploadsDir := os.Getenv("UPLOADS_PATH")
+	if uploadsDir == "" {
+		if os.Getenv("NODE_ENV") == "production" || os.Getenv("RENDER") != "" {
+			// Use /opt/render/project/uploads for Render.com persistent storage
+			uploadsDir = "/opt/render/project/uploads"
+		} else {
+			// Use local path for development
+			uploadsDir = "./uploads"
+		}
+	}
+	logger.Printf("Using uploads directory: %s", uploadsDir)
+
 	if _, err := os.Stat(uploadsDir); os.IsNotExist(err) {
-		os.MkdirAll(uploadsDir, 0755)
+		err = os.MkdirAll(uploadsDir, 0755)
+		if err != nil {
+			logger.Fatalf("Failed to create uploads directory: %v", err)
+		}
+		logger.Printf("Created uploads directory: %s", uploadsDir)
+	}
+
+	// Create subdirectories for uploads
+	subdirs := []string{"posts", "avatars", "banners", "comments"}
+	for _, subdir := range subdirs {
+		subPath := filepath.Join(uploadsDir, subdir)
+		if _, err := os.Stat(subPath); os.IsNotExist(err) {
+			os.MkdirAll(subPath, 0755)
+		}
 	}
 	logger.Printf("Directory setup completed in %v", time.Since(startTime))
 
@@ -158,7 +200,7 @@ func init() {
 	logger.Println("Connecting to database...")
 
 	// Create the database connection - the database file and tables will be created if they don't exist
-	db, err = sqlite.New("./data/social-network.db")
+	db, err = sqlite.New(dbPath)
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -298,8 +340,16 @@ func main() {
 	// Register WebSocket routes on main router (no auth middleware)
 	handlers.RegisterChatWebSocketRoutes(r)
 
-	// Serve uploaded files
-	uploadsFS := http.FileServer(http.Dir("./uploads"))
+	// Serve uploaded files - use the same uploads directory configured earlier
+	uploadsPath := os.Getenv("UPLOADS_PATH")
+	if uploadsPath == "" {
+		if os.Getenv("NODE_ENV") == "production" || os.Getenv("RENDER") != "" {
+			uploadsPath = "/opt/render/project/uploads"
+		} else {
+			uploadsPath = "./uploads"
+		}
+	}
+	uploadsFS := http.FileServer(http.Dir(uploadsPath))
 	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", uploadsFS))
 
 	// Add a health check endpoint

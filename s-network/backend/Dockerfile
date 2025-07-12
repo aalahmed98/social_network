@@ -31,8 +31,13 @@ COPY --from=builder /app/server /app/server
 # Copy migration files
 COPY --from=builder /app/pkg/db/migrations /app/pkg/db/migrations
 
-# Create data directory
-RUN mkdir -p /app/data
+# Create data and uploads directories
+# These will be overridden by mounted volumes in production
+RUN mkdir -p /app/data /app/uploads
+
+# Create persistent data directories for production
+# These paths match what we use in server.go for Render.com
+RUN mkdir -p /opt/render/project/data /opt/render/project/uploads
 
 # Expose the port
 EXPOSE 8080

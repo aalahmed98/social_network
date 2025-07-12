@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"s-network/backend/pkg/db/sqlite"
+	"s-network/backend/pkg/utils"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -929,7 +930,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Create uploads directory if it doesn't exist
-			uploadsDir := "./uploads/groups"
+			uploadsDir := utils.GetUploadSubdir("groups")
 			log.Printf("CreateGroupPost: Creating uploads directory: %s", uploadsDir)
 			err = os.MkdirAll(uploadsDir, 0755)
 			if err != nil {
@@ -963,7 +964,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 			}
 
 			filename := uuid.New().String() + ext
-			imagePath = "/uploads/groups/" + filename
+			imagePath = utils.GetUploadURL(filename, "groups")
 			log.Printf("CreateGroupPost: Image path: %s", imagePath)
 
 			// Create the file

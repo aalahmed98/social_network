@@ -192,7 +192,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 			filename := fmt.Sprintf("avatar_%s_%d%s", uuid.New().String(), time.Now().Unix(), ext)
 
 			// Create uploads directory if it doesn't exist
-			uploadsDir := "./uploads/avatars"
+			uploadsDir := utils.GetUploadSubdir("avatars")
 			if err := os.MkdirAll(uploadsDir, 0755); err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -226,7 +226,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Set the avatar path in the request
-			req.Avatar = fmt.Sprintf("uploads/avatars/%s", filename)
+			req.Avatar = utils.GetUploadURL(filename, "avatars")
 		}
 	} else {
 		// Handle URL-encoded form data
@@ -741,7 +741,7 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Create uploads directory if it doesn't exist
-		uploadsDir := "./uploads/avatars"
+		uploadsDir := utils.GetUploadSubdir("avatars")
 		err = os.MkdirAll(uploadsDir, 0755)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -781,7 +781,7 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filename := fmt.Sprintf("avatar_%d_%s%s", time.Now().Unix(), uuid.New().String(), ext)
-		uploadPath := "/uploads/avatars/" + filename
+		uploadPath := utils.GetUploadURL(filename, "avatars")
 		fullPath := filepath.Join(uploadsDir, filename)
 
 		// Create file
@@ -826,7 +826,7 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Create uploads directory if it doesn't exist
-		uploadsDir := "./uploads/banners"
+		uploadsDir := utils.GetUploadSubdir("banners")
 		err = os.MkdirAll(uploadsDir, 0755)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -866,7 +866,7 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filename := fmt.Sprintf("banner_%d_%s%s", time.Now().Unix(), uuid.New().String(), ext)
-		uploadPath := "/uploads/banners/" + filename
+		uploadPath := utils.GetUploadURL(filename, "banners")
 		fullPath := filepath.Join(uploadsDir, filename)
 
 		// Create file
