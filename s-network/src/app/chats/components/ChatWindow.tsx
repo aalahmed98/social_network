@@ -5393,43 +5393,63 @@ export default function ChatWindow({
                           )}
 
                           {(comment.image_path || comment.imagePath) && (
-                            <div className="mb-2">
-                              <img
-                                src={(() => {
-                                  const imagePath =
-                                    comment.image_path || comment.imagePath;
-                                  if (!imagePath) return "";
+                            <div className="mb-2 rounded-lg overflow-hidden bg-gray-50 border border-slate-200 shadow-sm relative">
+                              <div
+                                className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                                style={{
+                                  backgroundImage: `url(${(() => {
+                                    const imagePath =
+                                      comment.image_path || comment.imagePath;
+                                    if (!imagePath) return "";
 
-                                  // If it's a blob URL (optimistic), use as-is
-                                  if (imagePath.startsWith("blob:")) {
-                                    return imagePath;
-                                  }
-
-                                  // Use the getImageUrl utility for proper URL construction
-                                  return getImageUrl(imagePath);
-                                })()}
-                                alt="Comment image"
-                                className="max-w-full h-auto rounded-lg border border-slate-200 shadow-sm"
-                                style={{ maxHeight: "200px" }}
-                                onError={(e) => {
-                                  console.error(
-                                    "❌ Failed to load comment image:",
-                                    {
-                                      src: e.currentTarget.src,
-                                      image_path: comment.image_path,
-                                      imagePath: comment.imagePath,
-                                      constructedUrl: (() => {
-                                        const imagePath =
-                                          comment.image_path ||
-                                          comment.imagePath;
-                                        return imagePath
-                                          ? getImageUrl(imagePath)
-                                          : "no path";
-                                      })(),
+                                    // If it's a blob URL (optimistic), use as-is
+                                    if (imagePath.startsWith("blob:")) {
+                                      return imagePath;
                                     }
-                                  );
+
+                                    // Use the getImageUrl utility for proper URL construction
+                                    return getImageUrl(imagePath);
+                                  })()})`,
                                 }}
-                              />
+                              ></div>
+                              <div className="relative z-10 flex justify-center bg-transparent">
+                                <img
+                                  src={(() => {
+                                    const imagePath =
+                                      comment.image_path || comment.imagePath;
+                                    if (!imagePath) return "";
+
+                                    // If it's a blob URL (optimistic), use as-is
+                                    if (imagePath.startsWith("blob:")) {
+                                      return imagePath;
+                                    }
+
+                                    // Use the getImageUrl utility for proper URL construction
+                                    return getImageUrl(imagePath);
+                                  })()}
+                                  alt="Comment image"
+                                  className="max-w-full h-auto object-contain"
+                                  style={{ maxHeight: "200px" }}
+                                  onError={(e) => {
+                                    console.error(
+                                      "❌ Failed to load comment image:",
+                                      {
+                                        src: e.currentTarget.src,
+                                        image_path: comment.image_path,
+                                        imagePath: comment.imagePath,
+                                        constructedUrl: (() => {
+                                          const imagePath =
+                                            comment.image_path ||
+                                            comment.imagePath;
+                                          return imagePath
+                                            ? getImageUrl(imagePath)
+                                            : "no path";
+                                        })(),
+                                      }
+                                    );
+                                  }}
+                                />
+                              </div>
                             </div>
                           )}
 
@@ -5494,16 +5514,24 @@ export default function ChatWindow({
             <div className="border-t border-slate-200 pt-4">
               {/* Image Preview */}
               {newCommentImage && (
-                <div className="mb-3 relative">
-                  <img
-                    src={URL.createObjectURL(newCommentImage)}
-                    alt="Comment preview"
-                    className="max-w-full h-auto rounded-lg border border-slate-200 shadow-sm"
-                    style={{ maxHeight: "150px" }}
-                  />
+                <div className="mb-3 relative rounded-lg overflow-hidden bg-gray-50 border border-slate-200 shadow-sm">
+                  <div
+                    className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                    style={{
+                      backgroundImage: `url(${URL.createObjectURL(newCommentImage)})`,
+                    }}
+                  ></div>
+                  <div className="relative z-10 flex justify-center bg-transparent">
+                    <img
+                      src={URL.createObjectURL(newCommentImage)}
+                      alt="Comment preview"
+                      className="max-w-full h-auto object-contain"
+                      style={{ maxHeight: "150px" }}
+                    />
+                  </div>
                   <button
                     onClick={() => setNewCommentImage(null)}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-colors"
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-colors z-20"
                     title="Remove image"
                   >
                     ×

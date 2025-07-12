@@ -780,12 +780,18 @@ export default function PostDetail() {
             </div>
 
             {commentImagePreview && (
-              <div className="mb-3 sm:mb-4 relative">
-                <div className="w-full">
+              <div className="mb-3 sm:mb-4 relative rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
+                <div
+                  className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                  style={{
+                    backgroundImage: `url(${commentImagePreview})`,
+                  }}
+                ></div>
+                <div className="relative z-10 flex justify-center bg-transparent">
                   <img
                     src={commentImagePreview}
                     alt="Preview"
-                    className="w-full h-auto max-h-48 sm:max-h-64 rounded-lg border border-gray-200 shadow-sm object-contain"
+                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
                     style={{
                       maxWidth: '100%',
                       height: 'auto'
@@ -967,12 +973,18 @@ export default function PostDetail() {
                         {comment.content}
                       </div>
                       {comment.image_url && (
-                        <div className="mt-2 mb-2 sm:mb-3">
-                          <div className="w-full">
+                        <div className="mt-2 mb-2 sm:mb-3 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm relative">
+                          <div
+                            className="absolute inset-0 bg-no-repeat bg-center bg-cover blur-xl opacity-30 scale-110"
+                            style={{
+                              backgroundImage: `url(${getImageUrl(comment.image_url)})`,
+                            }}
+                          ></div>
+                          <div className="relative z-10 flex justify-center bg-transparent">
                             <img
                               src={getImageUrl(comment.image_url)}
                               alt="Comment image"
-                              className="w-full h-auto max-h-40 sm:max-h-60 rounded-lg border border-gray-200 shadow-sm object-contain"
+                              className="w-full h-auto max-h-40 sm:max-h-60 object-contain"
                               style={{
                                 maxWidth: '100%',
                                 height: 'auto'
