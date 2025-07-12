@@ -26,12 +26,12 @@ var upgrader = websocket.Upgrader{
 
 // Client represents a connected WebSocket client
 type Client struct {
-	ID            int64
-	UserID        int64
-	Conn          *websocket.Conn
-	Send          chan []byte
+	ID             int64
+	UserID         int64
+	Conn           *websocket.Conn
+	Send           chan []byte
 	ConversationID int64
-	IsGroup       bool
+	IsGroup        bool
 }
 
 // ChatHub maintains the set of active clients and broadcasts messages
@@ -56,7 +56,7 @@ type ChatHub struct {
 
 	// Mutex for concurrent access
 	mutex sync.Mutex
-	
+
 	// Database reference
 	db *sqlite.DB
 }
@@ -92,16 +92,16 @@ func (h *ChatHub) Run() {
 		case client := <-h.register:
 			h.mutex.Lock()
 			h.clients[client] = true
-			
+
 			// Add to conversation list
 			if client.ConversationID > 0 {
 				h.conversations[client.ConversationID] = append(h.conversations[client.ConversationID], client)
 			}
-			
+
 			// Add to user list
 			h.users[client.UserID] = append(h.users[client.UserID], client)
 			h.mutex.Unlock()
-			
+
 			// Send connection confirmation
 			client.Send <- []byte(`{"type":"connected","status":"success"}`)
 
@@ -110,12 +110,12 @@ func (h *ChatHub) Run() {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.Send)
-				
+
 				// Remove from conversation list
 				if client.ConversationID > 0 {
 					h.removeClientFromConversation(client)
 				}
-				
+
 				// Remove from user list
 				h.removeClientFromUser(client)
 			}
@@ -128,14 +128,14 @@ func (h *ChatHub) Run() {
 				log.Printf("Error storing message: %v", err)
 				continue
 			}
-			
+
 			// Get sender information
 			sender, err := h.db.GetUserById(int(message.SenderID))
 			if err != nil {
 				log.Printf("Error getting sender info: %v", err)
 				continue
 			}
-			
+
 			// Add message ID and sender info to the message
 			messageData, _ := json.Marshal(map[string]interface{}{
 				"id":              messageID,
@@ -148,12 +148,12 @@ func (h *ChatHub) Run() {
 				"timestamp":       message.Timestamp,
 				"is_group":        message.IsGroup,
 			})
-			
+
 			// Send to all clients in the conversation
 			h.mutex.Lock()
 			clients := h.conversations[message.ConversationID]
 			log.Printf("Broadcasting message to conversation %d: %d clients connected", message.ConversationID, len(clients))
-			
+
 			sentCount := 0
 			for _, client := range clients {
 				select {
@@ -167,7 +167,7 @@ func (h *ChatHub) Run() {
 					h.removeClientFromUser(client)
 				}
 			}
-			
+
 			// Also send to globally registered users (but not the sender)
 			for client := range h.clients {
 				if client.ConversationID == 0 && client.UserID != message.SenderID {
@@ -183,10 +183,10 @@ func (h *ChatHub) Run() {
 					}
 				}
 			}
-			
+
 			log.Printf("Successfully sent message to %d clients (conversation + global)", sentCount)
 			h.mutex.Unlock()
-			
+
 			// Create notifications for offline users if not a group chat
 			if !message.IsGroup {
 				h.createMessageNotifications(message)
@@ -228,7 +228,7 @@ func (h *ChatHub) storeMessage(message *ChatMessage) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	
+
 	if conversation != nil && conversation.IsGroup && conversation.GroupID != nil {
 		// Save as group message
 		groupMessage := &sqlite.GroupMessage{
@@ -257,22 +257,22 @@ func (h *ChatHub) createMessageNotifications(message *ChatMessage) {
 		log.Printf("Error getting conversation participants: %v", err)
 		return
 	}
-	
+
 	// Get sender info
 	sender, err := h.db.GetUserById(int(message.SenderID))
 	if err != nil {
 		log.Printf("Error getting sender info: %v", err)
 		return
 	}
-	
+
 	senderName := fmt.Sprintf("%s %s", sender["first_name"], sender["last_name"])
-	
+
 	for _, participant := range participants {
 		// Skip the sender
 		if participant.UserID == message.SenderID {
 			continue
 		}
-		
+
 		// Check if user is online in this conversation
 		userIsOnline := false
 		h.mutex.Lock()
@@ -284,12 +284,53 @@ func (h *ChatHub) createMessageNotifications(message *ChatMessage) {
 			}
 		}
 		h.mutex.Unlock()
-		
+
 		// Create notification for offline users
 		if !userIsOnline {
 			h.db.CreateMessageNotification(participant.UserID, message.SenderID, message.ConversationID, senderName)
 		}
 	}
+}
+
+// SendNotificationToUser sends a notification to a specific user via WebSocket
+func (h *ChatHub) SendNotificationToUser(userID int64, notification map[string]interface{}) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	// Find all globally registered clients for this user
+	userClients := h.users[userID]
+	if len(userClients) == 0 {
+		log.Printf("No active WebSocket connections for user %d", userID)
+		return
+	}
+
+	// Prepare notification message
+	notificationData, err := json.Marshal(notification)
+	if err != nil {
+		log.Printf("Error marshaling notification: %v", err)
+		return
+	}
+
+	log.Printf("Sending notification to user %d: %s", userID, string(notificationData))
+
+	// Send to all global clients for this user
+	sentCount := 0
+	for _, client := range userClients {
+		// Only send to globally registered clients (conversation_id = 0)
+		if client.ConversationID == 0 {
+			select {
+			case client.Send <- notificationData:
+				sentCount++
+			default:
+				log.Printf("Failed to send notification to client %d, removing", client.UserID)
+				close(client.Send)
+				delete(h.clients, client)
+				h.removeClientFromUser(client)
+			}
+		}
+	}
+
+	log.Printf("Sent notification to %d clients for user %d", sentCount, userID)
 }
 
 // ServeWs handles websocket requests from the peer.
@@ -326,9 +367,9 @@ func ServeWs(hub *ChatHub, w http.ResponseWriter, r *http.Request) {
 
 	// Create a new client
 	client := &Client{
-		UserID:        int64(userID),
-		Conn:          conn,
-		Send:          make(chan []byte, 256),
+		UserID:         int64(userID),
+		Conn:           conn,
+		Send:           make(chan []byte, 256),
 		ConversationID: conversationID,
 	}
 
@@ -348,14 +389,14 @@ func canAccessConversation(userID, conversationID int64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	
+
 	// Check if user is a participant
 	for _, participant := range participants {
 		if participant.UserID == userID {
 			return true, nil
 		}
 	}
-	
+
 	return false, nil
 }
 
@@ -365,14 +406,14 @@ func (c *Client) readPump(hub *ChatHub) {
 		hub.unregister <- c
 		c.Conn.Close()
 	}()
-	
+
 	c.Conn.SetReadLimit(1024 * 1024) // 1MB max message size
 	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.Conn.SetPongHandler(func(string) error { 
+	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil 
+		return nil
 	})
-	
+
 	for {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -381,19 +422,19 @@ func (c *Client) readPump(hub *ChatHub) {
 			}
 			break
 		}
-		
+
 		var chatMessage ChatMessage
 		if err := json.Unmarshal(message, &chatMessage); err != nil {
 			log.Printf("Error unmarshaling message: %v", err)
 			continue
 		}
-		
+
 		// Handle different message types
 		switch chatMessage.Type {
 		case "register_global":
 			// Register for global notifications (all notifications for this user)
 			log.Printf("User %d registering for global notifications", c.UserID)
-			
+
 			// Remove from old conversation if any
 			if c.ConversationID > 0 {
 				hub.mutex.Lock()
@@ -401,19 +442,19 @@ func (c *Client) readPump(hub *ChatHub) {
 				log.Printf("Removed user %d from old conversation %d for global registration", c.UserID, c.ConversationID)
 				hub.mutex.Unlock()
 			}
-			
+
 			// Set conversation ID to 0 to indicate global registration
 			c.ConversationID = 0
-			
+
 			// Send registration confirmation
 			response := map[string]interface{}{
-				"type": "registered_global",
+				"type":    "registered_global",
 				"user_id": c.UserID,
-				"status": "success",
+				"status":  "success",
 			}
 			responseData, _ := json.Marshal(response)
 			c.Send <- responseData
-			
+
 		case "register":
 			// Update client's conversation ID
 			if chatMessage.ConversationID > 0 {
@@ -423,9 +464,9 @@ func (c *Client) readPump(hub *ChatHub) {
 					log.Printf("Access denied to conversation %d for user %d", chatMessage.ConversationID, c.UserID)
 					continue
 				}
-				
+
 				log.Printf("User %d registering for conversation %d", c.UserID, chatMessage.ConversationID)
-				
+
 				// Remove from old conversation if any
 				if c.ConversationID > 0 {
 					hub.mutex.Lock()
@@ -433,43 +474,43 @@ func (c *Client) readPump(hub *ChatHub) {
 					log.Printf("Removed user %d from old conversation %d", c.UserID, c.ConversationID)
 					hub.mutex.Unlock()
 				}
-				
+
 				// Set new conversation
 				c.ConversationID = chatMessage.ConversationID
-				
+
 				// Add to new conversation
 				hub.mutex.Lock()
 				hub.conversations[c.ConversationID] = append(hub.conversations[c.ConversationID], c)
 				clientCount := len(hub.conversations[c.ConversationID])
 				log.Printf("Added user %d to conversation %d (total clients: %d)", c.UserID, c.ConversationID, clientCount)
 				hub.mutex.Unlock()
-				
+
 				// Send registration confirmation
 				response := map[string]interface{}{
-					"type": "registered",
+					"type":            "registered",
 					"conversation_id": c.ConversationID,
-					"status": "success",
+					"status":          "success",
 				}
 				responseData, _ := json.Marshal(response)
 				c.Send <- responseData
 			}
-			
+
 		case "chat_message":
 			// Ensure sender ID matches the authenticated user
 			chatMessage.SenderID = c.UserID
-			
+
 			// Set timestamp if not provided
 			if chatMessage.Timestamp == "" {
 				chatMessage.Timestamp = time.Now().Format(time.RFC3339)
 			}
-			
+
 			// Use conversation ID from client if not provided in message
 			if chatMessage.ConversationID == 0 {
 				chatMessage.ConversationID = c.ConversationID
 			}
-			
+
 			log.Printf("Received chat message from user %d for conversation %d: %s", c.UserID, chatMessage.ConversationID, chatMessage.Content)
-			
+
 			// Verify access to conversation
 			if chatMessage.ConversationID > 0 {
 				hasAccess, err := canAccessConversation(c.UserID, chatMessage.ConversationID)
@@ -478,17 +519,17 @@ func (c *Client) readPump(hub *ChatHub) {
 					continue
 				}
 			}
-			
+
 			// Determine if this is a group conversation
 			conversation, err := hub.db.GetConversation(chatMessage.ConversationID)
 			if err != nil {
 				log.Printf("Error getting conversation info: %v", err)
 				continue
 			}
-			
+
 			// Set group flag based on conversation type
 			chatMessage.IsGroup = conversation != nil && conversation.IsGroup
-			
+
 			// Send to hub for broadcasting
 			log.Printf("Sending message to hub for broadcasting: user %d, conversation %d, isGroup: %t", c.UserID, chatMessage.ConversationID, chatMessage.IsGroup)
 			hub.broadcast <- &chatMessage
@@ -503,7 +544,7 @@ func (c *Client) writePump() {
 		ticker.Stop()
 		c.Conn.Close()
 	}()
-	
+
 	for {
 		select {
 		case message, ok := <-c.Send:
@@ -513,21 +554,21 @@ func (c *Client) writePump() {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			
+
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
-			
+
 			w.Write(message)
-			
+
 			// Add queued messages to the current WebSocket message
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})
 				w.Write(<-c.Send)
 			}
-			
+
 			if err := w.Close(); err != nil {
 				return
 			}
@@ -538,4 +579,62 @@ func (c *Client) writePump() {
 			}
 		}
 	}
-} 
+}
+
+// SendFollowNotification sends a follow notification via WebSocket
+func SendFollowNotification(userID int64, senderID int64, notificationType string, content string, referenceID int64) {
+	if chatHub == nil {
+		log.Printf("Chat hub not initialized, cannot send follow notification")
+		return
+	}
+
+	// Get sender information
+	sender, err := db.GetUserById(int(senderID))
+	if err != nil {
+		log.Printf("Error getting sender info for follow notification: %v", err)
+		return
+	}
+
+	// Create notification message
+	notification := map[string]interface{}{
+		"type":          notificationType,
+		"sender_id":     senderID,
+		"sender_name":   fmt.Sprintf("%s %s", sender["first_name"], sender["last_name"]),
+		"sender_avatar": sender["avatar"],
+		"content":       content,
+		"reference_id":  referenceID,
+		"created_at":    time.Now().Format(time.RFC3339),
+	}
+
+	// Send notification to the user
+	chatHub.SendNotificationToUser(userID, notification)
+}
+
+// SendGroupNotification sends a group notification via WebSocket
+func SendGroupNotification(userID int64, senderID int64, notificationType string, content string, referenceID int64) {
+	if chatHub == nil {
+		log.Printf("Chat hub not initialized, cannot send group notification")
+		return
+	}
+
+	// Get sender information
+	sender, err := db.GetUserById(int(senderID))
+	if err != nil {
+		log.Printf("Error getting sender info for group notification: %v", err)
+		return
+	}
+
+	// Create notification message
+	notification := map[string]interface{}{
+		"type":          notificationType,
+		"sender_id":     senderID,
+		"sender_name":   fmt.Sprintf("%s %s", sender["first_name"], sender["last_name"]),
+		"sender_avatar": sender["avatar"],
+		"content":       content,
+		"reference_id":  referenceID,
+		"created_at":    time.Now().Format(time.RFC3339),
+	}
+
+	// Send notification to the user
+	chatHub.SendNotificationToUser(userID, notification)
+}

@@ -46,7 +46,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Convert user ID to the expected type (handle both int and float64)
 	var userID int64
 	switch v := userIDValue.(type) {
@@ -110,12 +110,10 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
-	
 	// Instead of getting follow requests again, since we already get them from GetUserNotifications,
 	// we'll just use the notifications we've already retrieved.
 	// This prevents duplication of follow requests.
-	
+
 	// Track used request IDs to deduplicate follow requests
 	usedRequestIDs := make(map[int64]bool)
 	for _, notification := range notifications {
@@ -123,7 +121,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 			usedRequestIDs[notification.ReferenceID] = true
 		}
 	}
-	
+
 	// Process notifications to include sender details
 	result := make([]map[string]interface{}, 0, len(notifications))
 	for i, notification := range notifications {
@@ -131,7 +129,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 		if notification == nil {
 			continue
 		}
-		
+
 		// Skip duplicate follow request notifications
 		if notification.Type == "follow_request" {
 			// Only process the first occurrence of each request ID
@@ -141,7 +139,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			usedRequestIDs[notification.ReferenceID] = true
-			
+
 			// Verify that this follow request still exists
 			exists, _ := db.CheckFollowRequestExistsById(notification.ReferenceID)
 			if !exists {
@@ -149,7 +147,7 @@ func GetUserNotifications(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		
+
 		// Get sender info
 		var senderInfo map[string]interface{}
 		if notification.SenderID > 0 {
@@ -255,10 +253,10 @@ func GetFollowRequestsAsNotifications(userID int64) ([]*sqlite.Notification, err
 		}
 
 		followerName := follower["first_name"].(string) + " " + follower["last_name"].(string)
-		
+
 		// Create notification object
 		notification := &sqlite.Notification{
-			ID:          request.ID,  // Use request ID as notification ID
+			ID:          request.ID, // Use request ID as notification ID
 			ReceiverID:  userID,
 			SenderID:    request.FollowerID,
 			Type:        "follow_request",
@@ -308,7 +306,7 @@ func MarkNotificationAsRead(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Convert user ID to the expected type (handle both int and float64)
 	var userID int64
 	switch v := userIDValue.(type) {
@@ -389,7 +387,7 @@ func GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Convert user ID to the expected type (handle both int and float64)
 	var userID int64
 	switch v := userIDValue.(type) {
@@ -455,7 +453,7 @@ func MarkAllNotificationsAsRead(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	// Convert user ID to the expected type (handle both int and float64)
 	var userID int64
 	switch v := userIDValue.(type) {
@@ -494,12 +492,35 @@ func RegisterNotificationRoutes(router *mux.Router) {
 	router.HandleFunc("/notifications/unread", GetUnreadNotificationCount).Methods("GET", "OPTIONS")
 	router.HandleFunc("/notifications/read-all", MarkAllNotificationsAsRead).Methods("POST", "OPTIONS")
 	router.HandleFunc("/notifications/cleanup-expired", CleanupExpiredNotifications).Methods("POST", "OPTIONS")
+	router.HandleFunc("/notifications/clear-all", ClearAllNotifications).Methods("POST", "OPTIONS")
 }
 
 // CleanupExpiredNotifications removes group invitation notifications older than 1 minute
 func CleanupExpiredNotifications(w http.ResponseWriter, r *http.Request) {
-	// Clean up expired group invitations
-	err := db.DeleteExpiredGroupInvitations()
+	// Get the session directly instead of using getSession helper
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unauthorized: Session error",
+		})
+		return
+	}
+
+	// Check if user is authenticated
+	auth, ok := session.Values["authenticated"].(bool)
+	if !ok || !auth {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unauthorized: Not authenticated",
+		})
+		return
+	}
+
+	// Call the database method to clean up expired notifications
+	err = db.DeleteExpiredGroupInvitations()
 	if err != nil {
 		http.Error(w, "Failed to cleanup expired notifications", http.StatusInternalServerError)
 		return
@@ -510,4 +531,72 @@ func CleanupExpiredNotifications(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Expired notifications cleaned up successfully",
 	})
-} 
+}
+
+// ClearAllNotifications deletes all notifications for the current user
+func ClearAllNotifications(w http.ResponseWriter, r *http.Request) {
+	// Get the session directly instead of using getSession helper
+	session, err := store.Get(r, SessionCookieName)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unauthorized: Session error",
+		})
+		return
+	}
+
+	// Check if user is authenticated
+	auth, ok := session.Values["authenticated"].(bool)
+	if !ok || !auth {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unauthorized: Not authenticated",
+		})
+		return
+	}
+
+	// Get user ID from session
+	userIDValue, ok := session.Values["user_id"]
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unauthorized: User ID not found in session",
+		})
+		return
+	}
+
+	// Convert user ID to the expected type (handle both int and float64)
+	var userID int64
+	switch v := userIDValue.(type) {
+	case float64:
+		userID = int64(v)
+	case int:
+		userID = int64(v)
+	case int64:
+		userID = v
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid user ID type in session",
+		})
+		return
+	}
+
+	// Delete all notifications for the user
+	err = db.DeleteUserNotifications(userID)
+	if err != nil {
+		fmt.Printf("Error clearing all notifications for user %d: %v\n", userID, err)
+		http.Error(w, "Failed to clear all notifications", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "All notifications cleared successfully",
+	})
+}

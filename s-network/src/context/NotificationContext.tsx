@@ -49,6 +49,8 @@ interface NotificationContextType {
     message: string,
     type?: "info" | "success" | "warning" | "error"
   ) => void;
+  clearAllNotifications: () => Promise<void>;
+  markAllAsRead: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(
@@ -281,6 +283,116 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               "info"
             );
           }
+        } else if (data.type === "follow") {
+          // Handle follow notifications
+          const notification: Notification = {
+            id: `follow-${data.sender_id}-${Date.now()}`,
+            type: "follow",
+            content: data.content,
+            sender: {
+              id: Number(data.sender_id),
+              first_name: data.sender_name.split(" ")[0] || data.sender_name,
+              last_name: data.sender_name.split(" ").slice(1).join(" ") || "",
+              avatar: data.sender_avatar,
+            },
+            reference_id: data.reference_id,
+            created_at: new Date().toISOString(),
+            is_read: false,
+          };
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding follow notification:", notification);
+          }
+          addNotification(notification);
+          showNotificationAlert("👤 " + data.content, "success");
+        } else if (data.type === "follow_request") {
+          // Handle follow request notifications
+          const notification: Notification = {
+            id: `follow-req-${data.sender_id}-${Date.now()}`,
+            type: "follow_request",
+            content: data.content,
+            sender: {
+              id: Number(data.sender_id),
+              first_name: data.sender_name.split(" ")[0] || data.sender_name,
+              last_name: data.sender_name.split(" ").slice(1).join(" ") || "",
+              avatar: data.sender_avatar,
+            },
+            reference_id: data.reference_id,
+            created_at: new Date().toISOString(),
+            is_read: false,
+          };
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding follow request notification:", notification);
+          }
+          addNotification(notification);
+          showNotificationAlert("👤 " + data.content, "info");
+        } else if (data.type === "follow_accepted") {
+          // Handle follow accepted notifications
+          const notification: Notification = {
+            id: `follow-acc-${data.sender_id}-${Date.now()}`,
+            type: "follow_accepted",
+            content: data.content,
+            sender: {
+              id: Number(data.sender_id),
+              first_name: data.sender_name.split(" ")[0] || data.sender_name,
+              last_name: data.sender_name.split(" ").slice(1).join(" ") || "",
+              avatar: data.sender_avatar,
+            },
+            reference_id: data.reference_id,
+            created_at: new Date().toISOString(),
+            is_read: false,
+          };
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding follow accepted notification:", notification);
+          }
+          addNotification(notification);
+          showNotificationAlert("✅ " + data.content, "success");
+        } else if (data.type === "group_invitation") {
+          // Handle group invitation notifications
+          const notification: Notification = {
+            id: `group-inv-${data.reference_id}-${Date.now()}`,
+            type: "group_invitation",
+            content: data.content,
+            sender: {
+              id: Number(data.sender_id),
+              first_name: data.sender_name.split(" ")[0] || data.sender_name,
+              last_name: data.sender_name.split(" ").slice(1).join(" ") || "",
+              avatar: data.sender_avatar,
+            },
+            reference_id: data.reference_id,
+            created_at: new Date().toISOString(),
+            is_read: false,
+          };
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding group invitation notification:", notification);
+          }
+          addNotification(notification);
+          showNotificationAlert("🎉 " + data.content, "info");
+        } else if (data.type === "group_member_added") {
+          // Handle group member added notifications
+          const notification: Notification = {
+            id: `group-add-${data.reference_id}-${Date.now()}`,
+            type: "group_member_added",
+            content: data.content,
+            sender: {
+              id: Number(data.sender_id),
+              first_name: data.sender_name.split(" ")[0] || data.sender_name,
+              last_name: data.sender_name.split(" ").slice(1).join(" ") || "",
+              avatar: data.sender_avatar,
+            },
+            reference_id: data.reference_id,
+            created_at: new Date().toISOString(),
+            is_read: false,
+          };
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log("🔔 Adding group member added notification:", notification);
+          }
+          addNotification(notification);
+          showNotificationAlert("🎉 " + data.content, "success");
         } else if (
           data.type === "post_created" &&
           data.created_by !== currentUser.id
@@ -510,6 +622,78 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const clearAllNotifications = async () => {
+    if (!isLoggedIn) {
+      showNotificationAlert("You must be logged in to clear notifications.", "error");
+      return;
+    }
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+             const response = await fetch(`${backendUrl}/api/notifications/clear-all`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          flushSync(() => {
+            setNotifications([]);
+            setUnreadCount(0);
+          });
+          showNotificationAlert("All notifications cleared.", "success");
+        } else {
+          showNotificationAlert("Failed to clear notifications.", "error");
+        }
+      } else {
+        const errorData = await response.json();
+        showNotificationAlert(errorData.message || "Failed to clear notifications.", "error");
+      }
+    } catch (error) {
+      console.error("Error clearing notifications:", error);
+      showNotificationAlert("Failed to clear notifications.", "error");
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (!isLoggedIn) {
+      showNotificationAlert("You must be logged in to mark all notifications as read.", "error");
+      return;
+    }
+
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+             const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          flushSync(() => {
+            setNotifications((prev) =>
+              prev.map((notification) => ({ ...notification, is_read: true }))
+            );
+            setUnreadCount(0);
+          });
+          showNotificationAlert("All notifications marked as read.", "success");
+        } else {
+          showNotificationAlert("Failed to mark all notifications as read.", "error");
+        }
+      } else {
+        const errorData = await response.json();
+        showNotificationAlert(errorData.message || "Failed to mark all notifications as read.", "error");
+      }
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      showNotificationAlert("Failed to mark all notifications as read.", "error");
+    }
+  };
+
   return (
     <NotificationContext.Provider
       value={{
@@ -521,6 +705,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         toggleNotificationSidebar,
         addNotification,
         showNotificationAlert,
+        clearAllNotifications,
+        markAllAsRead,
       }}
     >
       {children}

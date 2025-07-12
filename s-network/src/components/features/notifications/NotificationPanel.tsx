@@ -10,8 +10,10 @@ import {
   FaCalendarAlt,
   FaCheck,
   FaTimes,
+  FaTrash,
 } from "react-icons/fa";
 import { NotificationAvatar } from "@/components/ui/Avatar";
+import { useNotifications } from "@/context/NotificationContext";
 
 interface Notification {
   id: string;
@@ -53,6 +55,8 @@ export default function NotificationPanel() {
   }>({});
   const [error, setError] = useState<string | null>(null);
 
+  const { clearAllNotifications, markAllAsRead } = useNotifications();
+
   // Fetch notifications from the API
   const fetchNotifications = async () => {
     setIsLoading(true);
@@ -84,31 +88,9 @@ export default function NotificationPanel() {
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
-      markAllNotificationsAsRead();
+      markAllAsRead();
     }
   }, [isOpen]);
-
-  // Mark all notifications as read when panel opens
-  const markAllNotificationsAsRead = async () => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        // Update local state to mark all notifications as read
-        setNotifications(prevNotifications => 
-          prevNotifications.map(n => ({ ...n, is_read: true }))
-        );
-        setUnreadCount(0);
-      }
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-    }
-  };
 
   // Poll for new notifications every 30 seconds
   useEffect(() => {
@@ -491,6 +473,15 @@ export default function NotificationPanel() {
           >
             <div className="p-3 border-b flex justify-between items-center">
               <h3 className="font-semibold text-gray-800">Notifications</h3>
+              {notifications.length > 0 && (
+                <button
+                  onClick={clearAllNotifications}
+                  className="text-gray-500 hover:text-red-600 p-1 rounded-md transition-colors"
+                  title="Clear all notifications"
+                >
+                  <FaTrash size={14} />
+                </button>
+              )}
             </div>
 
             <div className="max-h-[400px] overflow-y-auto">

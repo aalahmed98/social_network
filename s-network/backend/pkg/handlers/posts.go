@@ -598,6 +598,10 @@ func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 				ReferenceID: int64(followerID),
 				IsRead:      false,
 			})
+
+			// Send real-time notification
+			SendFollowNotification(int64(followingID), int64(followerID), "follow",
+				followerName+" started following you", int64(followerID))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -640,6 +644,10 @@ func FollowUserHandler(w http.ResponseWriter, r *http.Request) {
 				ReferenceID: requestID,
 				IsRead:      false,
 			})
+
+			// Send real-time notification
+			SendFollowNotification(int64(followingID), int64(followerID), "follow_request",
+				followerName+" wants to follow you", requestID)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -805,6 +813,10 @@ func AcceptFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
 			ReferenceID: int64(userID),
 			IsRead:      false,
 		})
+
+		// Send real-time notification
+		SendFollowNotification(followerID, int64(userID), "follow_accepted",
+			followingName+" accepted your follow request", int64(userID))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

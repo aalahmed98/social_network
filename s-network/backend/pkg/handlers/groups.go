@@ -204,7 +204,7 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 			if requestData.Privacy == "private" {
 				// For private groups, send invitation
-				
+
 				// Check if invitation already exists
 				if db.HasPendingInvitation(groupID, memberID) {
 					log.Printf("[CreateGroup] Warning: User %d already has pending invitation, skipping", memberID)
@@ -231,6 +231,10 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 					// Don't fail the invitation if notification creation fails
 				}
 
+				// Send real-time notification
+				SendGroupNotification(memberID, int64(userID), "group_invitation",
+					inviterName+" invited you to join "+requestData.Name, groupID)
+
 				log.Printf("[CreateGroup] Successfully sent invitation %d to user %d for private group", invitationID, memberID)
 
 			} else {
@@ -250,7 +254,7 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 				// Create notification for the added user (different type than invitation)
 				notificationContent := fmt.Sprintf("%s added you to the group '%s'", inviterName, requestData.Name)
-				
+
 				notification := &sqlite.Notification{
 					ReceiverID:  memberID,
 					SenderID:    int64(userID),
@@ -259,11 +263,15 @@ func CreateGroup(w http.ResponseWriter, r *http.Request) {
 					ReferenceID: groupID,
 					IsRead:      false,
 				}
-				
+
 				_, err = db.CreateNotification(notification)
 				if err != nil {
 					log.Printf("[CreateGroup] Warning: Could not create group addition notification for user %d: %v", memberID, err)
 				}
+
+				// Send real-time notification
+				SendGroupNotification(memberID, int64(userID), "group_member_added",
+					notificationContent, groupID)
 
 				log.Printf("[CreateGroup] Successfully added user %d as member to public group", memberID)
 			}
@@ -488,6 +496,10 @@ func InviteToGroup(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error creating notification for invitation: %v", err)
 		// Don't fail the invitation if notification creation fails
 	}
+
+	// Send real-time notification
+	SendGroupNotification(requestData.UserID, int64(userID), "group_invitation",
+		inviterName+" invited you to join "+group.Name, groupID)
 
 	// Add user to group chat
 	err = db.AddMemberToGroupConversation(groupID, int64(userID))
@@ -1031,7 +1043,7 @@ func CreateGroupPost(w http.ResponseWriter, r *http.Request) {
 			"group_id":   groupID,
 			"created_by": userID,
 		}
-		
+
 		if err := broadcastToGroupMembers(groupID, notificationMessage); err != nil {
 			log.Printf("Error broadcasting post creation: %v", err)
 		}
@@ -1310,7 +1322,7 @@ func CreateGroupPostComment(w http.ResponseWriter, r *http.Request) {
 			"group_id":   post.GroupID,
 			"created_by": userID,
 		}
-		
+
 		if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
 			log.Printf("Error broadcasting comment creation: %v", err)
 		}
@@ -1470,7 +1482,7 @@ func CreateGroupEvent(w http.ResponseWriter, r *http.Request) {
 			"group_id":   groupID,
 			"created_by": userID,
 		}
-		
+
 		if err := broadcastToGroupMembers(groupID, notificationMessage); err != nil {
 			log.Printf("Error broadcasting event creation: %v", err)
 		}
@@ -1607,7 +1619,7 @@ func DeleteGroupEvent(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Group not found", http.StatusNotFound)
 			return
 		}
-		
+
 		if group.CreatorID != int64(userID) {
 			http.Error(w, "Only event creator or group admin can delete events", http.StatusForbidden)
 			return
@@ -1629,7 +1641,7 @@ func DeleteGroupEvent(w http.ResponseWriter, r *http.Request) {
 			"group_id":   event.GroupID,
 			"deleted_by": userID,
 		}
-		
+
 		if err := broadcastToGroupMembers(event.GroupID, notificationMessage); err != nil {
 			log.Printf("Error broadcasting event deletion: %v", err)
 		}
@@ -1762,7 +1774,7 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 	for _, memberID := range userIDsToAdd {
 		if group.Privacy == "private" {
 			// For private groups, send invitation instead of adding directly
-			
+
 			// Check if invitation already exists
 			if db.HasPendingInvitation(groupID, memberID) {
 				log.Printf("Warning: User %d already has pending invitation, skipping", memberID)
@@ -1789,6 +1801,10 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 				// Don't fail the invitation if notification creation fails
 			}
 
+			// Send real-time notification
+			SendGroupNotification(memberID, int64(userID), "group_invitation",
+				inviterName+" invited you to join "+group.Name, groupID)
+
 			sentInvitations = append(sentInvitations, memberID)
 			log.Printf("Successfully sent invitation %d to user %d for private group", invitationID, memberID)
 
@@ -1810,7 +1826,7 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 
 			// Create notification for the added user (different type than invitation)
 			notificationContent := fmt.Sprintf("%s added you to the group '%s'", inviterName, group.Name)
-			
+
 			notification := &sqlite.Notification{
 				ReceiverID:  memberID,
 				SenderID:    int64(userID),
@@ -1819,11 +1835,15 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 				ReferenceID: groupID,
 				IsRead:      false,
 			}
-			
+
 			_, err = db.CreateNotification(notification)
 			if err != nil {
 				log.Printf("Warning: Could not create group addition notification: %v", err)
 			}
+
+			// Send real-time notification
+			SendGroupNotification(memberID, int64(userID), "group_member_added",
+				notificationContent, groupID)
 
 			addedMembers = append(addedMembers, memberID)
 		}
@@ -1847,10 +1867,10 @@ func AddGroupMember(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":           message,
-		"group_privacy":     group.Privacy,
-		"added_members":     addedMembers,
-		"sent_invitations":  sentInvitations,
+		"message":          message,
+		"group_privacy":    group.Privacy,
+		"added_members":    addedMembers,
+		"sent_invitations": sentInvitations,
 	})
 }
 
@@ -2205,7 +2225,7 @@ func DeleteGroupPostComment(w http.ResponseWriter, r *http.Request) {
 			"group_id":   post.GroupID,
 			"deleted_by": userID,
 		}
-		
+
 		if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
 			log.Printf("Error broadcasting comment deletion: %v", err)
 		}
@@ -2248,7 +2268,7 @@ func DeleteGroupPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Group not found", http.StatusNotFound)
 			return
 		}
-		
+
 		if group.CreatorID != int64(userID) {
 			http.Error(w, "Access denied: you can only delete your own posts or posts in groups you admin", http.StatusForbidden)
 			return
@@ -2271,16 +2291,16 @@ func DeleteGroupPost(w http.ResponseWriter, r *http.Request) {
 			"group_id":   post.GroupID,
 			"deleted_by": userID,
 		}
-		
-			if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
-		log.Printf("Error broadcasting post deletion: %v", err)
-	}
+
+		if err := broadcastToGroupMembers(post.GroupID, notificationMessage); err != nil {
+			log.Printf("Error broadcasting post deletion: %v", err)
+		}
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Post deleted successfully",
-		"post_id": postID,
+		"message":  "Post deleted successfully",
+		"post_id":  postID,
 		"group_id": post.GroupID,
 	})
 }

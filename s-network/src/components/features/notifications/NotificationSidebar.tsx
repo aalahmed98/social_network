@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { NotificationAvatar } from "@/components/ui/Avatar";
 import { motion } from "framer-motion";
-import { FaUserPlus, FaUserCheck, FaTimes, FaCheck } from "react-icons/fa";
+import { FaUserPlus, FaUserCheck, FaTimes, FaCheck, FaTrash } from "react-icons/fa";
 import { IoMdClose } from "react-icons/io";
 import { useNotifications } from "@/context/NotificationContext";
 
@@ -44,7 +44,7 @@ export default function NotificationSidebar({
   onClose,
 }: NotificationSidebarProps) {
   const router = useRouter();
-  const { notifications } = useNotifications();
+  const { notifications, clearAllNotifications, markAllAsRead } = useNotifications();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -61,27 +61,9 @@ export default function NotificationSidebar({
   // Auto-mark all notifications as read when sidebar opens
   useEffect(() => {
     if (isOpen) {
-      markAllNotificationsAsRead();
+      markAllAsRead();
     }
   }, [isOpen]);
-
-  // Mark all notifications as read when sidebar opens
-  const markAllNotificationsAsRead = async () => {
-    try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      const response = await fetch(`${backendUrl}/api/notifications/read-all`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        // Notifications will be automatically updated via the NotificationContext
-      }
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-    }
-  };
 
   // Auto-hide notifications after 1 minute
   useEffect(() => {
@@ -609,12 +591,23 @@ export default function NotificationSidebar({
               </span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 p-1"
-          >
-            <IoMdClose size={24} />
-          </button>
+          <div className="flex items-center space-x-2">
+            {notifications.length > 0 && (
+              <button
+                onClick={clearAllNotifications}
+                className="text-gray-500 hover:text-red-600 p-1 rounded-md transition-colors"
+                title="Clear all notifications"
+              >
+                <FaTrash size={16} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 p-1"
+            >
+              <IoMdClose size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Filter tabs */}
