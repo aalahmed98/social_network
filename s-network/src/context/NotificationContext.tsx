@@ -680,7 +680,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             );
             setUnreadCount(0);
           });
-          showNotificationAlert("All notifications marked as read.", "success");
         } else {
           showNotificationAlert("Failed to mark all notifications as read.", "error");
         }
